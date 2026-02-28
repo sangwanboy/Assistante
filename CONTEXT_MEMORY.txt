@@ -1,0 +1,353 @@
+================================================================================
+                        PROJECT CONTEXT & MEMORY FILE
+================================================================================
+Created: 2026-02-27
+Purpose: Persistent memory for Claude across sessions. Read this file at the
+         start of every session or when context is running low.
+
+================================================================================
+                           PROJECT OVERVIEW
+================================================================================
+Project Directory: d:\Projects\Assitance
+Description: Multi-purpose AI assistant with flexible model support (OpenAI,
+  Anthropic Claude, Google Gemini, local Ollama models). Features a Python
+  FastAPI backend, React web UI, and planned Electron desktop app.
+
+Tech Stack:
+  - Backend: Python 3.12 + FastAPI + Uvicorn + SQLAlchemy (async) + SQLite
+  - Frontend: React 19 + TypeScript + Vite + Tailwind CSS v4 + Zustand
+  - AI SDKs: openai, anthropic, google-genai, ollama (via httpx)
+  - Desktop (planned): Electron
+
+Python managed via: uv (installed at C:\Users\Tushar\.local\bin\uv.exe)
+Python 3.12 at: C:\Users\Tushar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\python.exe
+
+HOW TO RUN:
+  Backend:  cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8321
+  Frontend: cd frontend && npm run dev
+  (Frontend proxies /api and /ws to backend at 127.0.0.1:8321)
+
+================================================================================
+                           FILE INVENTORY
+================================================================================
+(Format: file_path -> what it does)
+
+--- Root ---
+- CONTEXT_MEMORY.txt -> This file. Persistent memory/context for Claude.
+- .gitignore -> Git ignore rules for the whole project
+- .env.example -> Template for environment variables (API keys, etc.)
+
+--- Backend (backend/) ---
+- pyproject.toml -> Python project config, dependencies, hatch build config
+- .env -> Local environment variables (API keys) - gitignored
+- app/__init__.py -> Empty init
+- app/main.py -> FastAPI app creation, lifespan, CORS, mounts api_router, health endpoint
+- app/config.py -> pydantic-settings Settings class, reads .env with ASSITANCE_ prefix
+
+- app/db/__init__.py -> Empty init
+- app/db/base.py -> SQLAlchemy DeclarativeBase
+- app/db/engine.py -> Async engine, session maker, init_database(), get_session()
+
+- app/models/__init__.py -> Empty init
+- app/models/conversation.py -> Conversation + Message ORM models
+- app/models/agent.py -> Agent ORM model (id, name, provider, model, prompt)
+- app/models/document.py -> Document ORM model (id, filename, file_type, size, content_hash)
+- app/models/workflow.py -> Workflow, Node, Edge ORM models for node-based automation graphs
+
+- app/providers/__init__.py -> Empty init
+- app/providers/base.py -> CORE: BaseProvider ABC, ChatMessage, StreamChunk, ModelInfo dataclasses
+- app/providers/openai_provider.py -> OpenAI GPT implementation (complete + stream)
+- app/providers/anthropic_provider.py -> Anthropic Claude implementation (complete + stream)
+- app/providers/ollama_provider.py -> Ollama local LLM implementation (complete + stream via httpx)
+- app/providers/gemini_provider.py -> Google Gemini implementation (complete + stream via google-genai SDK)
+- app/providers/registry.py -> ProviderRegistry: discovers + manages providers based on config
+
+- app/tools/__init__.py -> Empty init
+- app/tools/base.py -> BaseTool ABC (name, description, parameters_schema, execute)
+- app/tools/registry.py -> ToolRegistry: manages tools, register_defaults(), as_provider_format()
+- app/tools/web_search.py -> WebSearchTool: uses duckduckgo-search
+- app/tools/file_manager.py -> FileManagerTool: read/write/list files in workspace dir
+- app/tools/code_executor.py -> CodeExecutorTool: runs Python code in subprocess (30s timeout)
+- app/tools/datetime_tool.py -> DateTimeTool: returns current date/time
+- app/tools/knowledge_base_tool.py -> KnowledgeBaseTool: searches ChromaDB vector store for RAG
+
+- app/services/__init__.py -> Empty init
+- app/services/conversation_service.py -> ConversationService: CRUD for conversations + messages
+- app/services/chat_service.py -> CORE: ChatService orchestrator - ties providers, tools, history
+  together. Has agentic loop for tool calling. Both sync and streaming methods.
+- app/services/document_service.py -> DocumentService: upload, chunk, embed docs into ChromaDB; search
+- app/services/workflow_service.py -> WorkflowService: CRUD for workflows, nodes, edges; save_graph()
+- app/services/workflow_engine.py -> WorkflowEngine: executes DAG of nodes (trigger -> actions via LLM)
+
+- app/schemas/__init__.py -> Empty init
+- app/schemas/chat.py -> ChatRequest, ChatResponse, StreamChunkResponse pydantic models
+- app/schemas/conversation.py -> ConversationCreate/Update/Out/DetailOut pydantic models
+- app/schemas/models.py -> ModelInfoOut, ToolInfoOut pydantic models
+- app/schemas/agent.py -> AgentCreate/Update/Out pydantic models
+- app/schemas/document.py -> DocumentCreate/Out pydantic models
+- app/schemas/workflow.py -> WorkflowCreate/Out, NodeCreate/Out, EdgeCreate/Out, WorkflowGraph models
+
+- app/api/__init__.py -> Empty init
+- app/api/router.py -> Aggregates all API routers (chat, conversations, models, tools, settings, agents, knowledge, workflows)
+- app/api/chat.py -> POST /api/chat + WebSocket /ws/chat/{conversation_id}
+- app/api/conversations.py -> CRUD REST endpoints for /api/conversations
+- app/api/models_api.py -> GET /api/models (lists all available models across providers)
+- app/api/tools_api.py -> GET /api/tools (lists available tools)
+- app/api/settings_api.py -> GET/PUT /api/settings (API keys, defaults)
+- app/api/agents.py -> Agents CRUD REST endpoints
+- app/api/knowledge.py -> GET/POST/DELETE /api/knowledge (document upload, list, delete)
+- app/api/workflows.py -> CRUD /api/workflows + POST /{id}/graph (save node graph)
+
+--- Frontend (frontend/) ---
+- vite.config.ts -> Vite config with React, Tailwind, dev proxy to backend
+- index.html -> Entry HTML with Assitance title
+- src/main.tsx -> React entry point
+- src/App.tsx -> Root component with view routing: Sidebar + HomeView/ChatView/Others + top bar with notifications and user menu
+- src/index.css -> Tailwind import + base styles + scrollbar + code highlighting
+
+- src/types/index.ts -> TypeScript interfaces: Message, Conversation, ModelInfo, StreamEvent, Document, etc.
+- src/types/workflow.ts -> TypeScript interfaces: Workflow, WorkflowGraph, Node, Edge
+- src/services/api.ts -> REST API client (fetch wrapper) for all backend endpoints (incl. knowledge + workflows)
+- src/services/websocket.ts -> WebSocketClient class for real-time streaming
+
+- src/stores/chatStore.ts -> Zustand store: conversations, messages, streaming state, WS management
+- src/stores/settingsStore.ts -> Zustand store: selected model, temperature, show settings
+- src/stores/agentStore.ts -> Zustand store: agents CRUD and loading
+
+- src/components/home/HomeView.tsx -> Hub layout: large dialogue canvas left, collapsible cards right, activity feed bottom
+- src/components/home/ActiveDialogue.tsx -> Tabbed (Chat/Workspace) with Cmd+K universal command bar
+- src/components/home/WorkspaceView.tsx -> Workflow visualization with trigger and action nodes
+- src/components/home/ActiveTasks.tsx -> Collapsible card showing live active agents from agentStore
+- src/components/home/QuickActions.tsx -> Collapsible card with icon-labeled action buttons
+- src/components/chat/ChatView.tsx -> Three-pane: thread list (left), chat thread (center), context panel (right)
+- src/components/chat/MessageBubble.tsx -> Single message bubble (user/assistant/tool)
+- src/components/chat/MessageInput.tsx -> Text input with send button, Shift+Enter support
+- src/components/chat/StreamingMessage.tsx -> In-progress streaming message with cursor + tool calls
+- src/components/common/MarkdownRenderer.tsx -> ReactMarkdown with GFM + syntax highlighting
+- src/components/common/ModelSelector.tsx -> Model picker dropdown
+- src/components/knowledge/KnowledgeView.tsx -> File explorer table with filter tabs, search, preview drawer
+- src/components/workflows/WorkflowsView.tsx -> Templates gallery + ReactFlow node editor with library sidebar
+- src/components/agents/AgentsView.tsx -> Dashboard cards with sparklines, power toggle, slide-out config panel
+- src/components/sidebar/Sidebar.tsx -> Navigation sidebar (Home, Chat, KB, Workflows, Agents, Settings)
+- src/components/settings/SettingsPanel.tsx -> Tabbed modal (API Keys, Local Models, Defaults) with connectivity indicators
+
+================================================================================
+                           CHANGES LOG
+================================================================================
+(Format: [DATE] description of change)
+
+[2026-02-27] Created CONTEXT_MEMORY.txt for persistent context tracking.
+[2026-02-27] Installed Python 3.12 via uv.
+[2026-02-27] Created full backend: FastAPI app, multi-provider system (OpenAI,
+  Anthropic, Ollama), tool system (web search, file manager, code executor,
+  datetime), conversation CRUD, WebSocket streaming, SQLite database.
+[2026-02-27] Created full frontend: React + Tailwind web UI with chat interface,
+  sidebar, model selector, settings panel, streaming support, markdown rendering.
+[2026-02-27] Backend tested: health, models, tools, conversations endpoints all working.
+[2026-02-27] Frontend builds successfully with zero TypeScript errors.
+[2026-02-27] UI Reconstruction and Functional Integration:
+  - Implemented macOS-style traffic light window controls and centered title bar.
+  - Refined sidebar styling and navigation active states.
+  - Fully integrated ActiveDialogue.tsx with useChatStore for real-time streaming chat.
+  - Wired QuickActions.tsx to trigger actual assistant tasks/prompts.
+  - Updated MarkdownRenderer.tsx for light-mode consistency.
+[2026-02-27] Persistent Agent Management System:
+  - Backend: Added Agent ORM model, Pydantic schemas, and CRUD API router.
+  - Frontend: Created agentStore.ts and AgentsView.tsx for managing specialized AI assistants.
+  - Integrated AgentsView into main App routing.
+  - Updated HomeView's ActiveTasks to display live data from the Agent system.
+  - Polished visual aesthetics (super-rounded nodes, smooth transitions, glassmorphism).
+[2026-02-27] End-to-End Verification & Bug Fix:
+  - Verified UI rendering, proxying, WebSocket chat streaming, and Agent CRUD.
+  - Fixed 404 error on `/api/agents` endpoints. Root cause: FastAPI decorators were using `/` trailing slashes (`@router.post("/")`) which conflicted with frontend fetch calls. Changed to empty paths (`""`) to standardize against other routes.
+[2026-02-27] Added Google Gemini as 4th provider. Installed google-genai SDK.
+  Created gemini_provider.py, wired into config, registry, settings API, frontend.
+  Added gemini_api_key to config, .env, settings panel.
+  User's Gemini API key configured in .env.
+  Default model set to gemini/gemini-2.5-flash.
+  Available Gemini models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.5-flash-lite,
+  gemini-3-flash-preview, gemini-3-pro-preview.
+  Tested: chat with gemini-2.5-flash works ("Hello there! Nice to meet you.")
+  NOTE: Older Gemini models (2.0-flash, 1.5-pro etc) are deprecated for new users.
+[2026-02-27] Fixed WebSocket 403 Forbidden: WS was mounted under /api prefix
+  (actual path /api/ws/chat/{id}) but frontend connected to /ws/chat/{id}.
+  Fix: Mount WS directly on app root in main.py.
+[2026-02-27] Fixed stale default model references: 5 files still had "openai/gpt-4o"
+  as default. Updated chatStore.ts, schemas/chat.py, schemas/conversation.py,
+  conversation_service.py, models/conversation.py to "gemini/gemini-2.5-flash".
+[2026-02-27] Fixed "ValueError: contents are required" from Gemini provider.
+  Root cause: SQLAlchemy relationship caching bug. conversation_service.get_messages()
+  used selectinload(Conversation.messages) which returned stale (empty) data from
+  the identity map after add_message() committed a new message (expire_on_commit=False).
+  Fix: Changed get_messages() to query Message table directly with
+  select(Message).where(conversation_id==id).order_by(created_at), bypassing
+  the relationship cache. Also added defensive guard in gemini_provider.py
+  complete() and stream() to raise a clear error if contents list is empty.
+[2026-02-27] Created CrossClaw branded Home view UI with light theme design:
+  - Created 5 new home components: HomeView, ActiveDialogue, WorkspaceView, ActiveTasks, QuickActions
+  - ActiveDialogue shows conversation with CrossClaw avatar and user input
+  - WorkspaceView displays workflow visualization with trigger (Webhook) and actions (Summarize Text, Draft Email, Send Notification)
+  - ActiveTasks shows 3 tasks with progress bars (Market Analysis 75%, Daily Summary 20%, Onboarding Support Active)
+  - QuickActions displays 4 action buttons in grid: Summarize PDF, Draft Response, Find Information, Automate Task
+  - Updated Sidebar to navigation menu with icons: Home, Chat, Knowledge Base, Workflows, Agents, Settings
+  - Updated App.tsx with view routing system and top bar (notifications bell, document icon, settings, user avatar)
+  - Updated ChatView to light theme (white background, updated colors)
+  - Changed overall theme from dark purple to light gray/white with red accent for CrossClaw branding
+  - Dev server running at http://localhost:5173/
+[2026-02-27] Refined Home UI to more closely match user-provided reference screenshot:
+  - Matched panel arrangement: Active Dialogue (with embedded Workspace panel) on left;
+    Active Tasks + Quick-Actions stacked on right.
+  - Updated sizing/spacing/headers to mimic screenshot proportions and visual hierarchy.
+  - Wired all visible buttons in Home and top bar to functional handlers (settings/options,
+    quick actions, workspace nodes/zoom controls, notifications, profile menu, etc.).
+  - Added click feedback via status text so every button action has visible response.
+  - Restored frontend data bootstrapping in App.tsx (loadConversations/loadModels on mount).
+  - Confirmed compile success: npm run build passes (Vite + TypeScript).
+[2026-02-27] Phase 6: Completed Target Match UI Design:
+  - Refactored `HomeView` layout to explicitly embed `WorkspaceView` inside the `ActiveDialogue` container on the right.
+  - Applied the colorful radial glowing background and transparent chat bubbles to `ActiveDialogue`.
+  - Added a dotted background and updated node styles (orange, blue) to match the `WorkspaceView` mockup.
+  - Hardcoded `ActiveTasks` with the precise progress bar UI ("Market Analysis 75%", etc.) and replaced the dynamic store implementation for layout fidelity.
+  - Reshaped `QuickActions` to a 2x2 grid with white-buffered cards and blue icons (Summarize PDF, Draft Response, Find Information, Automate Task).
+  - Thoroughly refined all padding and `rounded-xl`/`rounded-2xl` properties to ensure text legibility without edge clipping.
+
+[2026-02-27] Phase 6.1: Real Agent Data Integration:
+  - Refactored `ActiveTasks` to use `useAgentStore` and `loadAgents` for real-time data.
+  - Replaced hardcoded mockup tasks with live agents from the database.
+  - Verified that creating/deleting agents in the `Agents` view updates the `Home` dashboard dynamically.
+  - Preserved Target Match aesthetic (green bars, status pills, sub-text info) for real entries.
+[2026-02-27] Phase 6.2: UI Padding Refinement:
+  - Addressed user feedback regarding text clipping on rounded corners.
+  - Increased header padding in `ActiveTasks` and `QuickActions` to `px-8`.
+  - Refined `AgentsView` modal with `px-12` padding and adjusted form labels (`ml-2`) to clear `rounded-[2rem]` edges.
+  - Verified layout integrity across Home and Agents pages.
+[2026-02-27] Phase 6.3: Brand Identity Integration:
+  - Replaced the placeholder Sidebar logo with the official user-provided CrossClaw logo.
+  - Asset saved to `/brand/logo.png` and integrated via `Sidebar.tsx`.
+  - Verified branding consistency and visual fit.
+[2026-02-27] Phase 6.4: Final UI Alignment & Scaling:
+  - Corrected Sidebar logo scaling (increased to `h-14`) and top padding (`pt-12`).
+  - Resolved persistent text/pill clipping by increasing right margins (`mr-4`) in `ActiveTasks` and `QuickActions`.
+  - Final visual audit confirmed perfect spacing across all rounded containers.
+[2026-02-27] Phase 6.5: Full Brand Logo Integration:
+  - Replaced icon-only logo with the full transparent CrossClaw brand logo (`logo_full.png`).
+  - Adjusted Sidebar header to `h-20` for optimal legibility of brand text and subtext.
+  - Verified visual consistency and brand prominence.
+[2026-02-27] Phase 7: Group Agent Chat Session:
+  - Added `is_group` to Conversation model and `agent_name` to Message model via SQLite schema patch.
+  - Implemented `stream_group_chat` in `ChatService` to orchestrate multiple agents (round-robin active agents taking turns up to a max limit, appending agent names to shared context).
+  - Updated WebSocket connection logic to trigger `stream_group_chat` based on standard message WS packets with `is_group` flags.
+  - Added `streamingAgentName` to Zustand chatStore to reliably tag active streaming chunks with agent IDs.
+  - Placed a "Group Mode" toggle UI into `ActiveDialogue.tsx` allowing users to quickly start a multi-agent broadcast session.
+[2026-02-28] Knowledge Base (RAG) Implementation:
+  - Backend: Created Document model, DocumentService (upload, text extraction, chunking, ChromaDB embedding).
+  - Created KnowledgeBaseTool for agents to search the vector store.
+  - API endpoints: GET/POST/DELETE /api/knowledge.
+  - Frontend: KnowledgeView.tsx with file upload and document listing.
+  - Dependencies: python-multipart, chromadb, pypdf2, sentence-transformers.
+[2026-02-28] Workflows Engine Implementation:
+  - Backend: Created Workflow, Node, Edge ORM models. WorkflowService for CRUD + graph persistence.
+  - WorkflowEngine: DAG traversal executing node actions (summarize, email_draft, notify via LLM).
+  - API endpoints: CRUD /api/workflows + POST /{id}/graph.
+  - Frontend: WorkflowsView.tsx with ReactFlow canvas, installed `reactflow` dependency.
+  - Types: workflow.ts with Workflow, WorkflowGraph, Node, Edge interfaces.
+  - API client: Added getWorkflows, createWorkflow, deleteWorkflow, getWorkflowGraph, saveWorkflowGraph.
+[2026-02-28] Full UI Overhaul (6 Phases) to match user mockup images:
+  Phase 1 - Home: Hub layout with Cmd+K command bar, collapsible Active Agents & Quick-Actions cards, scrollable Recent Events activity feed.
+  Phase 2 - Chat: Three-pane view (conversation history left, chat thread center, context panel right with KB references and active variables).
+  Phase 3 - Knowledge Base: File explorer table (File Name, Type, Status, Last Indexed, Connected Agents), filter tabs (PDF/TXT/Markdown), search bar, compact upload button, slide-out preview drawer.
+  Phase 4 - Workflows: Templates gallery (Available + Suggested with "Use Template" buttons), node library sidebar (Triggers/Actions/Logic), MiniMap in editor.
+  Phase 5 - Agents: Dashboard cards with SVG sparklines (Requests/sec, Latency), power toggle button, Connected Workflows toggle, slide-out config panel (replaces modal).
+  Phase 6 - Settings: Tabbed left sidebar (API Keys, Local Models, Defaults), green animated connectivity indicators, Ollama connectivity tester, visual model selector with provider emoji icons.
+[2026-02-28] UI Glitch Fixes (post-overhaul):
+  - ChatView: Added loadConversations() on mount so thread list populates. Replaced broken Variable icon with Code2.
+  - HomeView: Replaced inline calc() height with flex layout to prevent activity feed clipping.
+  - ActiveDialogue: Changed command bar from absolute positioning to flex-shrink-0 so messages aren't hidden beneath it.
+[2026-02-28] UI Polish Pass (from screenshot review):
+  - ChatView context panel: Replaced truncated text with proper wrapping paragraph. Removed broken Code2/FileText/Variable imports.
+  - AgentsView cards: Added ACTIVE/OFF status badge next to agent name. Widened sparkline SVG (80→120px, 24→28px tall). Increased label text from 9px to 10px. Removed duplicate model section from bottom. Added dedicated Model info section with label.
+[2026-02-28] Home Layout Height Fix:
+  - HomeView: Replaced overflow-auto + h-full (broken combo) with flex-1 flex flex-col min-h-0 chain.
+    The grid now properly fills available vertical space with flex-1 min-h-0, and the activity feed
+    is pinned at the bottom with flex-shrink-0. ActiveDialogue parent uses flex flex-col for height pass-through.
+[2026-02-28] Agent Personality System + Tool Access:
+  Backend:
+    - Agent model: Added 7 columns (personality_tone, personality_traits, communication_style,
+      enabled_tools, reasoning_style, memory_context, memory_instructions).
+    - Schemas: Updated AgentBase, AgentUpdate, AgentOut with all new Optional fields.
+    - DB migration: Added ALTER TABLE in init_database for existing SQLite DBs.
+    - ChatService: Added _build_agent_prompt() to compose system prompt from personality fields,
+      and _filter_tools_for_agent() to filter tool schemas per agent's enabled_tools.
+      Both integrated into stream_group_chat.
+  Frontend:
+    - types/index.ts: Added all new fields to Agent interface.
+    - AgentsView.tsx: Rebuilt slide-out config panel with 3-tab system:
+      Soul (tone pills, traits multi-select, communication style, system prompt),
+      Mind (tool toggle checkboxes with descriptions, reasoning style pills),
+      Memory (persistent context textarea, standing instructions textarea).
+
+================================================================================
+                        THINGS TO REMEMBER
+================================================================================
+(User-requested notes, decisions, preferences, etc.)
+
+- User wants all changes and file descriptions documented here.
+- Always read this file at the start of a new session or when resuming work.
+- Keep everything intact; do not delete previous entries.
+- User emphasized again to never forget updating CONTEXT_MEMORY.txt after changes.
+- **CRITICAL**: ALWAYS update this CONTEXT_MEMORY.txt after ANY code change, no matter
+  how small. Update the File Inventory, Changes Log, and any other relevant sections.
+  This is a hard requirement from the user. Never skip this step.
+- User wants a desktop app (Electron) for controls and engagement - Phase 9 in plan.
+- Gemini API key is configured in backend/.env (ASSITANCE_GEMINI_API_KEY).
+- User provided a Google API key (starts with AIzaSy...) - advised to rotate after use.
+- Default model is gemini/gemini-2.5-flash.
+
+================================================================================
+                        ARCHITECTURE / DECISIONS
+================================================================================
+(Key design decisions, patterns, tech stack choices, etc.)
+
+- Multi-provider uses Strategy pattern + Registry. BaseProvider is the contract.
+- Model strings use format "provider/model" (e.g., "openai/gpt-4o").
+- Tool system uses BaseTool ABC + ToolRegistry. Tools self-describe via JSON Schema.
+- ChatService has an agentic loop: LLM calls tools, sees results, loops up to 10x.
+- Database: SQLite at backend/data/assitance.db (auto-created on startup).
+- Frontend proxied to backend via Vite dev server proxy config.
+- All CORS allowed in dev (allow_origins=["*"]).
+- Settings stored in pydantic-settings (from .env), with runtime update via API.
+- Persistent Agent system: Users can define specialized agents with specific system prompts and models.
+- Knowledge Base uses ChromaDB for local vector storage. Documents are chunked and embedded on upload.
+- Workflows use a DAG model: Workflow -> Nodes (trigger/action) -> Edges. WorkflowEngine traverses linearly for MVP.
+- ReactFlow library used for visual node graph editor in the frontend.
+
+================================================================================
+                              KNOWN ISSUES
+================================================================================
+(Bugs, quirks, workarounds to be aware of)
+
+- System Python installations are broken (py launcher registered but executables missing).
+  Use uv-managed Python instead: uv run python, uv run uvicorn, etc.
+- No API keys configured yet, so /api/models returns [] until user adds keys to
+  Settings panel or .env file.
+  UPDATE: Gemini key is now configured. /api/models returns 5 Gemini models.
+- Electron desktop app not yet implemented (Phase 9 in plan).
+- File uploads implemented via Knowledge Base (ChromaDB + document chunking).
+- No Alembic migrations set up yet (using create_all for now).
+- Gemini uses synchronous google-genai SDK methods (not async). The generate_content
+  and generate_content_stream calls block the event loop briefly. For production,
+  consider wrapping in run_in_executor or switching to async httpx calls.
+
+================================================================================
+                          REMAINING WORK (PHASES)
+================================================================================
+Phase 7: File Upload - DONE (Knowledge Base with ChromaDB RAG)
+Phase 8: Encrypted API key storage (Fernet), persistent settings in DB
+Phase 9: Electron desktop app (backend-manager, system tray, packaging)
+Phase 10: Polish (error handling, loading states, logging, tests, CI)
+Phase 11: Workflow execution triggers (webhook endpoint, scheduled cron)
+Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
+
+================================================================================
+                                 END
+================================================================================
