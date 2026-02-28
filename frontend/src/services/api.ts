@@ -18,7 +18,7 @@ export const api = {
 
   // Conversations
   getConversations: () => request<import('../types').Conversation[]>('/conversations'),
-  createConversation: (data: { title?: string; model?: string; system_prompt?: string; is_group?: boolean }) =>
+  createConversation: (data: { title?: string; model?: string; system_prompt?: string; is_group?: boolean; agent_id?: string }) =>
     request<import('../types').Conversation>('/conversations', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -107,4 +107,31 @@ export const api = {
     request<import('../types/workflow').WorkflowGraph>(`/workflows/${id}`),
   saveWorkflowGraph: (id: string, graph: { nodes: import('../types/workflow').Node[], edges: import('../types/workflow').Edge[] }) =>
     request<import('../types/workflow').WorkflowGraph>(`/workflows/${id}/graph`, { method: 'POST', body: JSON.stringify(graph) }),
+
+  // Custom Tools
+  getCustomTools: () => request<import('../types').CustomTool[]>('/custom-tools'),
+  createCustomTool: (data: Partial<import('../types').CustomTool>) =>
+    request<import('../types').CustomTool>('/custom-tools', { method: 'POST', body: JSON.stringify(data) }),
+  getCustomTool: (id: string) => request<import('../types').CustomTool>(`/custom-tools/${id}`),
+  updateCustomTool: (id: string, data: Partial<import('../types').CustomTool>) =>
+    request<import('../types').CustomTool>(`/custom-tools/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCustomTool: (id: string) =>
+    request<{ status: string }>(`/custom-tools/${id}`, { method: 'DELETE' }),
+  testCustomTool: (id: string, args: Record<string, unknown>) =>
+    request<{ success: boolean; output: string }>(`/custom-tools/${id}/test`, { method: 'POST', body: JSON.stringify({ arguments: args }) }),
+
+  // Skills
+  getSkills: () => request<import('../types').Skill[]>('/skills'),
+  createSkill: (data: Partial<import('../types').Skill>) =>
+    request<import('../types').Skill>('/skills', { method: 'POST', body: JSON.stringify(data) }),
+  getSkill: (id: string) => request<import('../types').Skill>(`/skills/${id}`),
+  updateSkill: (id: string, data: Partial<import('../types').Skill>) =>
+    request<import('../types').Skill>(`/skills/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSkill: (id: string) =>
+    request<{ status: string }>(`/skills/${id}`, { method: 'DELETE' }),
+  importSkill: (content: string) =>
+    request<import('../types').Skill>('/skills/import', { method: 'POST', body: JSON.stringify({ content }) }),
+  exportSkill: (id: string) =>
+    request<{ filename: string; content: string }>(`/skills/${id}/export`),
 };
+

@@ -8,6 +8,8 @@ from app.api.settings_api import router as settings_router
 from app.api.agents import router as agents_router
 from app.api.knowledge import router as knowledge_router
 from app.api.workflows import router as workflows_router
+from app.api.custom_tools import router as custom_tools_router
+from app.api.skills import router as skills_router
 
 api_router = APIRouter()
 
@@ -19,3 +21,6 @@ api_router.include_router(settings_router, prefix="/settings", tags=["Settings"]
 api_router.include_router(agents_router, prefix="/agents", tags=["Agents"])
 api_router.include_router(knowledge_router, prefix="/knowledge", tags=["Knowledge Base"])
 api_router.include_router(workflows_router, prefix="/workflows", tags=["Workflows"])
+api_router.include_router(custom_tools_router, prefix="/custom-tools", tags=["Custom Tools"])
+api_router.include_router(skills_router, prefix="/skills", tags=["Skills"])
+

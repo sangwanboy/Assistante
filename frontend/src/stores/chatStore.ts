@@ -25,7 +25,8 @@ interface ChatState {
   loadConversations: () => Promise<void>;
   loadModels: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
-  createConversation: (model?: string, is_group?: boolean) => Promise<string>;
+  createConversation: (model?: string, is_group?: boolean, agent_id?: string) => Promise<string>;
+  startOrLoadAgentChat: (agent: any) => Promise<string>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   sendMessage: (content: string, model: string) => void;
@@ -79,9 +80,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  createConversation: async (model?: string, is_group?: boolean) => {
+  createConversation: async (model?: string, is_group?: boolean, agent_id?: string) => {
     try {
-      const conv = await api.createConversation({ model: model || 'gemini/gemini-2.5-flash', is_group });
+      const conv = await api.createConversation({ model: model || 'gemini/gemini-2.5-flash', is_group, agent_id });
       set((state) => ({
         conversations: [conv, ...state.conversations],
         activeConversationId: conv.id,
@@ -90,6 +91,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
       get().connectWebSocket(conv.id);
       return conv.id;
+    } catch (e: any) {
+      set({ error: e.message });
+      return '';
+    }
+  },
+
+  startOrLoadAgentChat: async (agent: any) => {
+    try {
+      // Find existing active conversation for this agent
+      const state = get();
+      const existing = state.conversations.find((c) => c.agent_id === agent.id);
+
+      if (existing) {
+        await state.selectConversation(existing.id);
+        return existing.id;
+      }
+
+      // If not found, create new conversation tied to this agent
+      return await state.createConversation(agent.model, false, agent.id);
     } catch (e: any) {
       set({ error: e.message });
       return '';

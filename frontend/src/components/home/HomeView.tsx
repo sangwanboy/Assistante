@@ -15,8 +15,8 @@ export function HomeView() {
   const [lastAction, setLastAction] = useState<string>('Ready');
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#f8f9fa]">
-      <div className="flex flex-col flex-1 min-h-0 max-w-[1400px] w-full mx-auto px-6 py-4">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#f8f9fa] overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 max-w-[1400px] w-full mx-auto px-6 py-4 overflow-hidden">
         <h1 className="text-[28px] leading-none font-bold text-gray-900 mb-4 flex-shrink-0">Home</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 flex-1 min-h-0">
@@ -33,7 +33,7 @@ export function HomeView() {
         </div>
 
         {/* Activity Feed */}
-        <div className="mt-4 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-shrink-0">
+        <div className="mt-3 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex-shrink-0">
           <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100">
             <Clock className="w-4 h-4 text-gray-400" />
             <h3 className="text-sm font-bold text-gray-700">Recent Events</h3>
@@ -53,7 +53,7 @@ export function HomeView() {
           </div>
         </div>
 
-        <div className="mt-2 text-xs text-center text-gray-400 flex-shrink-0">Switched to {lastAction}</div>
+        <div className="mt-1.5 mb-1 text-xs text-center text-gray-400 flex-shrink-0">Switched to {lastAction}</div>
       </div>
     </div>
   );

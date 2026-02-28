@@ -23,6 +23,7 @@ class Conversation(Base):
     model: Mapped[str] = mapped_column(String, default="gemini/gemini-2.5-flash")
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_group: Mapped[bool] = mapped_column(Boolean, default=False)
+    agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

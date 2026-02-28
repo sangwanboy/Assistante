@@ -14,3 +14,5 @@ class ToolInfoOut(BaseModel):
     name: str
     description: str
     parameters: dict
+    is_builtin: bool = True
+

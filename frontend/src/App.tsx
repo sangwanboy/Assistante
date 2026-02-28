@@ -6,6 +6,7 @@ import { SettingsPanel } from './components/settings/SettingsPanel';
 import { AgentsView } from './components/agents/AgentsView';
 import { KnowledgeView } from './components/knowledge/KnowledgeView';
 import { WorkflowsView } from './components/workflows/WorkflowsView';
+import { ToolsSkillsView } from './components/tools/ToolsSkillsView';
 import { Bell, ChevronDown, CheckCircle2, ExternalLink, Settings } from 'lucide-react';
 import { useChatStore } from './stores/chatStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -128,6 +129,7 @@ export default function App() {
           {activeView === 'knowledge' && <KnowledgeView />}
           {activeView === 'workflows' && <WorkflowsView />}
           {activeView === 'agents' && <AgentsView />}
+          {activeView === 'tools' && <ToolsSkillsView />}
         </div>
 
         <div className="px-4 py-1 border-t border-gray-200 text-xs text-gray-500 bg-white">{statusMessage}</div>

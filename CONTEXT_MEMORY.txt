@@ -64,39 +64,57 @@ HOW TO RUN:
 
 - app/tools/__init__.py -> Empty init
 - app/tools/base.py -> BaseTool ABC (name, description, parameters_schema, execute)
-- app/tools/registry.py -> ToolRegistry: manages tools, register_defaults(), as_provider_format()
+- app/tools/registry.py -> ToolRegistry: manages tools, register_defaults(), unregister(), load_custom_tools(), is_builtin tracking
 - app/tools/web_search.py -> WebSearchTool: uses duckduckgo-search
 - app/tools/file_manager.py -> FileManagerTool: read/write/list files in workspace dir
 - app/tools/code_executor.py -> CodeExecutorTool: runs Python code in subprocess (30s timeout)
 - app/tools/datetime_tool.py -> DateTimeTool: returns current date/time
 - app/tools/knowledge_base_tool.py -> KnowledgeBaseTool: searches ChromaDB vector store for RAG
+- app/tools/tool_creator.py -> ToolCreatorTool: built-in tool that lets agents create/update/list/delete custom tools
+- app/tools/skill_creator.py -> SkillCreatorTool: built-in tool that lets agents create/update/list/delete/import skills
+
+[2026-02-28] ToolRegistry Live Registration & Agent Chat Integration:
+  - Fixed ToolCreatorTool to register/unregister DynamicTool instances in the live ToolRegistry
+    so agents can immediately use newly created custom tools without a server restart.
+  - Updated ChatService.stream_chat to use agent-specific system prompts and filter available
+    tool schemas when a conversation is tied to an Agent (conv.agent_id).
+  - Added agent_id field to Conversation interface in frontend/src/types/index.ts.
+  - Chat streaming now uses the agent.name instead of hardcoding "Assistant".
 
 - app/services/__init__.py -> Empty init
 - app/services/conversation_service.py -> ConversationService: CRUD for conversations + messages
-- app/services/chat_service.py -> CORE: ChatService orchestrator - ties providers, tools, history
-  together. Has agentic loop for tool calling. Both sync and streaming methods.
+- app/services/chat_service.py -> CORE: ChatService orchestrator with skill injection into system prompts
 - app/services/document_service.py -> DocumentService: upload, chunk, embed docs into ChromaDB; search
 - app/services/workflow_service.py -> WorkflowService: CRUD for workflows, nodes, edges; save_graph()
 - app/services/workflow_engine.py -> WorkflowEngine: executes DAG of nodes (trigger -> actions via LLM)
+- app/services/custom_tool_service.py -> CustomToolService: CRUD for custom tools, DynamicTool wrapper, sandbox execution
+- app/services/skill_service.py -> SkillService: CRUD for skills, OpenClaw SKILL.md parse/export, active instructions aggregation
 
 - app/schemas/__init__.py -> Empty init
 - app/schemas/chat.py -> ChatRequest, ChatResponse, StreamChunkResponse pydantic models
 - app/schemas/conversation.py -> ConversationCreate/Update/Out/DetailOut pydantic models
-- app/schemas/models.py -> ModelInfoOut, ToolInfoOut pydantic models
+- app/schemas/models.py -> ModelInfoOut, ToolInfoOut (with is_builtin flag) pydantic models
 - app/schemas/agent.py -> AgentCreate/Update/Out pydantic models
 - app/schemas/document.py -> DocumentCreate/Out pydantic models
 - app/schemas/workflow.py -> WorkflowCreate/Out, NodeCreate/Out, EdgeCreate/Out, WorkflowGraph models
+- app/schemas/custom_tool.py -> CustomToolCreate/Update/Out, CustomToolTestRequest/Response schemas
+- app/schemas/skill.py -> SkillCreate/Update/Out, SkillImportRequest, SkillExportResponse schemas
+
+- app/models/custom_tool.py -> CustomTool ORM model (name, description, parameters_schema, code, is_active)
+- app/models/skill.py -> Skill ORM model (name, description, instructions, is_active, user_invocable, trigger_pattern, metadata_json)
 
 - app/api/__init__.py -> Empty init
-- app/api/router.py -> Aggregates all API routers (chat, conversations, models, tools, settings, agents, knowledge, workflows)
+- app/api/router.py -> Aggregates all API routers (chat, conversations, models, tools, settings, agents, knowledge, workflows, custom-tools, skills)
 - app/api/chat.py -> POST /api/chat + WebSocket /ws/chat/{conversation_id}
 - app/api/conversations.py -> CRUD REST endpoints for /api/conversations
 - app/api/models_api.py -> GET /api/models (lists all available models across providers)
-- app/api/tools_api.py -> GET /api/tools (lists available tools)
+- app/api/tools_api.py -> GET /api/tools (lists available tools with is_builtin flag)
 - app/api/settings_api.py -> GET/PUT /api/settings (API keys, defaults)
 - app/api/agents.py -> Agents CRUD REST endpoints
 - app/api/knowledge.py -> GET/POST/DELETE /api/knowledge (document upload, list, delete)
 - app/api/workflows.py -> CRUD /api/workflows + POST /{id}/graph (save node graph)
+- app/api/custom_tools.py -> CRUD /api/custom-tools + POST /{id}/test (custom tool management + test execution)
+- app/api/skills.py -> CRUD /api/skills + POST /import + GET /{id}/export (skill management + OpenClaw import/export)
 
 --- Frontend (frontend/) ---
 - vite.config.ts -> Vite config with React, Tailwind, dev proxy to backend
@@ -119,7 +137,7 @@ HOW TO RUN:
 - src/components/home/WorkspaceView.tsx -> Workflow visualization with trigger and action nodes
 - src/components/home/ActiveTasks.tsx -> Collapsible card showing live active agents from agentStore
 - src/components/home/QuickActions.tsx -> Collapsible card with icon-labeled action buttons
-- src/components/chat/ChatView.tsx -> Three-pane: thread list (left), chat thread (center), context panel (right)
+- src/components/chat/ChatView.tsx -> Three-pane: agent contact list (left), chat thread (center), context panel (right)
 - src/components/chat/MessageBubble.tsx -> Single message bubble (user/assistant/tool)
 - src/components/chat/MessageInput.tsx -> Text input with send button, Shift+Enter support
 - src/components/chat/StreamingMessage.tsx -> In-progress streaming message with cursor + tool calls
@@ -290,6 +308,24 @@ HOW TO RUN:
   - Ran `ruff check --fix` in backend to strip out 14+ unused imports across API, schemas, and services, resolving python lint errors.
   - Modified `frontend/eslint.config.js` to set `@typescript-eslint/no-explicit-any` rule to `warn` instead of `error` to allow frontend production build (`npm run build`) to succeed despite existing explicit `any` types.
 
+[2026-02-28] Custom Tools & Skills System:
+  - Added CustomTool ORM model and Skill ORM model (backend/app/models/).
+  - Created CustomToolService (DynamicTool wrapper, sandboxed subprocess execution) and SkillService (OpenClaw SKILL.md parse/export, active instructions aggregation).
+  - Added REST API endpoints for custom tools (CRUD + test) and skills (CRUD + import/export).
+  - Updated ToolRegistry with unregister(), load_custom_tools(), is_builtin tracking.
+  - Updated ChatService to inject active skill instructions into agent system prompts.
+  - Updated main.py to load custom tools from DB at startup.
+  - Added ToolsSkillsView frontend component (two-tab UI: Tools + Skills).
+  - Updated Sidebar.tsx with "Tools & Skills" nav item, App.tsx with routing.
+  - Updated AgentsView.tsx to dynamically fetch available tools (built-in + custom) from API.
+  - All builds verified: tsc --noEmit (0 errors), npm run build (exit 0), backend import OK.
+
+[2026-02-28] Agent-Driven Tool & Skill Creation:
+  - Created ToolCreatorTool (app/tools/tool_creator.py): built-in tool for agents to create/update/list/delete custom tools during conversations.
+  - Created SkillCreatorTool (app/tools/skill_creator.py): built-in tool for agents to create/update/list/delete/import skills during conversations.
+  - Registered both in ToolRegistry.register_defaults() as built-in tools.
+  - 7 total built-in tools now: web_search, file_manager, code_executor, get_datetime, search_knowledge_base, tool_creator, skill_creator.
+
 ================================================================================
                         THINGS TO REMEMBER
 ================================================================================
@@ -315,6 +351,9 @@ HOW TO RUN:
 - Multi-provider uses Strategy pattern + Registry. BaseProvider is the contract.
 - Model strings use format "provider/model" (e.g., "openai/gpt-4o").
 - Tool system uses BaseTool ABC + ToolRegistry. Tools self-describe via JSON Schema.
+- Custom tools stored in DB, wrapped as DynamicTool instances, executed in sandboxed subprocess.
+- Skills system uses OpenClaw SKILL.md format (YAML frontmatter + markdown instructions).
+  Active skills are injected into agent system prompts automatically.
 - ChatService has an agentic loop: LLM calls tools, sees results, loops up to 10x.
 - Database: SQLite at backend/data/assitance.db (auto-created on startup).
 - Frontend proxied to backend via Vite dev server proxy config.
@@ -351,6 +390,18 @@ Phase 9: Electron desktop app (backend-manager, system tray, packaging)
 Phase 10: Polish (error handling, loading states, logging, tests, CI)
 Phase 11: Workflow execution triggers (webhook endpoint, scheduled cron)
 Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
+[2026-02-28] Migrated to Agent-Centric Chat: Replaced chronological conversation
+  threads with a persistent per-agent chat model (like WhatsApp for agents).
+  - DB: Added agent_id column to conversations table (engine.py migration).
+  - Backend: Updated ConversationService, API endpoints, Pydantic schemas for agent_id.
+  - Backend: ChatService.stream_chat/chat now auto-load agent personality & tool filters.
+  - Frontend: ChatView sidebar replaced thread list with agent contact list (avatars,
+    online status, descriptions). Added startOrLoadAgentChat() to chatStore.
+  - Frontend: api.ts createConversation payload extended with agent_id.
+  - Fixed: NameError crash in engine.py (dangling new_cols variable in migration loop).
+  - Fixed: Stale "Search threads..." placeholder -> "Search agents...".
+  - Note: Use npm run dev (port 5173), NOT npm run preview (port 4173) — preview
+    server does not proxy /api and /ws routes.
 
 ================================================================================
                                  END

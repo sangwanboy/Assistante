@@ -1,4 +1,4 @@
-import { Home, MessageSquare, BookOpen, Workflow, Users, Settings } from 'lucide-react';
+import { Home, MessageSquare, BookOpen, Workflow, Users, Settings, Wrench } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
@@ -12,6 +12,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
     { id: 'knowledge', icon: BookOpen, label: 'Knowledge Base' },
     { id: 'workflows', icon: Workflow, label: 'Workflows' },
     { id: 'agents', icon: Users, label: 'Agents' },
+    { id: 'tools', icon: Wrench, label: 'Tools & Skills' },
     { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 

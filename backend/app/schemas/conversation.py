@@ -7,6 +7,7 @@ class ConversationCreate(BaseModel):
     model: str = "gemini/gemini-2.5-flash"
     system_prompt: str | None = None
     is_group: bool = False
+    agent_id: str | None = None
 
 
 class ConversationUpdate(BaseModel):
@@ -14,6 +15,7 @@ class ConversationUpdate(BaseModel):
     model: str | None = None
     system_prompt: str | None = None
     is_group: bool | None = None
+    agent_id: str | None = None
 
 
 class MessageOut(BaseModel):
@@ -35,6 +37,7 @@ class ConversationOut(BaseModel):
     model: str
     system_prompt: str | None
     is_group: bool
+    agent_id: str | None
     created_at: datetime
     updated_at: datetime
 

@@ -42,7 +42,8 @@ export function AgentsView() {
     const [configTab, setConfigTab] = useState<'soul' | 'mind' | 'memory'>('soul');
     const [isGenerating, setIsGenerating] = useState(false);
 
-    const AVAILABLE_TOOLS = ['web_search', 'file_manager', 'code_executor', 'datetime', 'knowledge_base'];
+    // Dynamic tool list (built-in + custom)
+    const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
     const TONE_OPTIONS = ['professional', 'friendly', 'sarcastic', 'empathetic', 'witty', 'serious', 'playful'];
     const STYLE_OPTIONS = ['formal', 'casual', 'technical', 'storytelling', 'concise', 'verbose'];
     const REASONING_OPTIONS = ['analytical', 'creative', 'balanced', 'step-by-step', 'intuitive'];
@@ -50,6 +51,10 @@ export function AgentsView() {
 
     useEffect(() => {
         loadAgents();
+        // Load available tools dynamically
+        api.getTools().then(tools => {
+            setAvailableTools(tools.map(t => ({ name: t.name, description: t.description })));
+        }).catch(() => { });
     }, [loadAgents]);
 
     const emptyForm = {
@@ -411,29 +416,23 @@ export function AgentsView() {
                                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Enabled Tools</label>
                                         <p className="text-[11px] text-gray-400 mb-2">Select which tools this agent can use:</p>
                                         <div className="space-y-1.5">
-                                            {AVAILABLE_TOOLS.map(tool => {
+                                            {availableTools.map(tool => {
                                                 const enabled: string[] = (() => { try { return JSON.parse(formData.enabled_tools); } catch { return []; } })();
-                                                const active = enabled.includes(tool);
+                                                const active = enabled.includes(tool.name);
                                                 return (
-                                                    <label key={tool} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
+                                                    <label key={tool.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
                                                         <input
                                                             type="checkbox"
                                                             checked={active}
                                                             onChange={() => {
-                                                                const next = active ? enabled.filter(t => t !== tool) : [...enabled, tool];
+                                                                const next = active ? enabled.filter(t => t !== tool.name) : [...enabled, tool.name];
                                                                 setFormData({ ...formData, enabled_tools: JSON.stringify(next) });
                                                             }}
                                                             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                                         />
                                                         <div>
-                                                            <span className="text-sm font-medium text-gray-800">{tool.replace(/_/g, ' ')}</span>
-                                                            <p className="text-[10px] text-gray-400">
-                                                                {tool === 'web_search' && 'Search the web via DuckDuckGo'}
-                                                                {tool === 'file_manager' && 'Read and write files on disk'}
-                                                                {tool === 'code_executor' && 'Execute Python code snippets'}
-                                                                {tool === 'datetime' && 'Get current date, time, and timezone'}
-                                                                {tool === 'knowledge_base' && 'Search uploaded documents (RAG)'}
-                                                            </p>
+                                                            <span className="text-sm font-medium text-gray-800">{tool.name.replace(/_/g, ' ')}</span>
+                                                            <p className="text-[10px] text-gray-400">{tool.description}</p>
                                                         </div>
                                                     </label>
                                                 );

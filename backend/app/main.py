@@ -6,7 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 import app.models.document  # Ensure model is registered before init_database
 import app.models.workflow
-from app.db.engine import init_database
+import app.models.custom_tool
+import app.models.skill
+from app.db.engine import init_database, async_session
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
 from app.api.router import api_router
@@ -20,6 +22,9 @@ async def lifespan(app: FastAPI):
     app.state.provider_registry = ProviderRegistry(settings)
     app.state.tool_registry = ToolRegistry()
     app.state.tool_registry.register_defaults()
+    # Load user-created custom tools from DB
+    async with async_session() as session:
+        await app.state.tool_registry.load_custom_tools(session)
     yield
     # Shutdown
 
@@ -43,3 +48,4 @@ app.websocket("/ws/chat/{conversation_id}")(websocket_chat)
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "version": "0.1.0"}
+

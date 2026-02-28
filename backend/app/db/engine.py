@@ -15,7 +15,7 @@ async def init_database():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Migrate: add new columns if they don't exist (SQLite doesn't support IF NOT EXISTS for columns)
-        new_cols = [
+        new_agent_cols = [
             ("personality_tone", "TEXT"),
             ("personality_traits", "TEXT"),
             ("communication_style", "TEXT"),
@@ -24,13 +24,21 @@ async def init_database():
             ("memory_context", "TEXT"),
             ("memory_instructions", "TEXT"),
         ]
-        for col_name, col_type in new_cols:
+        for col_name, col_type in new_agent_cols:
             try:
                 await conn.execute(
                     __import__("sqlalchemy").text(f"ALTER TABLE agents ADD COLUMN {col_name} {col_type}")
                 )
             except Exception:
                 pass  # Column already exists
+                
+        # Migrate: add agent_id to conversations
+        try:
+            await conn.execute(
+                __import__("sqlalchemy").text(f"ALTER TABLE conversations ADD COLUMN agent_id VARCHAR")
+            )
+        except Exception:
+            pass
 
 
 async def get_session() -> AsyncSession:

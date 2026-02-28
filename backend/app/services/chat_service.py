@@ -9,6 +9,7 @@ from app.providers.base import ChatMessage
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
 from app.services.conversation_service import ConversationService
+from app.services.skill_service import SkillService
 
 
 class ChatService:
@@ -85,6 +86,11 @@ class ChatService:
         except (json.JSONDecodeError, TypeError):
             return all_tools
 
+    async def _get_skill_instructions(self) -> str:
+        """Get combined instructions from all active skills."""
+        svc = SkillService(self.session)
+        return await svc.get_active_instructions()
+
     def _db_messages_to_chat(self, db_messages, system_prompt: str | None = None) -> list[ChatMessage]:
         messages = []
         if system_prompt:
@@ -157,11 +163,22 @@ class ChatService:
 
         # Build message history
         db_messages = await self.conv_service.get_messages(conversation_id)
-        prompt = system_prompt or conv.system_prompt
+        
+        # If conversation is tied to an agent, apply agent-specific logic
+        agent = None
+        if conv.agent_id:
+            agent = await self.session.get(Agent, conv.agent_id)
+        
+        if agent:
+            prompt = self._build_agent_prompt(agent)
+            tool_schemas = self._filter_tools_for_agent(agent)
+            agent_name = agent.name
+        else:
+            prompt = system_prompt or conv.system_prompt
+            tool_schemas = self.tools.as_provider_format() if self.tools else None
+            agent_name = "Assistant"
+            
         messages = self._db_messages_to_chat(db_messages, prompt)
-
-        # Get tool schemas
-        tool_schemas = self.tools.as_provider_format() if self.tools else None
 
         # Agentic loop
         max_iterations = 10
@@ -172,6 +189,7 @@ class ChatService:
                 # Save assistant message with tool calls
                 await self.conv_service.add_message(
                     conversation_id, "assistant", result.content,
+                    agent_name=agent_name,
                     tool_calls_json=json.dumps(result.tool_calls),
                 )
                 messages.append(result)
@@ -186,7 +204,9 @@ class ChatService:
                     messages.append(tr)
             else:
                 # Final response
-                await self.conv_service.add_message(conversation_id, "assistant", result.content)
+                await self.conv_service.add_message(
+                    conversation_id, "assistant", result.content, agent_name=agent_name
+                )
                 return result.content
 
         return "Max tool iterations reached."
@@ -214,11 +234,26 @@ class ChatService:
 
         # Build message history
         db_messages = await self.conv_service.get_messages(conversation_id)
-        prompt = system_prompt or conv.system_prompt
+        
+        # If conversation is tied to an agent, apply agent-specific logic
+        agent = None
+        if conv.agent_id:
+            agent = await self.session.get(Agent, conv.agent_id)
+        
+        if agent:
+            prompt = self._build_agent_prompt(agent)
+            tool_schemas = self._filter_tools_for_agent(agent)
+            agent_name = agent.name
+        else:
+            prompt = system_prompt or conv.system_prompt
+            tool_schemas = self.tools.as_provider_format() if self.tools else None
+            agent_name = "Assistant"
+            
+        # Inject active skill instructions
+        skill_instructions = await self._get_skill_instructions()
+        if skill_instructions:
+            prompt = (prompt or "") + "\n\n# Available Skills\n" + skill_instructions
         messages = self._db_messages_to_chat(db_messages, prompt)
-
-        # Get tool schemas
-        tool_schemas = self.tools.as_provider_format() if self.tools else None
 
         # Agentic loop with streaming
         max_iterations = 10
@@ -226,7 +261,7 @@ class ChatService:
             full_response = ""
             final_tool_calls = None
 
-            yield {"type": "agent_turn_start", "agent_name": "Assistant"}
+            yield {"type": "agent_turn_start", "agent_name": agent_name}
 
             async for chunk in provider.stream(messages, model_id, tools=tool_schemas, temperature=temperature):
                 if chunk.delta:
@@ -240,6 +275,7 @@ class ChatService:
                 # Save assistant message with tool calls
                 await self.conv_service.add_message(
                     conversation_id, "assistant", full_response,
+                    agent_name=agent_name,
                     tool_calls_json=json.dumps(final_tool_calls),
                 )
                 messages.append(ChatMessage(
@@ -271,10 +307,12 @@ class ChatService:
                     }
             else:
                 # Final response
-                msg = await self.conv_service.add_message(conversation_id, "assistant", full_response)
+                msg = await self.conv_service.add_message(
+                    conversation_id, "assistant", full_response, agent_name=agent_name
+                )
                 yield {
                     "type": "agent_turn_end",
-                    "agent_name": "Assistant",
+                    "agent_name": agent_name,
                     "message_id": msg.id,
                 }
                 yield {
@@ -335,6 +373,10 @@ class ChatService:
                 "Do NOT prefix your response with your name like 'Name: '. Just output your response directly."
             )
             final_prompt = (agent_prompt or "") + multi_agent_instruction
+            # Inject active skill instructions
+            skill_instructions = await self._get_skill_instructions()
+            if skill_instructions:
+                final_prompt += "\n\n# Available Skills\n" + skill_instructions
             agent_msgs.append(ChatMessage(role="system", content=final_prompt))
                 
             # 2. Reconstruct history specifically for this agent's viewpoint

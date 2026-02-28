@@ -14,6 +14,7 @@ export interface Conversation {
   model: string;
   system_prompt: string | null;
   is_group?: boolean;
+  agent_id?: string | null;
   created_at: string;
   updated_at: string;
   messages?: Message[];
@@ -32,6 +33,7 @@ export interface ToolInfo {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  is_builtin: boolean;
 }
 
 export interface StreamEvent {
@@ -87,3 +89,28 @@ export interface Document {
   created_at: string;
   updated_at: string;
 }
+
+export interface CustomTool {
+  id: string;
+  name: string;
+  description: string;
+  parameters_schema: string;  // JSON string
+  code: string;               // Python source
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string | null;
+  instructions: string;
+  is_active: boolean;
+  user_invocable: boolean;
+  trigger_pattern: string | null;
+  metadata_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

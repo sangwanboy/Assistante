@@ -166,8 +166,8 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
       )}
 
       {/* Universal Command Bar */}
-      <div className="p-4 bg-white border-t border-gray-100 flex-shrink-0">
-        <div className="flex items-center gap-3 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-50 rounded-xl px-4 py-2.5 transition-all bg-gray-50/80 w-full">
+      <div className="px-3 py-2.5 bg-white border-t border-gray-100 flex-shrink-0">
+        <div className="flex items-center gap-3 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-50 rounded-xl px-4 py-2 transition-all bg-gray-50/80 w-full">
           <div className="flex items-center gap-1 text-gray-400">
             <Search className="w-4 h-4" />
           </div>

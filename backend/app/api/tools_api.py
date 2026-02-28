@@ -9,6 +9,12 @@ router = APIRouter()
 async def list_tools(request: Request):
     registry = request.app.state.tool_registry
     return [
-        ToolInfoOut(name=t["name"], description=t["description"], parameters=t["parameters"])
+        ToolInfoOut(
+            name=t["name"],
+            description=t["description"],
+            parameters=t["parameters"],
+            is_builtin=t.get("is_builtin", True),
+        )
         for t in registry.list_tools()
     ]
+

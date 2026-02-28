@@ -10,9 +10,9 @@ class ConversationService:
         self.session = session
 
     async def create(
-        self, title: str = "New Conversation", model: str = "gemini/gemini-2.5-flash", system_prompt: str | None = None, is_group: bool = False
+        self, title: str = "New Conversation", model: str = "gemini/gemini-2.5-flash", system_prompt: str | None = None, is_group: bool = False, agent_id: str | None = None
     ) -> Conversation:
-        conv = Conversation(title=title, model=model, system_prompt=system_prompt, is_group=is_group)
+        conv = Conversation(title=title, model=model, system_prompt=system_prompt, is_group=is_group, agent_id=agent_id)
         self.session.add(conv)
         await self.session.commit()
         await self.session.refresh(conv)
@@ -27,10 +27,13 @@ class ConversationService:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_all(self, limit: int = 50, offset: int = 0) -> list[Conversation]:
+    async def list_all(self, limit: int = 50, offset: int = 0, agent_id: str | None = None) -> list[Conversation]:
+        stmt = select(Conversation)
+        if agent_id:
+            stmt = stmt.where(Conversation.agent_id == agent_id)
+        
         stmt = (
-            select(Conversation)
-            .order_by(desc(Conversation.updated_at))
+            stmt.order_by(desc(Conversation.updated_at))
             .offset(offset)
             .limit(limit)
         )
