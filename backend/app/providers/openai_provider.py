@@ -1,4 +1,3 @@
-import json
 from typing import AsyncIterator
 
 from openai import AsyncOpenAI

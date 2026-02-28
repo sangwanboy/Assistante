@@ -1,11 +1,10 @@
-import json
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.models.workflow import Workflow, Node, Edge
-from app.schemas.workflow import WorkflowCreate, NodeCreate, EdgeCreate
+from app.schemas.workflow import NodeCreate, EdgeCreate
 
 class WorkflowService:
     def __init__(self, session: AsyncSession):

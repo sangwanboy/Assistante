@@ -8,7 +8,6 @@ import chromadb
 from chromadb.utils import embedding_functions
 
 from app.models.document import Document
-from app.schemas.document import DocumentOut
 import PyPDF2
 
 CHROMA_DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "chroma")

@@ -1,0 +1,157 @@
+F401 [*] `json` imported but unused
+ --> app\api\chat.py:1:8
+  |
+1 | import json
+  |        ^^^^
+2 |
+3 | from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Request
+  |
+help: Remove unused import: `json`
+
+F401 [*] `fastapi.Request` imported but unused
+ --> app\api\conversations.py:1:56
+  |
+1 | from fastapi import APIRouter, Depends, HTTPException, Request
+  |                                                        ^^^^^^^
+2 | from sqlalchemy.ext.asyncio import AsyncSession
+  |
+help: Remove unused import: `fastapi.Request`
+
+F401 [*] `dataclasses.field` imported but unused
+ --> app\providers\base.py:2:36
+  |
+1 | from abc import ABC, abstractmethod
+2 | from dataclasses import dataclass, field
+  |                                    ^^^^^
+3 | from typing import AsyncIterator
+  |
+help: Remove unused import: `dataclasses.field`
+
+F401 [*] `json` imported but unused
+ --> app\providers\openai_provider.py:1:8
+  |
+1 | import json
+  |        ^^^^
+2 | from typing import AsyncIterator
+  |
+help: Remove unused import: `json`
+
+F401 [*] `typing.Any` imported but unused
+ --> app\schemas\workflow.py:2:36
+  |
+1 | from pydantic import BaseModel
+2 | from typing import List, Optional, Any, Dict
+  |                                    ^^^
+3 | from datetime import datetime
+  |
+help: Remove unused import
+
+F401 [*] `typing.Dict` imported but unused
+ --> app\schemas\workflow.py:2:41
+  |
+1 | from pydantic import BaseModel
+2 | from typing import List, Optional, Any, Dict
+  |                                         ^^^^
+3 | from datetime import datetime
+  |
+help: Remove unused import
+
+F401 [*] `app.providers.base.StreamChunk` imported but unused
+  --> app\services\chat_service.py:8:45
+   |
+ 7 | from app.models.agent import Agent
+ 8 | from app.providers.base import ChatMessage, StreamChunk
+   |                                             ^^^^^^^^^^^
+ 9 | from app.providers.registry import ProviderRegistry
+10 | from app.tools.registry import ToolRegistry
+   |
+help: Remove unused import: `app.providers.base.StreamChunk`
+
+E712 Avoid equality comparisons to `True`; use `Agent.is_active:` for truth checks
+   --> app\services\chat_service.py:307:65
+    |
+306 |         # Get all active agents
+307 |         result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
+    |                                                                 ^^^^^^^^^^^^^^^^^^^^^^^
+308 |         active_agents = list(result.scalars().all())
+    |
+help: Replace with `Agent.is_active`
+
+F401 [*] `app.schemas.document.DocumentOut` imported but unused
+  --> app\services\document_service.py:11:34
+   |
+10 | from app.models.document import Document
+11 | from app.schemas.document import DocumentOut
+   |                                  ^^^^^^^^^^^
+12 | import PyPDF2
+   |
+help: Remove unused import: `app.schemas.document.DocumentOut`
+
+F401 [*] `typing.List` imported but unused
+ --> app\services\workflow_engine.py:2:31
+  |
+1 | import json
+2 | from typing import Dict, Any, List, Optional
+  |                               ^^^^
+3 | from sqlalchemy.ext.asyncio import AsyncSession
+4 | from app.models.workflow import Workflow, Node, Edge
+  |
+help: Remove unused import: `typing.List`
+
+F401 [*] `app.models.workflow.Workflow` imported but unused
+ --> app\services\workflow_engine.py:4:33
+  |
+2 | from typing import Dict, Any, List, Optional
+3 | from sqlalchemy.ext.asyncio import AsyncSession
+4 | from app.models.workflow import Workflow, Node, Edge
+  |                                 ^^^^^^^^
+5 | from app.services.workflow_service import WorkflowService
+6 | from app.providers.registry import ProviderRegistry
+  |
+help: Remove unused import
+
+F401 [*] `app.models.workflow.Edge` imported but unused
+ --> app\services\workflow_engine.py:4:49
+  |
+2 | from typing import Dict, Any, List, Optional
+3 | from sqlalchemy.ext.asyncio import AsyncSession
+4 | from app.models.workflow import Workflow, Node, Edge
+  |                                                 ^^^^
+5 | from app.services.workflow_service import WorkflowService
+6 | from app.providers.registry import ProviderRegistry
+  |
+help: Remove unused import
+
+F401 [*] `json` imported but unused
+ --> app\services\workflow_service.py:1:8
+  |
+1 | import json
+  |        ^^^^
+2 | from typing import List, Optional
+3 | from sqlalchemy.ext.asyncio import AsyncSession
+  |
+help: Remove unused import: `json`
+
+F401 [*] `app.schemas.workflow.WorkflowCreate` imported but unused
+  --> app\services\workflow_service.py:8:34
+   |
+ 7 | from app.models.workflow import Workflow, Node, Edge
+ 8 | from app.schemas.workflow import WorkflowCreate, NodeCreate, EdgeCreate
+   |                                  ^^^^^^^^^^^^^^
+ 9 |
+10 | class WorkflowService:
+   |
+help: Remove unused import: `app.schemas.workflow.WorkflowCreate`
+
+F401 [*] `json` imported but unused
+ --> app\tools\knowledge_base_tool.py:1:8
+  |
+1 | import json
+  |        ^^^^
+2 | from app.tools.base import BaseTool
+3 | from app.services.document_service import DocumentService
+  |
+help: Remove unused import: `json`
+
+Found 15 errors.
+[*] 14 fixable with the `--fix` option (1 hidden fix can be enabled with the `--unsafe-fixes` option).

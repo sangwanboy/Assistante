@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.agent import Agent
-from app.providers.base import ChatMessage, StreamChunk
+from app.providers.base import ChatMessage
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
 from app.services.conversation_service import ConversationService

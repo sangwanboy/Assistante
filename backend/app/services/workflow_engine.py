@@ -1,7 +1,7 @@
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.workflow import Workflow, Node, Edge
+from app.models.workflow import Node
 from app.services.workflow_service import WorkflowService
 from app.providers.registry import ProviderRegistry
 from app.providers.base import ChatMessage
