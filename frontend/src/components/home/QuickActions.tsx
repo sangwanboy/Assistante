@@ -13,10 +13,38 @@ export function QuickActions({ onAction }: QuickActionsProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const actions = [
-    { icon: FileText, label: 'Summarize PDF', color: 'text-blue-500 bg-blue-50', prompt: 'Please summarize the key points of the attached document.' },
-    { icon: Edit3, label: 'Draft Response', color: 'text-purple-500 bg-purple-50', prompt: 'Help me draft a professional response to an email.' },
-    { icon: Search, label: 'Find Information', color: 'text-emerald-500 bg-emerald-50', prompt: 'I need to find some specific information. Can you search the web for me?' },
-    { icon: Settings, label: 'Automate Task', color: 'text-orange-500 bg-orange-50', prompt: 'I would like to automate a repetitive task. Can you write a Python script for it?' },
+    {
+      icon: FileText,
+      label: 'Summarize PDF',
+      gradient: 'from-blue-500/20 to-indigo-500/20',
+      border: 'border-blue-500/20',
+      iconColor: 'text-blue-400',
+      prompt: 'Please summarize the key points of the attached document.',
+    },
+    {
+      icon: Edit3,
+      label: 'Draft Response',
+      gradient: 'from-purple-500/20 to-violet-500/20',
+      border: 'border-purple-500/20',
+      iconColor: 'text-purple-400',
+      prompt: 'Help me draft a professional response to an email.',
+    },
+    {
+      icon: Search,
+      label: 'Find Information',
+      gradient: 'from-emerald-500/20 to-teal-500/20',
+      border: 'border-emerald-500/20',
+      iconColor: 'text-emerald-400',
+      prompt: 'I need to find some specific information. Can you search the web for me?',
+    },
+    {
+      icon: Settings,
+      label: 'Automate Task',
+      gradient: 'from-orange-500/20 to-amber-500/20',
+      border: 'border-orange-500/20',
+      iconColor: 'text-orange-400',
+      prompt: 'I would like to automate a repetitive task. Can you write a Python script for it?',
+    },
   ];
 
   const handleActionClick = async (actionLabel: string, prompt: string) => {
@@ -31,27 +59,30 @@ export function QuickActions({ onAction }: QuickActionsProps) {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-[#0e0e1c] rounded-2xl border border-[#1c1c30] overflow-hidden">
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors"
       >
-        <h2 className="text-sm font-bold text-gray-900">Quick-Actions</h2>
-        {isCollapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+        <h2 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Quick-Actions</h2>
+        {isCollapsed
+          ? <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+          : <ChevronUp className="w-3.5 h-3.5 text-gray-600" />
+        }
       </button>
 
       {!isCollapsed && (
-        <div className="px-4 pb-4 grid grid-cols-2 gap-2">
+        <div className="px-3 pb-3 grid grid-cols-2 gap-2">
           {actions.map((action, index) => (
             <button
               key={index}
-              className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left group"
+              className={`flex items-center gap-2.5 p-3 rounded-xl border ${action.border} bg-gradient-to-br ${action.gradient} hover:brightness-125 transition-all text-left group`}
               onClick={() => handleActionClick(action.label, action.prompt)}
             >
-              <div className={`w-8 h-8 rounded-lg ${action.color} flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform`}>
-                <action.icon className="w-4 h-4" />
+              <div className={`w-7 h-7 rounded-lg bg-[#0e0e1c] flex items-center justify-center flex-shrink-0`}>
+                <action.icon className={`w-3.5 h-3.5 ${action.iconColor}`} />
               </div>
-              <span className="text-[12px] font-medium text-gray-700">{action.label}</span>
+              <span className="text-[11px] font-medium text-gray-300">{action.label}</span>
             </button>
           ))}
         </div>

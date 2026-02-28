@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { SendHorizonal } from 'lucide-react';
 
 interface Props {
   onSend: (message: string) => void;
@@ -35,8 +35,8 @@ export function MessageInput({ onSend, disabled }: Props) {
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white px-4 py-3">
-      <div className="max-w-4xl mx-auto flex items-end gap-2">
+    <div className="border-t border-[#1c1c30] bg-[#0a0a14] px-4 py-3">
+      <div className="max-w-4xl mx-auto flex items-end gap-2.5">
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
@@ -46,15 +46,15 @@ export function MessageInput({ onSend, disabled }: Props) {
             placeholder="Type a message... (Shift+Enter for new line)"
             disabled={disabled}
             rows={1}
-            className="w-full resize-none bg-gray-50 text-gray-900 rounded-xl px-4 py-3 pr-12 border border-gray-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder-gray-400 disabled:opacity-50 text-[15px] shadow-sm transition-all"
+            className="w-full resize-none bg-[#0e0e1c] text-gray-200 rounded-xl px-4 py-3 border border-[#1c1c30] focus:border-indigo-500/50 focus:shadow-[0_0_0_2px_rgba(99,102,241,0.15)] placeholder-gray-700 disabled:opacity-40 text-[14px] transition-all leading-relaxed"
           />
         </div>
         <button
           onClick={handleSend}
           disabled={!input.trim() || disabled}
-          className="flex-shrink-0 w-11 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-100 disabled:opacity-100 disabled:text-gray-400 text-white flex items-center justify-center transition-all shadow-sm"
+          className="flex-shrink-0 w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-[#1c1c30] disabled:opacity-40 text-white flex items-center justify-center transition-all shadow-lg"
         >
-          <Send className="w-5 h-5" />
+          <SendHorizonal className="w-4 h-4" />
         </button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, MoreHorizontal, Paperclip, Mic, Bot, Users, Search, Square } from 'lucide-react';
+import { Settings, MoreHorizontal, Paperclip, Mic, Bot, Users, Search, Square, SendHorizonal } from 'lucide-react';
 import { useChatStore } from '../../stores/chatStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
@@ -34,12 +34,10 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
 
   const handleSend = async () => {
     if (!draft.trim() || isStreaming) return;
-
     let convId = activeConversationId;
     if (!convId) {
       convId = await createConversation(selectedModel, isGroupMode);
     }
-
     if (convId) {
       sendMessage(draft, selectedModel);
       onAction(`Sent message to ${selectedModel}`);
@@ -48,44 +46,62 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full relative z-0">
-      {/* Header with tabs */}
-      <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-100 flex-shrink-0">
-        <div className="flex items-center gap-1">
-          <h2 className="text-[16px] font-bold text-gray-900 mr-3">Active Dialogue</h2>
-          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+    <div className="bg-[#0e0e1c] rounded-2xl border border-[#1c1c30] overflow-hidden flex flex-col h-full relative">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[#1c1c30] flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-200 mr-2">Active Dialogue</h2>
+          <div className="flex items-center bg-[#080810] rounded-lg p-0.5 border border-[#1c1c30]">
             <button
               onClick={() => setActiveTab('chat')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${activeTab === 'chat' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                activeTab === 'chat'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
             >
               Chat
             </button>
             <button
               onClick={() => setActiveTab('workspace')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${activeTab === 'workspace' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                activeTab === 'workspace'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
             >
               Workspace
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {!activeConversationId && (
             <button
               onClick={() => {
                 setIsGroupMode(!isGroupMode);
                 onAction(isGroupMode ? 'Group mode disabled' : 'Group mode enabled');
               }}
-              className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-[12px] font-bold ${isGroupMode ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100 text-gray-500'}`}
+              className={`px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 text-[11px] font-semibold ${
+                isGroupMode
+                  ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
+                  : 'hover:bg-white/5 text-gray-500 border border-transparent'
+              }`}
             >
               <Users className="w-3.5 h-3.5" />
               Group
             </button>
           )}
-          <button onClick={() => onAction('Settings')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-            <Settings className="w-4 h-4 text-gray-400" />
+          <button
+            onClick={() => onAction('Settings')}
+            className="p-1.5 hover:bg-white/5 rounded-lg transition-colors"
+          >
+            <Settings className="w-3.5 h-3.5 text-gray-600" />
           </button>
-          <button onClick={() => onAction('Options')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-            <MoreHorizontal className="w-4 h-4 text-gray-400" />
+          <button
+            onClick={() => onAction('Options')}
+            className="p-1.5 hover:bg-white/5 rounded-lg transition-colors"
+          >
+            <MoreHorizontal className="w-3.5 h-3.5 text-gray-600" />
           </button>
         </div>
       </div>
@@ -96,34 +112,39 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
           <WorkspaceView onAction={onAction} />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
           {messages.length === 0 && !isStreaming ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
-              <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center">
-                <Bot className="w-6 h-6 text-gray-400" />
+            <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-3">
+              <div className="w-12 h-12 bg-[#141426] rounded-2xl flex items-center justify-center border border-[#1c1c30]">
+                <Bot className="w-6 h-6 text-indigo-500/70" />
               </div>
-              <p className="text-sm">Start a new conversation</p>
+              <p className="text-sm text-gray-600">Start a new conversation</p>
             </div>
           ) : (
             <>
               {messages.map((msg, idx) => (
-                <div key={idx} className="flex items-start gap-3">
+                <div key={idx} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                   {msg.role === 'user' ? (
                     <>
-                      <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">U</div>
-                      <div className="flex-1 mt-0.5">
-                        <div className="text-xs font-bold text-gray-500 mb-1">User</div>
-                        <div className="text-sm text-gray-900 whitespace-pre-wrap">{msg.content}</div>
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white text-[10px] font-bold shadow-lg">
+                        U
+                      </div>
+                      <div className="max-w-[78%]">
+                        <div className="bg-indigo-600/20 border border-indigo-500/20 rounded-2xl rounded-tr-sm px-4 py-2.5">
+                          <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        </div>
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-4 h-4 text-white" />
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0 shadow-lg">
+                        <Bot className="w-3.5 h-3.5 text-white" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-bold text-emerald-600 mb-1">{msg.agent_name || 'CrossClaw'}</div>
-                        <div className="text-sm text-gray-800 leading-relaxed">
+                        <div className="text-[10px] font-semibold text-emerald-400 mb-1.5 uppercase tracking-wider">
+                          {msg.agent_name || 'CrossClaw'}
+                        </div>
+                        <div className="text-sm text-gray-300 leading-relaxed">
                           <MarkdownRenderer content={msg.content || ''} />
                         </div>
                       </div>
@@ -134,14 +155,16 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
 
               {isStreaming && streamingContent && (
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-4 h-4 text-white" />
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0 shadow-lg">
+                    <Bot className="w-3.5 h-3.5 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-emerald-600 mb-1">{streamingAgentName || 'CrossClaw'}</div>
-                    <div className="text-sm text-gray-800 leading-relaxed">
+                    <div className="text-[10px] font-semibold text-emerald-400 mb-1.5 uppercase tracking-wider">
+                      {streamingAgentName || 'CrossClaw'}
+                    </div>
+                    <div className="text-sm text-gray-300 leading-relaxed">
                       <MarkdownRenderer content={streamingContent} />
-                      <span className="inline-block w-1.5 h-4 bg-blue-500 ml-1 animate-pulse rounded-sm"></span>
+                      <span className="inline-block w-1.5 h-4 bg-indigo-500 ml-1 animate-pulse rounded-sm align-middle"></span>
                     </div>
                   </div>
                 </div>
@@ -152,25 +175,23 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
         </div>
       )}
 
-      {/* Stop Generation Button */}
+      {/* Stop Generation */}
       {isStreaming && (
-        <div className="absolute bottom-[84px] left-0 right-0 flex justify-center z-10 pointer-events-none">
+        <div className="absolute bottom-[76px] left-0 right-0 flex justify-center z-10 pointer-events-none">
           <button
             onClick={() => stopGeneration()}
-            className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-md border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-red-500 font-semibold text-xs pointer-events-auto transition-all hover:border-red-200 hover:shadow-red-500/10"
+            className="flex items-center gap-2 px-4 py-2 bg-[#1a1a2e] rounded-full border border-[#2a2a45] text-gray-400 hover:text-red-400 hover:border-red-500/30 font-semibold text-xs pointer-events-auto transition-all shadow-xl"
           >
-            <Square className="w-3.5 h-3.5" fill="currentColor" />
+            <Square className="w-3 h-3" fill="currentColor" />
             Stop Generating
           </button>
         </div>
       )}
 
-      {/* Universal Command Bar */}
-      <div className="px-3 py-2.5 bg-white border-t border-gray-100 flex-shrink-0">
-        <div className="flex items-center gap-3 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-50 rounded-xl px-4 py-2 transition-all bg-gray-50/80 w-full">
-          <div className="flex items-center gap-1 text-gray-400">
-            <Search className="w-4 h-4" />
-          </div>
+      {/* Input Bar */}
+      <div className="px-3 py-2.5 bg-[#0a0a14] border-t border-[#1c1c30] flex-shrink-0">
+        <div className="flex items-center gap-2 bg-[#080810] border border-[#1c1c30] focus-within:border-indigo-500/50 focus-within:shadow-[0_0_0_2px_rgba(99,102,241,0.15)] rounded-xl px-3 py-2 transition-all">
+          <Search className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" />
           <input
             type="text"
             placeholder="Ask CrossClaw, or press / for workflows..."
@@ -182,14 +203,27 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
                 handleSend();
               }
             }}
-            className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-gray-200 placeholder:text-gray-700 focus:outline-none"
           />
-          <div className="flex items-center gap-1">
-            <button className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors" onClick={() => onAction('Voice')}>
-              <Mic className="w-4 h-4 text-gray-400" />
+          <div className="flex items-center gap-0.5">
+            <button
+              className="p-1.5 hover:bg-white/5 rounded-lg transition-colors"
+              onClick={() => onAction('Voice')}
+            >
+              <Mic className="w-3.5 h-3.5 text-gray-600" />
             </button>
-            <button className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors" onClick={() => onAction('Attach')}>
-              <Paperclip className="w-4 h-4 text-gray-400" />
+            <button
+              className="p-1.5 hover:bg-white/5 rounded-lg transition-colors"
+              onClick={() => onAction('Attach')}
+            >
+              <Paperclip className="w-3.5 h-3.5 text-gray-600" />
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={!draft.trim() || isStreaming}
+              className="p-1.5 rounded-lg transition-all disabled:opacity-30 bg-indigo-600 hover:bg-indigo-500 disabled:bg-transparent ml-1"
+            >
+              <SendHorizonal className="w-3.5 h-3.5 text-white disabled:text-gray-600" />
             </button>
           </div>
         </div>
