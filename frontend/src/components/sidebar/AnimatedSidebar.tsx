@@ -4,13 +4,14 @@ import { Tooltip, TooltipTrigger, TooltipPanel } from '../ui/tooltip';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   LayoutDashboard, MessageCircle, Database, Zap, Users2,
-  Sparkles, Settings as SettingsIcon, ChevronLeft, ChevronRight, ChevronsUpDown,
-  Home, MessageSquare, LogOut,
+  Sparkles, Settings as SettingsIcon, PanelLeft, PanelRight, ChevronsUpDown,
+  Home, MessageSquare, LogOut, CheckCircle2,
 } from 'lucide-react';
 
 interface AnimatedSidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  statusMessage?: string;
 }
 
 const NAV_ITEMS = [
@@ -23,7 +24,7 @@ const NAV_ITEMS = [
   { id: 'settings',  label: 'Settings',       icon: SettingsIcon },
 ];
 
-export function AnimatedSidebar({ activeView, onViewChange }: AnimatedSidebarProps) {
+export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Ready' }: AnimatedSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -54,7 +55,7 @@ export function AnimatedSidebar({ activeView, onViewChange }: AnimatedSidebarPro
                 className="p-2 text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-all duration-200 shrink-0"
                 aria-label="Expand sidebar"
               >
-                <ChevronRight className="w-4 h-4" />
+                <PanelLeft className="w-4 h-4" />
               </motion.button>
             ) : (
               <motion.div
@@ -90,8 +91,9 @@ export function AnimatedSidebar({ activeView, onViewChange }: AnimatedSidebarPro
             onClick={() => setCollapsed(!collapsed)}
             className="ml-auto p-2 text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-all duration-200 shrink-0"
             aria-label="Collapse sidebar"
+            style={{ marginRight: '8px' }}
           >
-            <ChevronLeft className="w-4 h-4" />
+            <PanelRight className="w-4 h-4" />
           </button>
         )}
       </div>
@@ -232,6 +234,17 @@ export function AnimatedSidebar({ activeView, onViewChange }: AnimatedSidebarPro
                       </div>
                     </div>
 
+                    {/* System Status */}
+                    <div className="px-3 py-2 mb-1 mx-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-emerald-400">System Status</div>
+                          <div className="text-xs text-gray-400 truncate mt-0.5">{statusMessage}</div>
+                        </div>
+                      </div>
+                    </div>
+
                     <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 mb-1" style={{ marginBottom: '12px' }} />
 
                     <DropdownMenu.Item
@@ -336,6 +349,17 @@ export function AnimatedSidebar({ activeView, onViewChange }: AnimatedSidebarPro
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                                 <span className="text-xs text-gray-500 truncate">Online · Free plan</span>
                               </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* System Status */}
+                        <div className="px-3 py-2 mb-1 mx-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium text-emerald-400">System Status</div>
+                              <div className="text-xs text-gray-400 truncate mt-0.5">{statusMessage}</div>
                             </div>
                           </div>
                         </div>

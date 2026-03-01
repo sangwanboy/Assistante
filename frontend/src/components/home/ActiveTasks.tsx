@@ -17,16 +17,19 @@ export function ActiveTasks({ onAction }: ActiveTasksProps) {
   const displayAgents = agents.filter(a => a.is_active).slice(0, 4);
 
   return (
-    <div className="bg-[#0e0e1c] rounded-2xl border border-[#1c1c30] overflow-hidden">
+    <div className="bg-[#0e0e1c] rounded-sm border border-[#1c1c30] overflow-hidden"
+    style={{ padding:'8px', margin:'8px' }}
+    >
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors rounded-sm"
+        style={{ padding:'8px' }}
       >
         <div className="flex items-center gap-2">
           <h2 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Active Agents</h2>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full" style={{ paddingLeft:'8px', paddingRight:'8px' }}>
             {displayAgents.length} online
           </span>
           {isCollapsed
