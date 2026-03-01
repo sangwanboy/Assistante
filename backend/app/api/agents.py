@@ -26,7 +26,7 @@ async def generate_personality(
     """Use the LLM to auto-generate personality for an agent based on name and description."""
     import json as _json
 
-    model_string = req.model or "gemini/gemini-2.5-flash-lite-preview-06-17"
+    model_string = req.model or "gemini/gemini-2.5-flash"
     provider_name = model_string.split("/", 1)[0] if "/" in model_string else "gemini"
     model_id = model_string.split("/", 1)[1] if "/" in model_string else model_string
 
@@ -117,6 +117,9 @@ async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_session)):
     agent = await db.get(Agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+        
+    if getattr(agent, "is_system", False):
+        raise HTTPException(status_code=403, detail="Cannot delete a system orchestrator agent")
 
     await db.delete(agent)
     await db.commit()

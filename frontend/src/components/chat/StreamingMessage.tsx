@@ -10,16 +10,29 @@ interface ToolCall {
 interface Props {
   content: string;
   toolCalls: ToolCall[];
+  agentName?: string | null;
 }
 
-export function StreamingMessage({ content, toolCalls }: Props) {
+export function StreamingMessage({ content, toolCalls, agentName }: Props) {
+  const displayName = agentName || 'Assistant';
+
   return (
     <div className="flex gap-3 px-4 py-4 bg-gray-50">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-        <Bot className="w-4 h-4 text-emerald-600" />
+      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
+        {agentName ? (
+          <img
+            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(agentName)}&background=random&color=fff&size=32`}
+            alt={agentName}
+            className="w-full h-full rounded-full"
+          />
+        ) : (
+          <div className="w-full h-full bg-emerald-100 flex items-center justify-center">
+            <Bot className="w-4 h-4 text-emerald-600" />
+          </div>
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-emerald-600 mb-1">Assistant</div>
+        <div className="text-xs font-medium text-emerald-600 mb-1">{displayName}</div>
 
         {/* Tool calls */}
         {toolCalls.map((tc, i) => (
@@ -64,3 +77,4 @@ export function StreamingMessage({ content, toolCalls }: Props) {
     </div>
   );
 }
+

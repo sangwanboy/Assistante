@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     await init_database()
     app.state.provider_registry = ProviderRegistry(settings)
     app.state.tool_registry = ToolRegistry()
-    app.state.tool_registry.register_defaults()
+    app.state.tool_registry.register_defaults(provider_registry=app.state.provider_registry)
     # Load user-created custom tools from DB
     async with async_session() as session:
         await app.state.tool_registry.load_custom_tools(session)

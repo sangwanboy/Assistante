@@ -8,6 +8,7 @@ class ConversationCreate(BaseModel):
     system_prompt: str | None = None
     is_group: bool = False
     agent_id: str | None = None
+    channel_id: str | None = None
 
 
 class ConversationUpdate(BaseModel):
@@ -16,6 +17,7 @@ class ConversationUpdate(BaseModel):
     system_prompt: str | None = None
     is_group: bool | None = None
     agent_id: str | None = None
+    channel_id: str | None = None
 
 
 class MessageOut(BaseModel):
@@ -38,6 +40,7 @@ class ConversationOut(BaseModel):
     system_prompt: str | None
     is_group: bool
     agent_id: str | None
+    channel_id: str | None
     created_at: datetime
     updated_at: datetime
 

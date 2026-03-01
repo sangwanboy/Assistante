@@ -36,7 +36,7 @@ export function MessageInput({ onSend, disabled }: Props) {
 
   return (
     <div className="border-t border-gray-200 bg-white px-4 py-3">
-      <div className="max-w-4xl mx-auto flex items-end gap-2">
+      <div className="w-full flex items-end gap-2">
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}

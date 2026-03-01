@@ -199,7 +199,7 @@ export function ToolsSkillsView() {
         <div className="flex-1 flex min-h-0">
             {/* Main Content */}
             <div className="flex-1 overflow-auto bg-[#f8f9fa] p-6">
-                <div className="max-w-6xl mx-auto">
+                <div className="w-full">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-6">
                         <div>

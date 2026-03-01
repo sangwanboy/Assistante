@@ -10,9 +10,9 @@ class ConversationService:
         self.session = session
 
     async def create(
-        self, title: str = "New Conversation", model: str = "gemini/gemini-2.5-flash", system_prompt: str | None = None, is_group: bool = False, agent_id: str | None = None
+        self, title: str = "New Conversation", model: str = "gemini/gemini-2.5-flash", system_prompt: str | None = None, is_group: bool = False, agent_id: str | None = None, channel_id: str | None = None
     ) -> Conversation:
-        conv = Conversation(title=title, model=model, system_prompt=system_prompt, is_group=is_group, agent_id=agent_id)
+        conv = Conversation(title=title, model=model, system_prompt=system_prompt, is_group=is_group, agent_id=agent_id, channel_id=channel_id)
         self.session.add(conv)
         await self.session.commit()
         await self.session.refresh(conv)

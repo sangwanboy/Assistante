@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.agent import Agent
+from app.models.channel import Channel
+from app.models.channel_agent import ChannelAgent
 from app.providers.base import ChatMessage
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
@@ -173,6 +175,9 @@ class ChatService:
             prompt = self._build_agent_prompt(agent)
             tool_schemas = self._filter_tools_for_agent(agent)
             agent_name = agent.name
+            # Use agent's own API key if set
+            if agent.api_key:
+                provider = self.providers.create_ephemeral(agent.provider, agent.api_key)
         else:
             prompt = system_prompt or conv.system_prompt
             tool_schemas = self.tools.as_provider_format() if self.tools else None
@@ -244,6 +249,9 @@ class ChatService:
             prompt = self._build_agent_prompt(agent)
             tool_schemas = self._filter_tools_for_agent(agent)
             agent_name = agent.name
+            # Use agent's own API key if set
+            if agent.api_key:
+                provider = self.providers.create_ephemeral(agent.provider, agent.api_key)
         else:
             prompt = system_prompt or conv.system_prompt
             tool_schemas = self.tools.as_provider_format() if self.tools else None
@@ -341,9 +349,29 @@ class ChatService:
         # Save user message
         await self.conv_service.add_message(conversation_id, "user", user_message)
 
-        # Get all active agents
-        result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
-        active_agents = list(result.scalars().all())
+        # Determine which agents to include
+        active_agents = []
+        if conv.channel_id:
+            channel = await self.session.get(Channel, conv.channel_id)
+            if channel:
+                if channel.is_announcement:
+                    # Announcements get everyone
+                    result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
+                    active_agents = list(result.scalars().all())
+                else:
+                    # Custom groups get only assigned agents
+                    stmt = (
+                        select(Agent)
+                        .join(ChannelAgent, Agent.id == ChannelAgent.agent_id)
+                        .where(ChannelAgent.channel_id == conv.channel_id, Agent.is_active == True)
+                        .order_by(Agent.id)
+                    )
+                    result = await self.session.execute(stmt)
+                    active_agents = list(result.scalars().all())
+        else:
+            # Fallback legacy behavior if somehow channel_id is not set but is_group=True
+            result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
+            active_agents = list(result.scalars().all())
 
         if not active_agents:
             yield {
@@ -478,3 +506,56 @@ class ChatService:
             }
 
         yield {"type": "done", "conversation_id": conversation_id}
+
+    # ──────────────────────────────────────────────────────────────────
+    # Agent Delegation
+    # ──────────────────────────────────────────────────────────────────
+
+    async def delegate_to_agent(
+        self,
+        target_agent_id: str,
+        prompt: str,
+        delegated_by: str = "Main Agent",
+    ) -> tuple[str, str]:
+        """
+        Delegate a task to a target agent.
+
+        - Finds or creates the target agent's dedicated conversation (so the
+          work history is visible when the user clicks on that agent in Chat).
+        - Wraps the prompt with delegation context.
+        - Runs the non-streaming agentic loop (personality + tools).
+        - Returns (response_text, conversation_id).
+        """
+        # 1. Load the target agent
+        target_agent = await self.session.get(Agent, target_agent_id)
+        if not target_agent:
+            raise ValueError(f"Agent with ID '{target_agent_id}' not found.")
+
+        # 2. Find or create the agent's dedicated conversation
+        existing = await self.conv_service.list_all(limit=1, agent_id=target_agent_id)
+        if existing:
+            conversation = existing[0]
+        else:
+            conversation = await self.conv_service.create(
+                title=f"Chat with {target_agent.name}",
+                model=target_agent.model,
+                agent_id=target_agent_id,
+            )
+
+        # 3. Build a well-structured delegation prompt
+        delegation_prompt = (
+            f"[Task delegated by {delegated_by}]\n\n"
+            f"{prompt}\n\n"
+            f"Please complete this task thoroughly using your expertise and any tools available to you."
+        )
+
+        # 4. Run the full agentic loop (persists all messages in the agent's conversation)
+        response_text = await self.chat(
+            conversation_id=conversation.id,
+            user_message=delegation_prompt,
+            model_string=target_agent.model,
+            temperature=0.7,
+        )
+
+        return response_text, conversation.id
+

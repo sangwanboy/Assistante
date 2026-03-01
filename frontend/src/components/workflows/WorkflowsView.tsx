@@ -10,9 +10,11 @@ import ReactFlow, {
     type Edge
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Workflow, Play, Save, Plus, ArrowLeft, Zap, Brain, Mail, Bell, GitBranch, Filter } from 'lucide-react';
+import { Plus, Play, Save, ArrowLeft, Zap, GitBranch, Filter, Mail, Bell, Workflow, Bot, Users, Brain, X } from 'lucide-react';
 import { api } from '../../services/api';
 import type { Workflow as WorkflowModel } from '../../types/workflow';
+import { useAgentStore } from '../../stores/agentStore';
+import { useChannelStore } from '../../stores/channelStore';
 
 const templates = [
     { name: 'Summarize & Notify', desc: 'Summarize article and notify via email.', icon: Brain, color: 'bg-blue-50 text-blue-600' },
@@ -49,6 +51,13 @@ export function WorkflowsView() {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createName, setCreateName] = useState('New Workflow');
+    const [createDesc, setCreateDesc] = useState('');
+    const [createAssign, setCreateAssign] = useState('none');
+
+    const { agents } = useAgentStore();
+    const { channels } = useChannelStore();
 
     useEffect(() => {
         loadWorkflows();
@@ -95,9 +104,22 @@ export function WorkflowsView() {
 
     const handleCreate = async () => {
         try {
-            const newWf = await api.createWorkflow({ name: 'New Workflow', description: 'Describe your workflow' });
+            const payload: { name: string; description?: string; agent_id?: string; channel_id?: string } = {
+                name: createName,
+                description: createDesc || undefined,
+            };
+            if (createAssign.startsWith('agent:')) {
+                payload.agent_id = createAssign.replace('agent:', '');
+            } else if (createAssign.startsWith('channel:')) {
+                payload.channel_id = createAssign.replace('channel:', '');
+            }
+            const newWf = await api.createWorkflow(payload);
             setWorkflows([newWf, ...workflows]);
             setSelectedWorkflow(newWf);
+            setShowCreateModal(false);
+            setCreateName('New Workflow');
+            setCreateDesc('');
+            setCreateAssign('none');
         } catch (e) {
             console.error(e);
         }
@@ -225,103 +247,195 @@ export function WorkflowsView() {
 
     // ── LIST VIEW WITH TEMPLATES ──
     return (
-        <div className="h-full flex flex-col p-6 bg-[#f8f9fa] overflow-y-auto">
-            <div className="max-w-6xl mx-auto w-full space-y-6 pb-12">
+        <>
+            <div className="h-full flex flex-col p-6 bg-[#f8f9fa] overflow-y-auto">
+                <div className="w-full space-y-6 pb-12">
 
-                {/* Header */}
-                <div className="flex items-center justify-between">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                                <Workflow className="w-5 h-5 text-indigo-600" />
+                                Workflows Engine
+                            </h1>
+                            <p className="text-sm text-gray-500 mt-0.5">Design node-based automation graphs for your agents to execute.</p>
+                        </div>
+                        <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Create Workflow
+                        </button>
+                    </div>
+
+                    {/* Templates Gallery */}
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                            <Workflow className="w-5 h-5 text-indigo-600" />
-                            Workflows Engine
-                        </h1>
-                        <p className="text-sm text-gray-500 mt-0.5">Design node-based automation graphs for your agents to execute.</p>
-                    </div>
-                    <button
-                        onClick={handleCreate}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Create Workflow
-                    </button>
-                </div>
-
-                {/* Templates Gallery */}
-                <div>
-                    <h2 className="text-sm font-bold text-gray-700 mb-3">Available Templates</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {templates.map((tpl, i) => (
-                            <div key={i} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all">
-                                <div className={`w-9 h-9 rounded-xl ${tpl.color} flex items-center justify-center mb-3`}>
-                                    <tpl.icon className="w-4 h-4" />
-                                </div>
-                                <h3 className="text-sm font-bold text-gray-900 mb-0.5">{tpl.name}</h3>
-                                <p className="text-[11px] text-gray-500 mb-3 line-clamp-2">{tpl.desc}</p>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-gray-400 font-medium">⚙ Model</span>
-                                    <button className="ml-auto px-3 py-1 bg-indigo-600 text-white text-[10px] font-bold rounded-lg hover:bg-indigo-700 transition-colors">
-                                        Use Template
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Suggested Templates */}
-                <div>
-                    <h2 className="text-sm font-bold text-gray-700 mb-3">Suggested Templates</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {templates.map((tpl, i) => (
-                            <div key={`suggested-${i}`} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all">
-                                <div className={`w-9 h-9 rounded-xl ${tpl.color} flex items-center justify-center mb-3`}>
-                                    <tpl.icon className="w-4 h-4" />
-                                </div>
-                                <h3 className="text-sm font-bold text-gray-900 mb-0.5">{tpl.name}</h3>
-                                <p className="text-[11px] text-gray-500 mb-3 line-clamp-2">{tpl.desc}</p>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-gray-400 font-medium">⚙ Model</span>
-                                    <button className="ml-auto px-3 py-1 bg-indigo-600 text-white text-[10px] font-bold rounded-lg hover:bg-indigo-700 transition-colors">
-                                        Use Template
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Your Workflows */}
-                {workflows.length > 0 && (
-                    <div>
-                        <h2 className="text-sm font-bold text-gray-700 mb-3">Your Workflows</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {workflows.map(wf => (
-                                <div
-                                    key={wf.id}
-                                    onClick={() => setSelectedWorkflow(wf)}
-                                    className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group"
-                                >
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-                                            <Play className="w-4 h-4 ml-0.5" />
-                                        </div>
-                                        <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider ${wf.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                            {wf.is_active ? 'ACTIVE' : 'DRAFT'}
-                                        </div>
+                        <h2 className="text-sm font-bold text-gray-700 mb-3">Available Templates</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {templates.map((tpl, i) => (
+                                <div key={i} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all">
+                                    <div className={`w-9 h-9 rounded-xl ${tpl.color} flex items-center justify-center mb-3`}>
+                                        <tpl.icon className="w-4 h-4" />
                                     </div>
-                                    <h3 className="text-sm font-bold text-gray-900 mb-0.5">{wf.name}</h3>
-                                    <p className="text-[11px] text-gray-500 line-clamp-2 mb-3">
-                                        {wf.description || 'No description provided.'}
-                                    </p>
-                                    <div className="text-[10px] text-gray-400 font-medium">
-                                        Created {new Date(wf.created_at).toLocaleDateString()}
+                                    <h3 className="text-sm font-bold text-gray-900 mb-0.5">{tpl.name}</h3>
+                                    <p className="text-[11px] text-gray-500 mb-3 line-clamp-2">{tpl.desc}</p>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-gray-400 font-medium">⚙ Model</span>
+                                        <button className="ml-auto px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors">
+                                            Use Template
+                                        </button>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
-                )}
+
+                    {/* Suggested Templates */}
+                    <div>
+                        <h2 className="text-sm font-bold text-gray-700 mb-3">Suggested Templates</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {templates.map((tpl, i) => (
+                                <div key={`suggested-${i}`} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all">
+                                    <div className={`w-9 h-9 rounded-xl ${tpl.color} flex items-center justify-center mb-3`}>
+                                        <tpl.icon className="w-4 h-4" />
+                                    </div>
+                                    <h3 className="text-sm font-bold text-gray-900 mb-0.5">{tpl.name}</h3>
+                                    <p className="text-[11px] text-gray-500 mb-3 line-clamp-2">{tpl.desc}</p>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-gray-400 font-medium">⚙ Model</span>
+                                        <button className="ml-auto px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors">
+                                            Use Template
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Your Workflows */}
+                    {workflows.length > 0 && (
+                        <div>
+                            <h2 className="text-sm font-bold text-gray-700 mb-3">Your Workflows</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {workflows.map(wf => (
+                                    <div
+                                        key={wf.id}
+                                        onClick={() => setSelectedWorkflow(wf)}
+                                        className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group"
+                                    >
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+                                                <Play className="w-4 h-4 ml-0.5" />
+                                            </div>
+                                            <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider ${wf.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                {wf.is_active ? 'ACTIVE' : 'DRAFT'}
+                                            </div>
+                                        </div>
+                                        <h3 className="text-sm font-bold text-gray-900 mb-0.5">{wf.name}</h3>
+                                        <p className="text-[11px] text-gray-500 line-clamp-2 mb-2">
+                                            {wf.description || 'No description provided.'}
+                                        </p>
+                                        {/* Assignment badge */}
+                                        {wf.agent_id && (
+                                            <div className="flex items-center gap-1 mb-2">
+                                                <Bot className="w-3 h-3 text-blue-500" />
+                                                <span className="text-[10px] font-medium text-blue-600">
+                                                    {agents.find(a => a.id === wf.agent_id)?.name || 'Agent'}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {wf.channel_id && (
+                                            <div className="flex items-center gap-1 mb-2">
+                                                <Users className="w-3 h-3 text-purple-500" />
+                                                <span className="text-[10px] font-medium text-purple-600">
+                                                    {channels.find(c => c.id === wf.channel_id)?.name || 'Group'}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div className="text-[10px] text-gray-400 font-medium">
+                                            Created {new Date(wf.created_at).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
+
+            {/* Create Workflow Modal */}
+            {
+                showCreateModal && (
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setShowCreateModal(false)}>
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-5">
+                                <h2 className="text-lg font-bold text-gray-900">Create Workflow</h2>
+                                <button onClick={() => setShowCreateModal(false)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-600 mb-1 block">Name</label>
+                                    <input
+                                        value={createName}
+                                        onChange={e => setCreateName(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300"
+                                        placeholder="Workflow name"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-600 mb-1 block">Description</label>
+                                    <textarea
+                                        value={createDesc}
+                                        onChange={e => setCreateDesc(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 resize-none"
+                                        rows={2}
+                                        placeholder="Describe what this workflow does..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-600 mb-1 block">Assign to Agent or Group</label>
+                                    <select
+                                        value={createAssign}
+                                        onChange={e => setCreateAssign(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white"
+                                    >
+                                        <option value="none">🌐 Global (all agents)</option>
+                                        <optgroup label="Agents">
+                                            {agents.map(a => (
+                                                <option key={a.id} value={`agent:${a.id}`}>🤖 {a.name}</option>
+                                            ))}
+                                        </optgroup>
+                                        <optgroup label="Groups">
+                                            {channels.filter(c => !c.is_announcement).map(c => (
+                                                <option key={c.id} value={`channel:${c.id}`}>👥 {c.name}</option>
+                                            ))}
+                                        </optgroup>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2 mt-6">
+                                <button
+                                    onClick={() => setShowCreateModal(false)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleCreate}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors shadow-sm"
+                                >
+                                    Create
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </>
     );
 }

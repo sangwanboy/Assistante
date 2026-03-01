@@ -42,7 +42,7 @@ class ToolRegistry:
             for t in self._tools.values()
         ]
 
-    def register_defaults(self):
+    def register_defaults(self, provider_registry=None):
         """Register all built-in tools."""
         from app.tools.web_search import WebSearchTool
         from app.tools.file_manager import FileManagerTool
@@ -51,11 +51,22 @@ class ToolRegistry:
         from app.tools.knowledge_base_tool import KnowledgeBaseTool
         from app.tools.tool_creator import ToolCreatorTool
         from app.tools.skill_creator import SkillCreatorTool
+        from app.tools.agent_manager import AgentManagerTool
+        from app.tools.agent_delegate import AgentDelegationTool
+        from app.tools.model_manager import ModelManagerTool
+        from app.tools.workflow_manager import WorkflowManagerTool
 
         for tool in [
             WebSearchTool(), FileManagerTool(), CodeExecutorTool(),
             DateTimeTool(), KnowledgeBaseTool(),
             ToolCreatorTool(), SkillCreatorTool(),
+            AgentManagerTool(),
+            AgentDelegationTool(
+                provider_registry=provider_registry,
+                tool_registry=self,
+            ),
+            ModelManagerTool(),
+            WorkflowManagerTool(),
         ]:
             self.register(tool)
             self._builtin_names.add(tool.name)

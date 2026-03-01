@@ -10,8 +10,17 @@ class WorkflowService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list_workflows(self) -> List[Workflow]:
-        stmt = select(Workflow).order_by(Workflow.created_at.desc())
+    async def list_workflows(
+        self,
+        agent_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
+    ) -> List[Workflow]:
+        stmt = select(Workflow)
+        if agent_id:
+            stmt = stmt.where(Workflow.agent_id == agent_id)
+        if channel_id:
+            stmt = stmt.where(Workflow.channel_id == channel_id)
+        stmt = stmt.order_by(Workflow.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -20,8 +29,19 @@ class WorkflowService:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create_workflow(self, name: str, description: Optional[str] = None) -> Workflow:
-        workflow = Workflow(name=name, description=description)
+    async def create_workflow(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
+    ) -> Workflow:
+        workflow = Workflow(
+            name=name,
+            description=description,
+            agent_id=agent_id,
+            channel_id=channel_id,
+        )
         self.session.add(workflow)
         await self.session.commit()
         await self.session.refresh(workflow)

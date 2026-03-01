@@ -9,6 +9,7 @@ interface Props {
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
+  const displayName = isUser ? 'You' : (message.agent_name || 'Assistant');
 
   if (isTool) {
     return (
@@ -28,19 +29,26 @@ export function MessageBubble({ message }: Props) {
 
   return (
     <div className={`flex gap-3 px-4 py-4 ${isUser ? 'bg-transparent' : 'bg-gray-50'}`}>
-      <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isUser ? 'bg-blue-100' : 'bg-emerald-100'
-          }`}
-      >
+      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
         {isUser ? (
-          <User className="w-4 h-4 text-blue-600" />
+          <div className="w-full h-full bg-blue-100 flex items-center justify-center">
+            <User className="w-4 h-4 text-blue-600" />
+          </div>
+        ) : message.agent_name ? (
+          <img
+            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(message.agent_name)}&background=random&color=fff&size=32`}
+            alt={message.agent_name}
+            className="w-full h-full rounded-full"
+          />
         ) : (
-          <Bot className="w-4 h-4 text-emerald-600" />
+          <div className="w-full h-full bg-emerald-100 flex items-center justify-center">
+            <Bot className="w-4 h-4 text-emerald-600" />
+          </div>
         )}
       </div>
       <div className="flex-1 min-w-0">
         <div className={`text-xs font-medium mb-1 ${isUser ? 'text-blue-600' : 'text-emerald-600'}`}>
-          {isUser ? 'You' : 'Assistant'}
+          {displayName}
         </div>
         <div className="text-gray-800 text-[15px] leading-relaxed">
           {isUser ? (
@@ -53,3 +61,4 @@ export function MessageBubble({ message }: Props) {
     </div>
   );
 }
+

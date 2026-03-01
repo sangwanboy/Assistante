@@ -4,6 +4,7 @@ import { useChatStore } from '../../stores/chatStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { WorkspaceView } from './WorkspaceView';
+import { useAgentStore } from '../../stores/agentStore';
 
 interface ActiveDialogueProps {
   onAction: (message: string) => void;
@@ -24,7 +25,10 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
     sendMessage,
     createConversation,
     stopGeneration,
+    startOrLoadAgentChat,
   } = useChatStore();
+
+  const { agents } = useAgentStore();
 
   const { selectedModel } = useSettingsStore();
 
@@ -37,7 +41,16 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
 
     let convId = activeConversationId;
     if (!convId) {
-      convId = await createConversation(selectedModel, isGroupMode);
+      if (!isGroupMode) {
+        const mainAgent = agents.find(a => a.is_system);
+        if (mainAgent) {
+          convId = await startOrLoadAgentChat(mainAgent);
+        } else {
+          convId = await createConversation(selectedModel, false);
+        }
+      } else {
+        convId = await createConversation(selectedModel, true);
+      }
     }
 
     if (convId) {
@@ -53,16 +66,16 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
       <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center gap-1">
           <h2 className="text-[16px] font-bold text-gray-900 mr-3">Active Dialogue</h2>
-          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
             <button
               onClick={() => setActiveTab('chat')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${activeTab === 'chat' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${activeTab === 'chat' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
               Chat
             </button>
             <button
               onClick={() => setActiveTab('workspace')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${activeTab === 'workspace' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${activeTab === 'workspace' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
               Workspace
             </button>

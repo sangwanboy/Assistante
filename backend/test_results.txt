@@ -1,0 +1,33 @@
+﻿
+============================================================
+  API TEST RESULTS
+============================================================
+  X FAIL (404)   GET /health -- {"detail":"Not Found"}
+  + PASS         GET /models
+  + PASS         GET /tools
+  + PASS         GET /settings
+  + PASS         GET /agents
+  X FAIL (201)   POST /agents
+  + PASS         GET /agents/{id}
+  + PASS         PUT /agents/{id}
+  + PASS         GET /conversations
+  + PASS         POST /conversations
+  + PASS         GET /conversations/{id}
+  X FAIL (404)   GET /conversations/{id}/messages -- {"detail":"Not Found"}
+  + PASS         GET /channels
+  + PASS         POST /channels
+  X FAIL (405)   GET /channels/{id} -- {"detail":"Method Not Allowed"}
+  + PASS         GET /workflows
+  + PASS         POST /workflows
+  + PASS         GET /workflows/{id}
+  + PASS         GET /workflows?agent_id filter
+  + PASS         GET /knowledge
+  + PASS         GET /custom-tools
+  + PASS         GET /skills
+  X FAIL (204)   DELETE /agents/{id}
+  + PASS         DELETE /conversations/{id}
+  + PASS         DELETE /channels/{id}
+  + PASS         DELETE /workflows/{id}
+
+  21/26 PASSED
+============================================================

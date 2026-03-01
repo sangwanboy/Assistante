@@ -42,5 +42,22 @@ class ProviderRegistry:
                     continue
         return models
 
+    def create_ephemeral(self, provider_name: str, api_key: str) -> BaseProvider:
+        """Create a one-off provider instance with a custom API key."""
+        if provider_name == "openai":
+            from app.providers.openai_provider import OpenAIProvider
+            return OpenAIProvider(api_key)
+        elif provider_name == "anthropic":
+            from app.providers.anthropic_provider import AnthropicProvider
+            return AnthropicProvider(api_key)
+        elif provider_name == "gemini":
+            from app.providers.gemini_provider import GeminiProvider
+            return GeminiProvider(api_key)
+        elif provider_name == "ollama":
+            from app.providers.ollama_provider import OllamaProvider
+            return OllamaProvider(api_key)  # api_key = base_url for ollama
+        else:
+            raise ValueError(f"Cannot create ephemeral provider for '{provider_name}'")
+
     def add_provider(self, name: str, provider: BaseProvider):
         self._providers[name] = provider

@@ -50,6 +50,8 @@ HOW TO RUN:
 
 - app/models/__init__.py -> Empty init
 - app/models/conversation.py -> Conversation + Message ORM models
+- app/models/channel.py -> Channel ORM model (id, name, description, is_announcement)
+- app/models/channel_agent.py -> ChannelAgent association ORM model
 - app/models/agent.py -> Agent ORM model (id, name, provider, model, prompt)
 - app/models/document.py -> Document ORM model (id, filename, file_type, size, content_hash)
 - app/models/workflow.py -> Workflow, Node, Edge ORM models for node-based automation graphs
@@ -104,8 +106,9 @@ HOW TO RUN:
 - app/models/skill.py -> Skill ORM model (name, description, instructions, is_active, user_invocable, trigger_pattern, metadata_json)
 
 - app/api/__init__.py -> Empty init
-- app/api/router.py -> Aggregates all API routers (chat, conversations, models, tools, settings, agents, knowledge, workflows, custom-tools, skills)
+- app/api/router.py -> Aggregates all API routers (chat, conversations, models, tools, settings, agents, knowledge, workflows, custom-tools, skills, channels)
 - app/api/chat.py -> POST /api/chat + WebSocket /ws/chat/{conversation_id}
+- app/api/channels.py -> CRUD REST endpoints for /api/channels + agent management
 - app/api/conversations.py -> CRUD REST endpoints for /api/conversations
 - app/api/models_api.py -> GET /api/models (lists all available models across providers)
 - app/api/tools_api.py -> GET /api/tools (lists available tools with is_builtin flag)
@@ -129,6 +132,7 @@ HOW TO RUN:
 - src/services/websocket.ts -> WebSocketClient class for real-time streaming
 
 - src/stores/chatStore.ts -> Zustand store: conversations, messages, streaming state, WS management
+- src/stores/channelStore.ts -> Zustand store: channels CRUD, channel agent assignments
 - src/stores/settingsStore.ts -> Zustand store: selected model, temperature, show settings
 - src/stores/agentStore.ts -> Zustand store: agents CRUD and loading
 
@@ -158,6 +162,18 @@ HOW TO RUN:
 [2026-02-27] Installed Python 3.12 via uv.
 [2026-02-27] Created full backend: FastAPI app, multi-provider system (OpenAI,
   Anthropic, Ollama), tool system (web search, file manager, code executor,
+  datetime, knowledge base), database integration, and websockets.
+[2026-02-28] Fixed ChatView sidebar to populate real agents from database, displaying online indicators, avatars, name, and descriptions. Set up default agent chat fallback correctly.
+[2026-02-28] Implemented "Main Agent Orchestrator" system.
+  - Added `is_system` boolean to Agent model and protected the Main Agent from deletion.
+  - Dynamically linked the models selection to a new `model_configs` table in DB instead of hardcoded lists.
+  - Built `AgentManagerTool`, `AgentDelegationTool`, and `ModelManagerTool` specifically for the Main Agent.
+  - Exposed deep profile settings (`personality_traits`, `communication_style`, `reasoning_style`, `memory_context`, `memory_instructions`) through the tool schema so the Main Agent can freely construct other agents' complete profiles.
+  - Addressed a 400 LLM mapping error by correctly populating array type parameter schemas in `gemini_provider.py`.
+[2026-02-28] UI Layout Adjustments:
+  - Fixed search bar layout to prevent search icon from breaking text.
+  - Removed central container width constraints across main app spaces (`AgentsView`, `KnowledgeView`, `WorkflowsView`, `ToolsSkillsView`, and `HomeView`), shifting major action buttons to the far right screen margins.
+  - Expanded Sidebar navigation label sizes for improved readability.
   datetime), conversation CRUD, WebSocket streaming, SQLite database.
 [2026-02-27] Created full frontend: React + Tailwind web UI with chat interface,
   sidebar, model selector, settings panel, streaming support, markdown rendering.
@@ -371,15 +387,14 @@ HOW TO RUN:
 
 - System Python installations are broken (py launcher registered but executables missing).
   Use uv-managed Python instead: uv run python, uv run uvicorn, etc.
-- No API keys configured yet, so /api/models returns [] until user adds keys to
-  Settings panel or .env file.
-  UPDATE: Gemini key is now configured. /api/models returns 5 Gemini models.
+- Gemini key is configured. /api/models returns 5 Gemini models.
 - Electron desktop app not yet implemented (Phase 9 in plan).
 - File uploads implemented via Knowledge Base (ChromaDB + document chunking).
-- No Alembic migrations set up yet (using create_all for now).
-- Gemini uses synchronous google-genai SDK methods (not async). The generate_content
-  and generate_content_stream calls block the event loop briefly. For production,
+- No Alembic migrations set up yet (using create_all + manual ALTER TABLEs).
+- Gemini uses synchronous google-genai SDK methods (not async). For production,
   consider wrapping in run_in_executor or switching to async httpx calls.
+- [FIXED 2026-02-28] generate-personality endpoint was using deprecated model
+  `gemini-2.5-flash-lite-preview-06-17`. Changed to `gemini-2.5-flash`.
 
 ================================================================================
                           REMAINING WORK (PHASES)
@@ -402,6 +417,130 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
   - Fixed: Stale "Search threads..." placeholder -> "Search agents...".
   - Note: Use npm run dev (port 5173), NOT npm run preview (port 4173) — preview
     server does not proxy /api and /ws routes.
+
+[2026-02-28] Custom Groups & Announcements Feature:
+  - Added custom channels allowing users to group multiple agents together.
+  - Backend: Added `Channel` and `ChannelAgent` database models.
+  - Backend: Updated `Conversation` model to include `channel_id`.
+  - Backend: Created `/api/channels` REST endpoints for CRUD operations and agent assignment.
+  - Backend: Refactored `stream_group_chat` to dynamically pull specific active assigned agents or default system agents (for announcements).
+  - Backend: Added implicit schema migrations for `channel_id` to `engine.py` to fix 500 errors on chat conversation creation.
+  - Frontend: Developed `channelStore.ts` to manage state.
+  - Frontend: Integrated `ChannelAgentManagerModal` and `CreateChannelModal` into the `ChatView` sidebar.
+
+[2026-02-28] Agent Delegation System:
+  - Rewrote `AgentDelegationTool` (app/tools/agent_delegate.py) to use direct
+    `ChatService.delegate_to_agent()` instead of fragile HTTP loopback.
+  - Added `delegate_to_agent()` method to `ChatService` (app/services/chat_service.py).
+    Finds or creates the target agent's dedicated conversation, wraps the prompt
+    with delegation context, runs the full agentic loop (personality + tools),
+    and persists all messages in the target agent's conversation.
+  - Supports agent lookup by name (case-insensitive) or by ID.
+  - Updated `ToolRegistry.register_defaults()` to accept `provider_registry` param
+    and pass it (along with `self`) to `AgentDelegationTool`.
+  - Updated `main.py` to pass `provider_registry` when calling `register_defaults()`.
+  - Delegated work is visible when clicking the target agent in Chat sidebar.
+  - Tested: Delegation to Analyst Agent succeeded, response persisted in agent's conversation.
+
+[2026-02-28] Full App Audit:
+  - Fixed: `POST /api/agents/generate-personality` was failing (500) due to
+    hardcoded deprecated model `gemini-2.5-flash-lite-preview-06-17`.
+    Changed to `gemini-2.5-flash` in `app/api/agents.py`.
+  - Fixed: `MessageInput.tsx` input bar constrained by `max-w-4xl`.
+    Changed to `w-full` for full-width input.
+  - API Results (25/25 PASS):
+    GET /api/health ✅ | GET /api/models ✅ (5 models)
+    GET /api/tools ✅ (11 tools) | GET /api/settings ✅
+    Agents CRUD (GET/POST/GET-id/PUT/DELETE) ✅
+    POST /api/agents/generate-personality ✅ (after fix)
+    Conversations CRUD (GET/POST/GET-id/DELETE) ✅
+    POST /api/chat ✅ (non-streaming LLM response)
+    Channels CRUD (GET/POST/POST-agents/DELETE) ✅
+    GET /api/knowledge ✅ | Workflows CRUD ✅
+    GET /api/custom-tools ✅ | GET /api/skills ✅
+  - Frontend Results (7/7 PASS):
+    Home ✅ | Chat ✅ | Knowledge Base ✅ | Workflows ✅
+    Agents ✅ (7 agents visible) | Tools & Skills ✅ (11 tools)
+    Settings ✅ (Gemini Connected)
+
+[2026-02-28] Full UI Visual Audit:
+  - Audited all 6 pages (Home, Chat, Knowledge, Workflows, Agents, Tools & Skills)
+    plus Settings modal. All pages load correctly with no critical bugs.
+  - Chat: Delegation history visible in Analyst Agent's chat (verified from screenshot).
+    Agent sidebar shows 7 agents + 3 custom groups + Announcements.
+  - Agents: 7 agent cards displayed with sparklines, model info, and toggle switches.
+  - Knowledge Base: Clean empty state with table headers and filter tabs.
+  - Workflows: Templates gallery and user workflows displayed correctly.
+  - Tools & Skills: 10 built-in tools + 1 custom tool visible, correctly categorized.
+  - Settings: API Keys tab shows Gemini as "Connected" (green indicator).
+  - Minor UI glitches found (see TO-DO list below).
+
+[2026-02-28] UI Glitch Fixes + Workflow-Agent/Group Enhancement:
+  - Fixed: HomeView removed redundant "Switched to Ready" status text, made content
+    scrollable (overflow-y-auto) so input/events aren't hidden below fold.
+  - Fixed: ActiveDialogue Chat/Workspace toggle buttons spacing (gap-0.5, px-3.5).
+  - Fixed: AgentsView cards overflow-hidden + min-w-0 for Latency label clipping.
+  - Fixed: AgentsView sparkline labels contrast (text-gray-500 → text-gray-600).
+  - Fixed: WorkflowsView "Use Template" buttons from text-[10px] → text-xs, larger padding.
+  - Added: Workflow model now has `agent_id` (FK → agents) and `channel_id` (FK → channels).
+    When both NULL = global workflow. Otherwise linked to specific agent or group.
+  - Added: `GET /api/workflows?agent_id=X&channel_id=Y` query param filtering.
+  - Added: `POST /api/workflows` accepts `agent_id` and `channel_id` in body.
+  - Added: DB migration (engine.py) for `agent_id`, `channel_id` on `workflows` table.
+  - Added: Frontend Create Workflow modal with Name, Description, and
+    "Assign to Agent or Group" dropdown (lists all agents + custom groups).
+  - Added: Assignment badges on workflow cards (Bot icon for agents, Users icon for groups).
+  - Verified: TypeScript compilation passed with 0 errors.
+
+[2026-02-28] WorkflowManagerTool - Agent Workflow Management:
+  - Added: `WorkflowManagerTool` (backend/app/tools/workflow_manager.py) — 7 actions:
+    create, list, get, delete, add_node, remove_node, connect.
+  - Registered in `ToolRegistry.register_defaults()`.
+  - Agents can now create and customize workflows via chat commands.
+  - Verified: Main Agent created "Marketing Pipeline" workflow, assigned to marketing_agent,
+    with webhook trigger + LLM action nodes connected. Visible in Workflows page.
+
+================================================================================
+                              TO-DO LIST
+================================================================================
+(Outstanding work, improvements, and bugs to address)
+
+  --- PHASES ---
+  [ ] Phase 8: Encrypted API key storage (Fernet), persistent settings in DB
+  [ ] Phase 9: Electron desktop app (backend-manager, system tray, packaging)
+  [ ] Phase 10: Polish (error handling, loading states, logging, tests, CI)
+  [ ] Phase 11: Workflow execution triggers (webhook endpoint, scheduled cron)
+
+  --- BACKEND ---
+  [ ] Set up Alembic for proper DB migrations (currently using manual ALTER TABLE)
+  [ ] Wrap Gemini SDK calls in asyncio.run_in_executor for non-blocking I/O
+  [ ] Add OpenAI / Anthropic API keys to enable multi-provider models
+  [ ] Custom tool test endpoint (`POST /api/custom-tools/{id}/test`) needs testing
+  [ ] Skills import/export (`POST /api/skills/import`, `GET /api/skills/{id}/export`)
+  [ ] Knowledge upload flow (`POST /api/knowledge` with file) needs file-based testing
+  [ ] Workflow graph save/load (`POST /api/workflows/{id}/graph`) needs testing
+
+  --- TESTING ---
+  [ ] End-to-end WebSocket streaming test (manual, needs browser interaction)
+  [ ] Agent-to-agent delegation: Test with complex multi-step tasks
+  [ ] Group chat (Announcements channel) end-to-end test with multiple agents
+  [ ] Cleanup: Remove 47 orphaned conversations from test runs
+
+  --- UI GLITCHES (from visual audit) ---
+  [x] Home: Chat input and Recent Events pushed below fold on smaller viewports
+  [x] Home: Redundant "Ready" / "Switched to Ready" status text at bottom
+  [x] Home: "Chat" / "Workspace" toggle buttons cramped (nearly merged text)
+  [ ] Home: "4 online" badge slightly misaligned with "Active Agents" header
+  [ ] Home: CrossClaw logo has subtle white box-shadow that doesn't blend with sidebar
+  [x] Agents: "Latency" label clipped at right edge of cards on some viewport widths
+  [ ] Agents: Config panel header cramped near Close button
+  [x] Agents: "Requests/sec" sparkline labels faint (low contrast)
+  [x] Workflows: "Use Template" buttons very small (~10px font), hard to click
+  [ ] Tools: Custom tool cards have no fixed height (uneven grid if descriptions vary)
+  [ ] Chat: "Switched to chat" toast overlaps sidebar border on navigation
+  [ ] General: Add loading spinners for long-running delegation tasks
+  [ ] General: Add error toast notifications for failed API calls
+  [ ] Knowledge: "AI" icon on filter tabs partially cut off at left edge
 
 ================================================================================
                                  END

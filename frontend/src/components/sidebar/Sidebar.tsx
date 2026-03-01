@@ -34,12 +34,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
             <button
               key={item.id}
               onClick={() => onViewChange(item.id)}
-              className={`w-full flex items-center gap-4 px-4 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${activeView === item.id
+              className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-base font-semibold transition-colors ${activeView === item.id
                 ? 'bg-gray-200/80 text-gray-900'
                 : 'text-gray-600 hover:bg-gray-200/50 hover:text-gray-900'
                 }`}
             >
-              <item.icon className={`w-5 h-5 ${activeView === item.id ? 'stroke-[2px]' : 'stroke-[1.5px]'}`} />
+              <item.icon className={`w-6 h-6 ${activeView === item.id ? 'stroke-[2px]' : 'stroke-[1.5px]'}`} />
               {item.label}
             </button>
           ))}
