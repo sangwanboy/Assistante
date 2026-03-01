@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Edit2, Trash2, Bot, X, Loader2, Power, Wrench, Brain, Heart, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useAgentStore } from '../../stores/agentStore';
 import { useChatStore } from '../../stores/chatStore';
 import type { Agent } from '../../types';
@@ -94,31 +96,39 @@ export function AgentsView() {
 
   const getSparkData = () => Array.from({ length: 10 }, () => Math.floor(Math.random() * 50) + 5);
 
-  const inputClass = "w-full px-3 py-2 rounded-xl bg-[#080810] border border-[#1c1c30] focus:border-indigo-500/50 focus:shadow-[0_0_0_2px_rgba(99,102,241,0.15)] text-gray-200 text-sm transition-all placeholder-gray-700";
+  const inputClass = "w-full px-4 py-3.5 rounded-lg bg-[#0e0e1c] border border-[#1c1c30] focus:border-indigo-500/50 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.15)] text-gray-200 text-base transition-all placeholder-gray-600";
 
   return (
-    <div className="flex-1 flex min-h-0">
+    <div className="flex-1 flex min-h-0" style={{ padding: '15px' }}>
       {/* Main content */}
-      <div className="flex-1 overflow-auto bg-[#080810] p-6">
-        <div className="max-w-6xl mx-auto">
+      <div className="flex-1 overflow-auto bg-[#080810] p-8">
+        <div className="max-w-7xl mx-auto">
           {/* Header */}
-          <div className="flex items-center justify-between mb-7">
+          <div className="flex items-center justify-between mb-10">
             <div>
-              <h1 className="text-2xl font-bold text-gray-100 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-indigo-400" />
+              <h1 className="text-3xl font-bold text-white flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                  {/* Custom Robot Icon */}
+                  <div className="relative w-6 h-5">
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-white/90 rounded-t-full transform rotate-12"></div>
+                    <div className="w-full h-full border-2 border-white/90 rounded-sm"></div>
+                    <div className="absolute top-1 left-1 w-1 h-1 bg-white/90 rounded-full"></div>
+                    <div className="absolute top-1 right-1 w-1 h-1 bg-white/90 rounded-full"></div>
+                  </div>
                 </div>
                 Agents
               </h1>
-              <p className="text-sm text-gray-600 mt-1">Manage your specialized AI assistants</p>
+              <p className="text-sm text-gray-500">Manage your specialized AI assistants</p>
             </div>
-            <button
+            <motion.button
               onClick={handleOpenCreate}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl transition-all shadow-lg text-sm font-semibold"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3.5 rounded-lg transition-all shadow-lg shadow-indigo-500/30 text-sm font-semibold"
             >
               <Plus className="w-4 h-4" />
               Create Agent
-            </button>
+            </motion.button>
           </div>
 
           {isLoading ? (
@@ -126,200 +136,273 @@ export function AgentsView() {
               <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
             </div>
           ) : agents.length === 0 ? (
-            <div className="bg-[#0e0e1c] rounded-2xl p-14 text-center border border-[#1c1c30]">
-              <div className="w-16 h-16 bg-[#141426] border border-[#1c1c30] rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                <Bot className="w-8 h-8 text-gray-700" />
-              </div>
-              <h3 className="text-base font-bold text-gray-300">No agents yet</h3>
-              <p className="text-sm text-gray-600 mt-1 mb-5 max-w-sm mx-auto">
-                Create your first agent to start automating specific workflows.
-              </p>
-              <button onClick={handleOpenCreate} className="text-indigo-400 font-medium text-sm hover:text-indigo-300 transition-colors">
-                Get started
-              </button>
+            <div className="flex items-start gap-6" style={{ padding: '15px' }}>
+              {/* Left: Small icon box */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4 }}
+                className="flex-shrink-0"
+              >
+                <div className="w-20 h-20 bg-[#0e0e1c] border border-[#1c1c30] rounded-xl flex items-center justify-center shadow-lg">
+                  <div className="relative w-12 h-10">
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-indigo-400 rounded-t-full transform rotate-12"></div>
+                    <div className="w-full h-full border-2 border-indigo-400 rounded-sm"></div>
+                    <div className="absolute top-1 left-1 w-1 h-1 bg-indigo-400 rounded-full"></div>
+                    <div className="absolute top-1 right-1 w-1 h-1 bg-indigo-400 rounded-full"></div>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mt-4 max-w-[200px] text-left">
+                  Create your first agent to start automating specific workflows.
+                </p>
+              </motion.div>
+
+              {/* Right: Large empty state panel */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, delay: 0.1 }}
+                className="flex-1 bg-[#0e0e1c] rounded-xl p-16 border border-[#1c1c30] flex flex-col items-center justify-center min-h-[400px]"
+              >
+                <h3 className="text-lg font-semibold text-gray-400 mb-3">No agents yet</h3>
+                <motion.button
+                  onClick={handleOpenCreate}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="text-indigo-400 font-medium text-sm hover:text-indigo-300 transition-colors underline underline-offset-4"
+                >
+                  Get started
+                </motion.button>
+              </motion.div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {agents.map((agent) => {
-                const sparkData = getSparkData();
-                return (
-                  <div
-                    key={agent.id}
-                    className="bg-[#0e0e1c] rounded-2xl border border-[#1c1c30] p-5 hover:border-[#2a2a45] transition-all group card-hover"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
-                        agent.is_active
-                          ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400'
-                          : 'bg-[#141426] border-[#1c1c30] text-gray-600'
-                      }`}>
-                        <Bot className="w-5 h-5" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <AnimatePresence>
+                {agents.map((agent, index) => {
+                  const sparkData = getSparkData();
+                  return (
+                    <motion.div
+                      key={agent.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.3, delay: index * 0.05 }}
+                      className="bg-[#0e0e1c] rounded-xl border border-[#1c1c30] p-6 hover:border-indigo-500/30 transition-all group shadow-lg hover:shadow-xl"
+                    >
+                      <div className="flex items-start justify-between mb-5">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${
+                          agent.is_active
+                            ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400 shadow-lg shadow-indigo-500/20'
+                            : 'bg-[#141426] border-[#1c1c30] text-gray-600'
+                        }`}>
+                          <Bot className="w-6 h-6" />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <motion.button
+                            onClick={() => handleToggle(agent)}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            className={`p-2 rounded-lg transition-colors ${
+                              agent.is_active
+                                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                                : 'bg-[#141426] border border-[#1c1c30] text-gray-600 hover:bg-[#1c1c30]'
+                            }`}
+                            title={agent.is_active ? 'Disable' : 'Enable'}
+                          >
+                            <Power className="w-4 h-4" />
+                          </motion.button>
+                          <motion.button
+                            onClick={() => handleOpenEdit(agent)}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            className="p-2 hover:bg-white/5 rounded-lg text-gray-600 hover:text-gray-300 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </motion.button>
+                          <motion.button
+                            onClick={() => { if (confirm('Delete this agent?')) deleteAgent(agent.id); }}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            className="p-2 hover:bg-red-500/10 rounded-lg text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </motion.button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
+
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-base font-bold text-white">{agent.name}</h3>
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                          agent.is_active
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-[#141426] text-gray-600 border border-[#1c1c30]'
+                        }`}>
+                          {agent.is_active ? 'ACTIVE' : 'OFF'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 line-clamp-2 min-h-[40px] mb-4">
+                        {agent.description || 'No description provided.'}
+                      </p>
+
+                      <div className="mt-4 pt-4 border-t border-[#1c1c30]">
+                        <Sparkline data={sparkData} color={agent.is_active ? '#818cf8' : '#374151'} />
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-[10px] text-gray-600 font-semibold uppercase tracking-wider">ACTIVITY</span>
+                          <span className="text-[10px] text-gray-600 font-semibold uppercase tracking-wider">LATENCY</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-[#1c1c30]">
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Model</span>
+                        <p className="text-xs text-gray-400 font-mono mt-1.5 truncate">{agent.model}</p>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#1c1c30]">
+                        <span className="text-xs text-gray-500 font-medium">Workflows</span>
+                        <motion.div
+                          className={`w-9 h-5 rounded-full relative cursor-pointer transition-colors ${agent.is_active ? 'bg-indigo-600' : 'bg-[#1c1c30]'}`}
                           onClick={() => handleToggle(agent)}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            agent.is_active
-                              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
-                              : 'bg-[#141426] border border-[#1c1c30] text-gray-600 hover:bg-[#1c1c30]'
-                          }`}
-                          title={agent.is_active ? 'Disable' : 'Enable'}
+                          whileTap={{ scale: 0.95 }}
                         >
-                          <Power className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(agent)}
-                          className="p-1.5 hover:bg-white/5 rounded-lg text-gray-600 hover:text-gray-300 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => { if (confirm('Delete this agent?')) deleteAgent(agent.id); }}
-                          className="p-1.5 hover:bg-red-500/10 rounded-lg text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          <motion.div
+                            className="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-lg"
+                            animate={{ x: agent.is_active ? 16 : 2 }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                          ></motion.div>
+                        </motion.div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="text-sm font-semibold text-gray-200">{agent.name}</h3>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                        agent.is_active
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-[#141426] text-gray-600 border border-[#1c1c30]'
-                      }`}>
-                        {agent.is_active ? 'ACTIVE' : 'OFF'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-gray-600 line-clamp-1 min-h-[16px]">
-                      {agent.description || 'No description provided.'}
-                    </p>
-
-                    <div className="mt-4 pt-3 border-t border-[#1c1c30]">
-                      <Sparkline data={sparkData} color={agent.is_active ? '#818cf8' : '#374151'} />
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-[9px] text-gray-700 font-medium">ACTIVITY</span>
-                        <span className="text-[9px] text-gray-700 font-medium">LATENCY</span>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 pt-3 border-t border-[#1c1c30]">
-                      <span className="text-[9px] font-bold text-gray-700 uppercase tracking-wider">Model</span>
-                      <p className="text-[11px] text-gray-500 font-mono mt-0.5 truncate">{agent.model}</p>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#1c1c30]">
-                      <span className="text-[10px] text-gray-700">Workflows</span>
-                      <div
-                        className={`w-8 h-4 rounded-full relative cursor-pointer transition-colors ${agent.is_active ? 'bg-indigo-600' : 'bg-[#1c1c30]'}`}
-                        onClick={() => handleToggle(agent)}
-                      >
-                        <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${agent.is_active ? 'right-0.5' : 'left-0.5'}`}></div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
             </div>
           )}
         </div>
       </div>
 
-      {/* Slide-out Config Panel */}
-      {showPanel && (
-        <div className="w-[380px] border-l border-[#1a1a2e] bg-[#0a0a14] flex flex-col flex-shrink-0 shadow-2xl">
-          <div className="px-5 py-4 border-b border-[#1a1a2e] flex items-center justify-between">
-            <h2 className="text-sm font-bold text-gray-200">{editingAgent ? 'Edit Agent' : 'Create Agent'}</h2>
-            <button onClick={() => setShowPanel(false)} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors">
-              <X className="w-4 h-4 text-gray-600" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
-            {/* Basic info */}
-            <div className="px-5 py-4 space-y-4 border-b border-[#1a1a2e]">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Name</label>
-                  <input
-                    required type="text" value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className={inputClass} placeholder="e.g. Code Helper"
+      {/* Modal Dialog */}
+      <Dialog.Root open={showPanel} onOpenChange={setShowPanel}>
+        <Dialog.Portal>
+          <AnimatePresence>
+            {showPanel && (
+              <>
+                <Dialog.Overlay asChild>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
                   />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Model</label>
-                  <select
-                    required value={formData.model}
-                    onChange={(e) => handleModelChange(e.target.value)}
-                    className={`${inputClass} appearance-none`}
+                </Dialog.Overlay>
+                <Dialog.Content asChild>
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-2xl bg-[#0a0a14] border border-[#1c1c30] rounded-xl shadow-2xl flex flex-col overflow-hidden outline-none"
+                    style={{ height: '85vh', maxHeight: '700px', padding: '10px' }}
                   >
-                    <option value="" disabled>Select Model</option>
-                    {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Description</label>
-                <input
-                  type="text" value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className={inputClass} placeholder="What does this agent do?"
-                />
-              </div>
-            </div>
+                    <div className="px-6 py-5 border-b border-[#1a1a2e] flex items-center justify-between flex-shrink-0">
+                      <Dialog.Title className="text-lg font-bold text-white">
+                        {editingAgent ? 'Edit Agent' : 'Create Agent'}
+                      </Dialog.Title>
+                      <Dialog.Close asChild>
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        >
+                          <X className="w-5 h-5 text-gray-400" />
+                        </motion.button>
+                      </Dialog.Close>
+                    </div>
 
-            {/* Tabs */}
-            <div className="flex items-center gap-1 px-5 py-3 border-b border-[#1a1a2e] bg-[#080810]">
-              {[
-                { key: 'soul' as const, icon: Heart, label: 'Soul' },
-                { key: 'mind' as const, icon: Brain, label: 'Mind' },
-                { key: 'memory' as const, icon: Wrench, label: 'Memory' },
-              ].map(tab => (
-                <button
-                  key={tab.key} type="button"
-                  onClick={() => setConfigTab(tab.key)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    configTab === tab.key
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-gray-600 hover:bg-white/5 hover:text-gray-300'
-                  }`}
-                >
-                  <tab.icon className="w-3.5 h-3.5" />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+                    <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
+                      {/* Basic info */}
+                      <div className="px-6 py-6 space-y-5 border-b border-[#1a1a2e]">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2.5">
+                            <label className="text-xs font-semibold text-gray-400">Name</label>
+                            <input
+                              required type="text" value={formData.name}
+                              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                              className={inputClass} placeholder="e.g. Code Helper"
+                            />
+                          </div>
+                          <div className="space-y-2.5">
+                            <label className="text-xs font-semibold text-gray-400">Model</label>
+                            <select
+                              required value={formData.model}
+                              onChange={(e) => handleModelChange(e.target.value)}
+                              className={`${inputClass} appearance-none cursor-pointer`}
+                            >
+                              <option value="" disabled>Select Model</option>
+                              {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="space-y-2.5">
+                          <label className="text-xs font-semibold text-gray-400">Description</label>
+                          <input
+                            type="text" value={formData.description}
+                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            className={inputClass} placeholder="What does this agent do?"
+                          />
+                        </div>
+                      </div>
 
-            {/* Tab Content */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {configTab === 'soul' && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] text-gray-600">Define the core personality.</p>
-                    <button
-                      type="button" onClick={handleAutoFill}
-                      disabled={isGenerating || !formData.name}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-lg transition-all shadow-sm disabled:opacity-40"
-                    >
-                      {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      Auto-fill Soul
-                    </button>
-                  </div>
-                  {[
-                    { label: 'Personality Tone', options: TONE_OPTIONS, field: 'personality_tone', activeColor: 'bg-indigo-600 border-indigo-600' },
-                    { label: 'Communication Style', options: STYLE_OPTIONS, field: 'communication_style', activeColor: 'bg-emerald-600 border-emerald-600' },
-                  ].map(({ label, options, field, activeColor }) => (
-                    <div key={field} className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">{label}</label>
+                        {/* Tabs */}
+                        <div className="flex items-center gap-2 px-6 py-4 border-b border-[#1a1a2e] bg-[#080810]">
+                          {[
+                            { key: 'soul' as const, icon: Heart, label: 'Soul' },
+                            { key: 'mind' as const, icon: Brain, label: 'Mind' },
+                            { key: 'memory' as const, icon: Wrench, label: 'Memory' },
+                          ].map(tab => (
+                            <button
+                              key={tab.key} type="button"
+                              onClick={() => setConfigTab(tab.key)}
+                              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                                configTab === tab.key
+                                  ? 'bg-indigo-600 text-white shadow-sm'
+                                  : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                              }`}
+                            >
+                              <tab.icon className="w-4 h-4" />
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+
+                          {/* Tab Content */}
+                          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+                            {configTab === 'soul' && (
+                              <>
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm text-gray-500">Define the core personality.</p>
+                                  <button
+                                    type="button" onClick={handleAutoFill}
+                                    disabled={isGenerating || !formData.name}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-lg transition-all shadow-sm disabled:opacity-40"
+                                  >
+                                    {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                    Auto-fill Soul
+                                  </button>
+                                </div>
+                                {[
+                                  { label: 'Personality Tone', options: TONE_OPTIONS, field: 'personality_tone', activeColor: 'bg-indigo-600 border-indigo-600' },
+                                  { label: 'Communication Style', options: STYLE_OPTIONS, field: 'communication_style', activeColor: 'bg-emerald-600 border-emerald-600' },
+                                ].map(({ label, options, field, activeColor }) => (
+                                  <div key={field} className="space-y-3">
+                                    <label className="text-xs font-semibold text-gray-400">{label}</label>
                       <div className="flex flex-wrap gap-1.5">
                         {options.map(opt => (
                           <button
                             key={opt} type="button"
-                            onClick={() => setFormData({ ...formData, [field]: (formData as Record<string, string>)[field] === opt ? '' : opt })}
+                            onClick={() => setFormData({ ...formData, [field]: (formData as Record<string, any>)[field] === opt ? '' : opt })}
                             className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                              (formData as Record<string, string>)[field] === opt
+                              (formData as Record<string, any>)[field] === opt
                                 ? `${activeColor} text-white`
                                 : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
                             }`}
@@ -330,8 +413,8 @@ export function AgentsView() {
                       </div>
                     </div>
                   ))}
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Traits</label>
+                                  <div className="space-y-3">
+                                    <label className="text-xs font-semibold text-gray-400">Traits</label>
                     <div className="flex flex-wrap gap-1.5">
                       {TRAIT_OPTIONS.map(trait => {
                         const traits: string[] = (() => { try { return JSON.parse(formData.personality_traits); } catch { return []; } })();
@@ -355,22 +438,22 @@ export function AgentsView() {
                       })}
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">System Prompt</label>
-                    <textarea
-                      rows={4} value={formData.system_prompt}
-                      onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
-                      className={`${inputClass} resize-none`}
-                      placeholder="Custom instructions for this agent..."
-                    />
-                  </div>
-                </>
-              )}
+                                  <div className="space-y-2.5">
+                                    <label className="text-xs font-semibold text-gray-400">System Prompt</label>
+                                    <textarea
+                                      rows={4} value={formData.system_prompt}
+                                      onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+                                      className={`${inputClass} resize-none`}
+                                      placeholder="Custom instructions for this agent..."
+                                    />
+                                  </div>
+                                </>
+                              )}
 
-              {configTab === 'mind' && (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Enabled Tools</label>
+                              {configTab === 'mind' && (
+                                <>
+                                  <div className="space-y-3">
+                                    <label className="text-xs font-semibold text-gray-400">Enabled Tools</label>
                     <div className="space-y-1.5">
                       {availableTools.map(tool => {
                         const enabled: string[] = (() => { try { return JSON.parse(formData.enabled_tools); } catch { return []; } })();
@@ -394,8 +477,8 @@ export function AgentsView() {
                       })}
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Reasoning Style</label>
+                                  <div className="space-y-3">
+                                    <label className="text-xs font-semibold text-gray-400">Reasoning Style</label>
                     <div className="flex flex-wrap gap-1.5">
                       {REASONING_OPTIONS.map(r => (
                         <button
@@ -415,50 +498,63 @@ export function AgentsView() {
                 </>
               )}
 
-              {configTab === 'memory' && (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Persistent Context</label>
-                    <p className="text-[10px] text-gray-700">Background information this agent always knows:</p>
-                    <textarea
-                      rows={5} value={formData.memory_context}
-                      onChange={(e) => setFormData({ ...formData, memory_context: e.target.value })}
-                      className={`${inputClass} resize-none`}
-                      placeholder="e.g. The user's name is Tushar..."
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Standing Instructions</label>
-                    <p className="text-[10px] text-gray-700">Rules this agent always follows:</p>
-                    <textarea
-                      rows={5} value={formData.memory_instructions}
-                      onChange={(e) => setFormData({ ...formData, memory_instructions: e.target.value })}
-                      className={`${inputClass} resize-none`}
-                      placeholder="e.g. Always respond in bullet points..."
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+                              {configTab === 'memory' && (
+                                <>
+                                  <div className="space-y-2.5">
+                                    <label className="text-xs font-semibold text-gray-400">Persistent Context</label>
+                                    <p className="text-sm text-gray-500">Background information this agent always knows:</p>
+                                    <textarea
+                                      rows={5} value={formData.memory_context}
+                                      onChange={(e) => setFormData({ ...formData, memory_context: e.target.value })}
+                                      className={`${inputClass} resize-none`}
+                                      placeholder="e.g. The user's name is Tushar..."
+                                    />
+                                  </div>
+                                  <div className="space-y-2.5">
+                                    <label className="text-xs font-semibold text-gray-400">Standing Instructions</label>
+                                    <p className="text-sm text-gray-500">Rules this agent always follows:</p>
+                                    <textarea
+                                      rows={5} value={formData.memory_instructions}
+                                      onChange={(e) => setFormData({ ...formData, memory_instructions: e.target.value })}
+                                      className={`${inputClass} resize-none`}
+                                      placeholder="e.g. Always respond in bullet points..."
+                                    />
+                                  </div>
+                                </>
+                              )}
+                          </div>
 
-            {/* Footer */}
-            <div className="flex items-center gap-3 px-5 py-4 border-t border-[#1a1a2e] flex-shrink-0">
-              <button
-                type="submit"
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl transition-all text-sm shadow-lg"
-              >
-                {editingAgent ? 'Save Changes' : 'Create Agent'}
-              </button>
-              <button
-                type="button" onClick={() => setShowPanel(false)}
-                className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-300 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+                          {/* Footer */}
+                          <div className="flex items-center gap-3 px-6 py-5 border-t border-[#1a1a2e] flex-shrink-0 bg-[#080810]">
+                            <motion.button
+                              type="submit"
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-all text-sm shadow-lg shadow-indigo-500/30"
+                              style={{ padding: '16px 32px' }}
+                            >
+                              {editingAgent ? 'Save Changes' : 'Create Agent'}
+                            </motion.button>
+                            <Dialog.Close asChild>
+                              <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                className="flex-1 text-sm font-semibold text-gray-400 hover:text-gray-200 bg-[#141426] hover:bg-[#1c1c30] rounded-lg transition-all border border-[#1c1c30]"
+                                style={{ padding: '16px 32px' }}
+                              >
+                                Cancel
+                              </motion.button>
+                            </Dialog.Close>
+                          </div>
+                        </form>
+                      </motion.div>
+                    </Dialog.Content>
+                  </>
+                )}
+              </AnimatePresence>
+            </Dialog.Portal>
+          </Dialog.Root>
         </div>
-      )}
-    </div>
-  );
-}
+      );
+    }
