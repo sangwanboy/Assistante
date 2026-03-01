@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { AnimatedSidebar } from '../sidebar/AnimatedSidebar';
-import { SidebarInset } from '../ui/sidebar/sidebar-inset';
 
 export function ComponentsView() {
   const [activeView, setActiveView] = useState('components');
@@ -21,7 +20,7 @@ export function ComponentsView() {
         onViewChange={handleViewChange}
       />
 
-      <SidebarInset className="flex flex-col min-w-0">
+      <div className="flex flex-col min-w-0 flex-1">
         <div className="flex-1 overflow-y-auto p-8">
           <div className="max-w-7xl mx-auto">
             <h1 className="text-4xl font-bold mb-8 text-gray-100">Components</h1>
@@ -53,7 +52,7 @@ export function ComponentsView() {
             </div>
           </div>
         </div>
-      </SidebarInset>
+      </div>
     </div>
   );
 }
