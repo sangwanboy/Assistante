@@ -82,19 +82,19 @@ export function KnowledgeView() {
   ];
 
   return (
-    <div className="flex-1 flex min-h-0 bg-[#080810]">
+    <div className="flex-1 flex min-h-0 bg-[#080810]" style={{ padding: '15px' }}>
       <div className="flex-1 flex flex-col overflow-hidden p-8">
         <div className="max-w-7xl mx-auto w-full flex flex-col flex-1 min-h-0">
           {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between" style={{ marginBottom: '10px' }}>
             <div>
-              <h1 className="text-3xl font-bold text-white flex items-center gap-3 mb-2">
+              <h1 className="text-3xl font-bold text-white flex items-center gap-3" style={{ marginBottom: '10px' }}>
                 <div className="w-10 h-10 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shadow-lg shadow-violet-500/20">
                   <Database className="w-5 h-5 text-violet-400" />
                 </div>
                 Knowledge Base
               </h1>
-              <p className="text-sm text-gray-500">Upload documents to power your agents' RAG capabilities.</p>
+              <p className="text-sm text-gray-500" style={{ marginBottom: '0', marginTop: '0' }}>Upload documents to power your agents' RAG capabilities.</p>
             </div>
             <div className="relative">
               <input
@@ -108,12 +108,21 @@ export function KnowledgeView() {
                 disabled={isUploading}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold transition-all shadow-lg shadow-violet-500/30 disabled:opacity-40"
+                className="flex items-center gap-2 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-95"
+                style={{
+                  padding: '14px 28px',
+                  fontSize: '15px',
+                  borderRadius: '10px',
+                  backgroundColor: '#7c3aed',
+                  border: 'none',
+                  boxShadow: '0 4px 14px rgba(124, 58, 237, 0.4)',
+                  cursor: isUploading ? 'not-allowed' : 'pointer',
+                }}
               >
                 {isUploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ flexShrink: 0 }} />
                 ) : (
-                  <Upload className="w-4 h-4" />
+                  <Upload className="w-5 h-5" style={{ flexShrink: 0 }} />
                 )}
                 {isUploading ? 'Uploading...' : 'Upload Document'}
               </motion.button>
@@ -141,57 +150,127 @@ export function KnowledgeView() {
           </AnimatePresence>
 
           {/* Filter tabs + Search */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-1 bg-[#0e0e1c] border border-[#1c1c30] rounded-lg p-1">
+          <div className="flex items-center justify-between mb-6" style={{ marginTop: '10px', marginBottom: '10px' }}>
+            <div className="inline-flex rounded-xl bg-[#0e0e1c] border border-[#1c1c30] p-1 shadow-inner" style={{ padding: '8px' }}>
               {filterTabs.map(tab => (
                 <motion.button
                   key={tab.key}
                   onClick={() => setFilterType(tab.key)}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  whileHover={{ scale: filterType === tab.key ? 1 : 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={`relative min-w-[72px] px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                     filterType === tab.key
-                      ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
-                      : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                      ? 'text-white'
+                      : 'text-gray-500 hover:text-gray-300'
                   }`}
+                  style={{ padding: '8px' }}
                 >
-                  {tab.label}
+                  {filterType === tab.key && (
+                    <motion.span
+                      layoutId="knowledge-filter-pill"
+                      className="absolute inset-0 bg-violet-600 rounded-lg shadow-md shadow-violet-500/25"
+                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10">{tab.label}</span>
                 </motion.button>
               ))}
             </div>
-            <div className="relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none z-10">
-                <Search className="w-4 h-4 text-gray-600" />
+            <div style={{ position: 'relative' }}>
+              <div
+                className="flex items-center pointer-events-none"
+                style={{
+                  position: 'absolute',
+                  left: 14,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  zIndex: 10,
+                }}
+              >
+                <Search className="w-5 h-5" style={{ color: '#6b7280' }} />
               </div>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Filter..."
-                className="pl-10 pr-4 py-2.5 text-sm bg-[#0e0e1c] border border-[#1c1c30] rounded-lg focus:border-violet-500/50 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.15)] text-gray-300 placeholder-gray-600 w-56 transition-all"
+                placeholder="Search documents..."
+                className="placeholder-[#6b7280]"
+                style={{
+                  width: 240,
+                  padding: '12px 16px 12px 44px',
+                  fontSize: 14,
+                  color: '#d1d5db',
+                  backgroundColor: '#0e0e1c',
+                  border: '1px solid #1c1c30',
+                  borderRadius: 10,
+                  outline: 'none',
+                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#1c1c30';
+                  e.target.style.boxShadow = 'none';
+                }}
               />
             </div>
           </div>
 
           {/* Table */}
-          <div className="bg-[#0e0e1c] rounded-xl border border-[#1c1c30] flex-1 overflow-hidden flex flex-col shadow-lg">
-            <div className="grid grid-cols-[1fr_80px_100px_140px_140px_80px] gap-4 px-6 py-4 border-b border-[#1c1c30] bg-[#080810]">
+          <div
+            className="flex-1 overflow-hidden flex flex-col"
+            style={{
+              backgroundColor: '#0e0e1c',
+              borderRadius: '12px',
+              border: '1px solid #1c1c30',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div
+              className="grid grid-cols-[1fr_80px_100px_140px_140px_80px] gap-4 items-center"
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid #1c1c30',
+                backgroundColor: '#080810',
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#6b7280',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
               {['FILE NAME', 'TYPE', 'STATUS', 'LAST INDEXED', 'CONNECTED AGENTS', ''].map((h, i) => (
-                <span key={i} className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{h}</span>
+                <span key={i}>{h}</span>
               ))}
             </div>
 
             <div className="flex-1 overflow-y-auto">
               {isLoading ? (
-                <div className="flex items-center justify-center py-20">
+                <div
+                  className="flex items-center justify-center"
+                  style={{ padding: '80px 24px' }}
+                >
                   <Loader2 className="w-6 h-6 text-violet-500 animate-spin" />
                 </div>
               ) : filteredDocs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20">
-                  <div className="w-16 h-16 rounded-xl bg-[#141426] border border-[#1c1c30] flex items-center justify-center mb-4">
-                    <FileText className="w-8 h-8 text-gray-700" />
+                <div
+                  className="flex flex-col items-center justify-center"
+                  style={{ padding: '80px 24px' }}
+                >
+                  <div
+                    className="rounded-xl flex items-center justify-center mb-4"
+                    style={{
+                      width: 64,
+                      height: 64,
+                      backgroundColor: '#141426',
+                      border: '1px solid #1c1c30',
+                    }}
+                  >
+                    <FileText className="w-8 h-8" style={{ color: '#4b5563' }} />
                   </div>
-                  <p className="text-base font-semibold text-gray-400">No documents found.</p>
+                  <p style={{ fontSize: 16, fontWeight: 600, color: '#9ca3af' }}>No documents found.</p>
                 </div>
               ) : (
                 <AnimatePresence>
@@ -202,25 +281,67 @@ export function KnowledgeView() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ duration: 0.2, delay: index * 0.03 }}
-                      className="grid grid-cols-[1fr_80px_100px_140px_140px_80px] gap-4 px-6 py-4 border-b border-[#1a1a2e] hover:bg-white/5 transition-colors items-center cursor-pointer group"
+                      className="grid grid-cols-[1fr_80px_100px_140px_140px_80px] gap-4 items-center cursor-pointer group"
                       onClick={() => setPreviewDoc(doc)}
+                      style={{
+                        padding: '18px 24px',
+                        borderBottom: '1px solid #1a1a2e',
+                        transition: 'background-color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
-                          <FileText className="w-4 h-4 text-violet-400" />
+                        <div
+                          className="rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{
+                            width: 36,
+                            height: 36,
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            border: '1px solid rgba(139, 92, 246, 0.2)',
+                          }}
+                        >
+                          <FileText className="w-4 h-4" style={{ color: '#a78bfa' }} />
                         </div>
-                        <span className="font-medium text-white truncate text-sm">{doc.filename}</span>
+                        <span
+                          className="font-medium truncate"
+                          style={{ fontSize: 14, color: '#ffffff' }}
+                        >
+                          {doc.filename}
+                        </span>
                       </div>
-                      <span className="text-xs font-bold text-gray-500 uppercase">{getFileExt(doc)}</span>
-                      <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full w-fit">Indexed</span>
-                      <span className="text-xs text-gray-500">{new Date(doc.created_at).toLocaleDateString()}</span>
-                      <span className="text-xs text-gray-600">—</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>
+                        {getFileExt(doc)}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: '#34d399',
+                          backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                          border: '1px solid rgba(52, 211, 153, 0.2)',
+                          padding: '6px 10px',
+                          borderRadius: 9999,
+                          width: 'fit-content',
+                        }}
+                      >
+                        Indexed
+                      </span>
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>
+                        {new Date(doc.created_at).toLocaleDateString()}
+                      </span>
+                      <span style={{ fontSize: 12, color: '#4b5563' }}>—</span>
                       <div className="flex items-center gap-1.5">
                         <motion.button
                           onClick={(e) => { e.stopPropagation(); setPreviewDoc(doc); }}
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
-                          className="p-2 hover:bg-indigo-500/10 rounded-lg text-gray-500 hover:text-indigo-400 transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 hover:bg-indigo-500/10 hover:text-indigo-400"
+                          style={{ color: '#9ca3af' }}
                         >
                           <Eye className="w-4 h-4" />
                         </motion.button>
@@ -228,7 +349,8 @@ export function KnowledgeView() {
                           onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
-                          className="p-2 hover:bg-red-500/10 rounded-lg text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
+                          style={{ color: '#9ca3af' }}
                         >
                           <Trash2 className="w-4 h-4" />
                         </motion.button>

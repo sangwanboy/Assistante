@@ -15,9 +15,9 @@ import { api } from '../../services/api';
 import type { Workflow as WorkflowModel } from '../../types/workflow';
 
 const templates = [
-    { name: 'Summarize & Notify', desc: 'Summarize article and notify via email.', icon: Brain, color: 'bg-blue-50 text-blue-600' },
-    { name: 'Draft & Review', desc: 'Description information, draft and review reports.', icon: Mail, color: 'bg-purple-50 text-purple-600' },
-    { name: 'Draft & Review', desc: 'Generates summaries and reporting analysis.', icon: Bell, color: 'bg-orange-50 text-orange-600' },
+    { name: 'Summarize & Notify', desc: 'Summarize article and notify via email.', icon: Brain, iconBg: 'rgba(59, 130, 246, 0.15)', iconColor: '#60a5fa' },
+    { name: 'Draft & Review', desc: 'Description information, draft and review reports.', icon: Mail, iconBg: 'rgba(139, 92, 246, 0.15)', iconColor: '#a78bfa' },
+    { name: 'Draft & Review', desc: 'Generates summaries and reporting analysis.', icon: Bell, iconBg: 'rgba(249, 115, 22, 0.15)', iconColor: '#fb923c' },
 ];
 
 const nodeLibrary = [
@@ -145,22 +145,44 @@ export function WorkflowsView() {
         return (
             <div className="h-full flex">
                 {/* Node Library Sidebar */}
-                <div className="w-[220px] border-r border-gray-200 bg-[#fafbfc] flex flex-col flex-shrink-0">
-                    <div className="px-4 py-3 border-b border-gray-100">
-                        <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Node Library</h3>
+                <div
+                    className="flex flex-col flex-shrink-0"
+                    style={{ width: 220, borderRight: '1px solid #1c1c30', backgroundColor: '#0a0a14' }}
+                >
+                    <div style={{ padding: '12px 16px', borderBottom: '1px solid #1c1c30' }}>
+                        <h3 style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', letterSpacing: '0.05em', textTransform: 'uppercase', margin: 0 }}>Node Library</h3>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                    <div className="flex-1 overflow-y-auto" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 20 }}>
                         {nodeLibrary.map(cat => (
                             <div key={cat.category}>
-                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">{cat.category}</div>
-                                <div className="space-y-1">
+                                <div style={{ fontSize: 10, fontWeight: 700, color: '#4b5563', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>{cat.category}</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                     {cat.items.map(item => (
                                         <button
                                             key={item.sub_type}
+                                            type="button"
                                             onClick={() => addNodeFromLibrary(item.sub_type, cat.category === 'Triggers')}
-                                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-gray-700 hover:bg-white hover:border-blue-200 border border-transparent hover:shadow-sm transition-all text-left"
+                                            className="w-full flex items-center gap-2.5 text-left transition-all"
+                                            style={{
+                                                padding: '10px 12px',
+                                                fontSize: 12,
+                                                fontWeight: 500,
+                                                color: '#d1d5db',
+                                                backgroundColor: 'transparent',
+                                                border: '1px solid transparent',
+                                                borderRadius: 8,
+                                                cursor: 'pointer',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                                                e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.2)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = 'transparent';
+                                                e.currentTarget.style.borderColor = 'transparent';
+                                            }}
                                         >
-                                            <item.icon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                            <item.icon className="w-4 h-4 flex-shrink-0" style={{ color: '#6b7280' }} />
                                             {item.label}
                                         </button>
                                     ))}
@@ -172,35 +194,50 @@ export function WorkflowsView() {
 
                 {/* Main canvas */}
                 <div className="flex-1 flex flex-col">
-                    <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200">
+                    <div
+                        className="flex items-center justify-between"
+                        style={{ padding: '12px 20px', backgroundColor: '#0a0a14', borderBottom: '1px solid #1c1c30' }}
+                    >
                         <div className="flex items-center gap-3">
                             <button
+                                type="button"
                                 onClick={() => setSelectedWorkflow(null)}
-                                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                                className="p-2 rounded-lg transition-colors hover:bg-white/5"
+                                style={{ color: '#6b7280' }}
                             >
                                 <ArrowLeft className="w-4 h-4" />
                             </button>
                             <div>
-                                <h2 className="text-sm font-bold text-gray-900">{selectedWorkflow.name}</h2>
-                                <p className="text-[10px] text-green-600 font-bold flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                                <h2 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', margin: 0 }}>{selectedWorkflow.name}</h2>
+                                <p className="flex items-center gap-1" style={{ fontSize: 11, color: '#34d399', fontWeight: 600, margin: '4px 0 0' }}>
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#34d399' }} />
                                     Active
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={handleSave}
-                                disabled={isSaving}
-                                className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
-                            >
-                                <Save className="w-3.5 h-3.5" />
-                                {isSaving ? 'Saving...' : 'Save Draft'}
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="flex items-center gap-2 transition-all disabled:opacity-50"
+                            style={{
+                                padding: '10px 16px',
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: '#fff',
+                                backgroundColor: '#7c3aed',
+                                border: 'none',
+                                borderRadius: 8,
+                                cursor: isSaving ? 'not-allowed' : 'pointer',
+                                boxShadow: '0 2px 8px rgba(124, 58, 237, 0.3)',
+                            }}
+                        >
+                            <Save className="w-4 h-4" />
+                            {isSaving ? 'Saving...' : 'Save Draft'}
+                        </button>
                     </div>
 
-                    <div className="flex-1 bg-gray-50 relative">
+                    <div className="flex-1 relative" style={{ backgroundColor: '#080810' }}>
                         <ReactFlow
                             nodes={nodes}
                             edges={edges}
@@ -209,12 +246,12 @@ export function WorkflowsView() {
                             onConnect={onConnect}
                             fitView
                         >
-                            <Background color="#ddd" gap={20} />
+                            <Background color="#2a2a45" gap={20} />
                             <Controls />
                             <MiniMap
-                                nodeColor="#6366f1"
-                                maskColor="rgba(0,0,0,0.08)"
-                                style={{ border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                                nodeColor="#7c3aed"
+                                maskColor="rgba(0,0,0,0.5)"
+                                style={{ border: '1px solid #1c1c30', borderRadius: 8, backgroundColor: '#0e0e1c' }}
                             />
                         </ReactFlow>
                     </div>
@@ -223,23 +260,55 @@ export function WorkflowsView() {
         );
     }
 
+    const sectionHeaderStyle: React.CSSProperties = {
+        fontSize: 11,
+        fontWeight: 700,
+        color: '#6b7280',
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        marginBottom: 16,
+    };
+    const cardStyle: React.CSSProperties = {
+        backgroundColor: '#0e0e1c',
+        borderRadius: 12,
+        border: '1px solid #1c1c30',
+        padding: 20,
+        boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+    };
+
     // ── LIST VIEW WITH TEMPLATES ──
     return (
-        <div className="h-full flex flex-col p-6 bg-[#f8f9fa] overflow-y-auto">
-            <div className="max-w-6xl mx-auto w-full space-y-6 pb-12">
+        <div className="h-full flex flex-col overflow-y-auto" style={{ padding: 24, backgroundColor: '#080810' }}>
+            <div className="max-w-6xl mx-auto w-full" style={{ display: 'flex', flexDirection: 'column', gap: 32, paddingBottom: 48 }}>
 
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                            <Workflow className="w-5 h-5 text-indigo-600" />
+                        <h1 className="flex items-center gap-3" style={{ fontSize: 28, fontWeight: 700, color: '#ffffff', marginBottom: 8 }}>
+                            <div
+                                className="rounded-xl flex items-center justify-center"
+                                style={{ width: 40, height: 40, backgroundColor: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.3)' }}
+                            >
+                                <Workflow className="w-5 h-5" style={{ color: '#a78bfa' }} />
+                            </div>
                             Workflows Engine
                         </h1>
-                        <p className="text-sm text-gray-500 mt-0.5">Design node-based automation graphs for your agents to execute.</p>
+                        <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>Design node-based automation graphs for your agents to execute.</p>
                     </div>
                     <button
                         onClick={handleCreate}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
+                        className="flex items-center gap-2 transition-all hover:opacity-95"
+                        style={{
+                            padding: '12px 24px',
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: '#ffffff',
+                            backgroundColor: '#7c3aed',
+                            border: 'none',
+                            borderRadius: 10,
+                            boxShadow: '0 4px 14px rgba(124, 58, 237, 0.4)',
+                            cursor: 'pointer',
+                        }}
                     >
                         <Plus className="w-4 h-4" />
                         Create Workflow
@@ -248,18 +317,49 @@ export function WorkflowsView() {
 
                 {/* Templates Gallery */}
                 <div>
-                    <h2 className="text-sm font-bold text-gray-700 mb-3">Available Templates</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <h2 style={sectionHeaderStyle}>Available Templates</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
                         {templates.map((tpl, i) => (
-                            <div key={i} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all">
-                                <div className={`w-9 h-9 rounded-xl ${tpl.color} flex items-center justify-center mb-3`}>
-                                    <tpl.icon className="w-4 h-4" />
+                            <div
+                                key={i}
+                                style={{
+                                    ...cardStyle,
+                                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.3)';
+                                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = '#1c1c30';
+                                    e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+                                }}
+                            >
+                                <div
+                                    className="rounded-xl flex items-center justify-center"
+                                    style={{ width: 40, height: 40, backgroundColor: tpl.iconBg, marginBottom: 12 }}
+                                >
+                                    <tpl.icon className="w-5 h-5" style={{ color: tpl.iconColor }} />
                                 </div>
-                                <h3 className="text-sm font-bold text-gray-900 mb-0.5">{tpl.name}</h3>
-                                <p className="text-[11px] text-gray-500 mb-3 line-clamp-2">{tpl.desc}</p>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-gray-400 font-medium">⚙ Model</span>
-                                    <button className="ml-auto px-3 py-1 bg-indigo-600 text-white text-[10px] font-bold rounded-lg hover:bg-indigo-700 transition-colors">
+                                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', margin: '0 0 6px' }}>{tpl.name}</h3>
+                                <p className="line-clamp-2" style={{ fontSize: 12, color: '#6b7280', margin: '0 0 14px' }}>{tpl.desc}</p>
+                                <div className="flex items-center gap-2" style={{ alignItems: 'center' }}>
+                                    <span style={{ fontSize: 11, color: '#4b5563', fontWeight: 500 }}>Model</span>
+                                    <button
+                                        type="button"
+                                        className="transition-all hover:opacity-95"
+                                        style={{
+                                            marginLeft: 'auto',
+                                            padding: '8px 14px',
+                                            fontSize: 12,
+                                            fontWeight: 600,
+                                            color: '#fff',
+                                            backgroundColor: '#7c3aed',
+                                            border: 'none',
+                                            borderRadius: 8,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
                                         Use Template
                                     </button>
                                 </div>
@@ -270,18 +370,49 @@ export function WorkflowsView() {
 
                 {/* Suggested Templates */}
                 <div>
-                    <h2 className="text-sm font-bold text-gray-700 mb-3">Suggested Templates</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <h2 style={sectionHeaderStyle}>Suggested Templates</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
                         {templates.map((tpl, i) => (
-                            <div key={`suggested-${i}`} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all">
-                                <div className={`w-9 h-9 rounded-xl ${tpl.color} flex items-center justify-center mb-3`}>
-                                    <tpl.icon className="w-4 h-4" />
+                            <div
+                                key={`suggested-${i}`}
+                                style={{
+                                    ...cardStyle,
+                                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.3)';
+                                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = '#1c1c30';
+                                    e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+                                }}
+                            >
+                                <div
+                                    className="rounded-xl flex items-center justify-center"
+                                    style={{ width: 40, height: 40, backgroundColor: tpl.iconBg, marginBottom: 12 }}
+                                >
+                                    <tpl.icon className="w-5 h-5" style={{ color: tpl.iconColor }} />
                                 </div>
-                                <h3 className="text-sm font-bold text-gray-900 mb-0.5">{tpl.name}</h3>
-                                <p className="text-[11px] text-gray-500 mb-3 line-clamp-2">{tpl.desc}</p>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-gray-400 font-medium">⚙ Model</span>
-                                    <button className="ml-auto px-3 py-1 bg-indigo-600 text-white text-[10px] font-bold rounded-lg hover:bg-indigo-700 transition-colors">
+                                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', margin: '0 0 6px' }}>{tpl.name}</h3>
+                                <p className="line-clamp-2" style={{ fontSize: 12, color: '#6b7280', margin: '0 0 14px' }}>{tpl.desc}</p>
+                                <div className="flex items-center gap-2" style={{ alignItems: 'center' }}>
+                                    <span style={{ fontSize: 11, color: '#4b5563', fontWeight: 500 }}>Model</span>
+                                    <button
+                                        type="button"
+                                        className="transition-all hover:opacity-95"
+                                        style={{
+                                            marginLeft: 'auto',
+                                            padding: '8px 14px',
+                                            fontSize: 12,
+                                            fontWeight: 600,
+                                            color: '#fff',
+                                            backgroundColor: '#7c3aed',
+                                            border: 'none',
+                                            borderRadius: 8,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
                                         Use Template
                                     </button>
                                 </div>
@@ -293,27 +424,53 @@ export function WorkflowsView() {
                 {/* Your Workflows */}
                 {workflows.length > 0 && (
                     <div>
-                        <h2 className="text-sm font-bold text-gray-700 mb-3">Your Workflows</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <h2 style={sectionHeaderStyle}>Your Workflows</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3" style={{ gap: 16 }}>
                             {workflows.map(wf => (
                                 <div
                                     key={wf.id}
                                     onClick={() => setSelectedWorkflow(wf)}
-                                    className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group"
+                                    style={{
+                                        ...cardStyle,
+                                        cursor: 'pointer',
+                                        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+                                        e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.25)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = '#1c1c30';
+                                        e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+                                    }}
                                 >
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-                                            <Play className="w-4 h-4 ml-0.5" />
+                                    <div className="flex justify-between items-start" style={{ marginBottom: 12 }}>
+                                        <div
+                                            className="rounded-xl flex items-center justify-center"
+                                            style={{ width: 40, height: 40, backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa' }}
+                                        >
+                                            <Play className="w-4 h-4" style={{ marginLeft: 2 }} />
                                         </div>
-                                        <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider ${wf.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                        <span
+                                            style={{
+                                                fontSize: 10,
+                                                fontWeight: 700,
+                                                letterSpacing: '0.05em',
+                                                padding: '4px 8px',
+                                                borderRadius: 9999,
+                                                backgroundColor: wf.is_active ? 'rgba(52, 211, 153, 0.1)' : '#141426',
+                                                color: wf.is_active ? '#34d399' : '#6b7280',
+                                                border: wf.is_active ? '1px solid rgba(52, 211, 153, 0.2)' : '1px solid #1c1c30',
+                                            }}
+                                        >
                                             {wf.is_active ? 'ACTIVE' : 'DRAFT'}
-                                        </div>
+                                        </span>
                                     </div>
-                                    <h3 className="text-sm font-bold text-gray-900 mb-0.5">{wf.name}</h3>
-                                    <p className="text-[11px] text-gray-500 line-clamp-2 mb-3">
+                                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', margin: '0 0 6px' }}>{wf.name}</h3>
+                                    <p className="line-clamp-2" style={{ fontSize: 12, color: '#6b7280', margin: '0 0 12px' }}>
                                         {wf.description || 'No description provided.'}
                                     </p>
-                                    <div className="text-[10px] text-gray-400 font-medium">
+                                    <div style={{ fontSize: 11, color: '#4b5563', fontWeight: 500 }}>
                                         Created {new Date(wf.created_at).toLocaleDateString()}
                                     </div>
                                 </div>

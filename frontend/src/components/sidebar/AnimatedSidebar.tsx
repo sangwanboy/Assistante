@@ -21,7 +21,6 @@ const NAV_ITEMS = [
   { id: 'knowledge', label: 'Knowledge Base', icon: Database },
   { id: 'tools',     label: 'Tools & Skills', icon: Zap },
   { id: 'workflows', label: 'Workflows',      icon: Sparkles },
-  { id: 'settings',  label: 'Settings',       icon: SettingsIcon },
 ];
 
 export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Ready' }: AnimatedSidebarProps) {
