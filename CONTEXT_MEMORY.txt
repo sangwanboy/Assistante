@@ -562,17 +562,20 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
   [x] Home: Chat input and Recent Events pushed below fold on smaller viewports
   [x] Home: Redundant "Ready" / "Switched to Ready" status text at bottom
   [x] Home: "Chat" / "Workspace" toggle buttons cramped (nearly merged text)
-  [ ] Home: "4 online" badge slightly misaligned with "Active Agents" header
-  [ ] Home: CrossClaw logo has subtle white box-shadow that doesn't blend with sidebar
+  [x] Home: "4 online" badge slightly misaligned with "Active Agents" header
+  [x] Home: CrossClaw logo has subtle white box-shadow that doesn't blend with sidebar
   [x] Agents: "Latency" label clipped at right edge of cards on some viewport widths
-  [ ] Agents: Config panel header cramped near Close button
+  [x] Agents: Config panel header cramped near Close button
   [x] Agents: "Requests/sec" sparkline labels faint (low contrast)
   [x] Workflows: "Use Template" buttons very small (~10px font), hard to click
-  [ ] Tools: Custom tool cards have no fixed height (uneven grid if descriptions vary)
-  [ ] Chat: "Switched to chat" toast overlaps sidebar border on navigation
-  [ ] General: Add loading spinners for long-running delegation tasks
-  [ ] General: Add error toast notifications for failed API calls
-  [ ] Knowledge: "AI" icon on filter tabs partially cut off at left edge
+  [x] Tools: Custom tool cards have no fixed height (uneven grid if descriptions vary)
+  [x] Chat: "Switched to chat" toast overlaps sidebar border on navigation
+  [x] General: Add loading spinners for long-running delegation tasks
+  [x] General: Add error toast notifications for failed API calls
+  [x] Knowledge: "AI" icon on filter tabs partially cut off at left edge (Not reproducable)
+
+  --- RECENT FIXES ---
+  [2026-03-02] Fixed ChatService. chat and stream_chat routines to explicitly enforce agent name/Description and insert personality fields (Soul, Mind, Memory) before the conversation. Reinstalled backend using isolated Python 3.12 via `uv run --python 3.12` to fix Pydantic incompatibility with Python 3.14.
 
 ================================================================================
                                  END

@@ -8,7 +8,8 @@ import { useChatStore } from '../../stores/chatStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAgentStore } from '../../stores/agentStore';
 import { useChannelStore } from '../../stores/channelStore';
-import { Bot, Search, BookOpen, Users, MessageSquare, Plus, X } from 'lucide-react';
+import { Bot, Search, BookOpen, Users, MessageSquare, Plus, X, AlertCircle } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 export function ChatView() {
   const {
@@ -67,7 +68,7 @@ export function ChatView() {
   const isCustomChannel = activeChannel && !activeChannel.is_announcement;
 
   return (
-    <div className="flex-1 flex min-h-0 bg-[#080810]" style={{ }}>
+    <div className="flex-1 flex min-h-0 bg-[#080810]" style={{}}>
       {/* Left pane — Agent list */}
       <div className="w-[260px] border-r border-[#1a1a2e] flex flex-col bg-[#0a0a14] flex-shrink-0">
         <div className="p-4 border-b border-[#1a1a2e]">
@@ -91,29 +92,25 @@ export function ChatView() {
             <div className="p-2 border-b border-[#1a1a2e]">
               <button
                 onClick={() => startOrLoadChannelChat(announcementsChannel)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                  conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id
-                    ? 'bg-indigo-600 text-indigo-100 border border-indigo-500/30 shadow-lg shadow-indigo-500/20'
-                    : 'text-gray-500 hover:bg-white/5 border border-transparent hover:text-gray-300'
-                }`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id
+                  ? 'bg-indigo-600 text-indigo-100 border border-indigo-500/30 shadow-lg shadow-indigo-500/20'
+                  : 'text-gray-500 hover:bg-white/5 border border-transparent hover:text-gray-300'
+                  }`}
               >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id
-                    ? 'bg-white/20 text-white'
-                    : 'bg-[#141426] text-gray-500'
-                }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id
+                  ? 'bg-white/20 text-white'
+                  : 'bg-[#141426] text-gray-500'
+                  }`}>
                   <MessageSquare className="w-4 h-4" />
                 </div>
                 <div className="text-left flex-1 min-w-0">
-                  <div className={`text-sm font-semibold truncate flex items-center gap-2 ${
-                    conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id ? 'text-white' : ''
-                  }`}>
+                  <div className={`text-sm font-semibold truncate flex items-center gap-2 ${conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id ? 'text-white' : ''
+                    }`}>
                     {announcementsChannel.name}
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200">ALL</span>
                   </div>
-                  <div className={`text-[11px] truncate mt-0.5 ${
-                    conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id ? 'text-indigo-200' : 'text-gray-600'
-                  }`}>{announcementsChannel.description || 'Broadcast to all agents'}</div>
+                  <div className={`text-[11px] truncate mt-0.5 ${conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id ? 'text-indigo-200' : 'text-gray-600'
+                    }`}>{announcementsChannel.description || 'Broadcast to all agents'}</div>
                 </div>
               </button>
             </div>
@@ -137,15 +134,13 @@ export function ChatView() {
                 <button
                   key={channel.id}
                   onClick={() => startOrLoadChannelChat(channel)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all mb-1 last:mb-0 ${
-                    isCurrentActive
-                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                      : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all mb-1 last:mb-0 ${isCurrentActive
+                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                    : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                    }`}
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    isCurrentActive ? 'bg-indigo-500/20 text-indigo-300' : 'bg-[#141426] text-gray-500'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isCurrentActive ? 'bg-indigo-500/20 text-indigo-300' : 'bg-[#141426] text-gray-500'
+                    }`}>
                     <Users className="w-4 h-4" />
                   </div>
                   <div className="text-left flex-1 min-w-0">
@@ -171,11 +166,10 @@ export function ChatView() {
                     <button
                       key={agent.id}
                       onClick={() => startOrLoadAgentChat(agent)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                        isCurrentActive
-                          ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                          : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
-                      }`}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isCurrentActive
+                        ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                        : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                        }`}
                     >
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 text-xs font-bold">
@@ -209,11 +203,10 @@ export function ChatView() {
                 <button
                   key={agent.id}
                   onClick={() => startOrLoadAgentChat(agent)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    isCurrentActive
-                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                      : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isCurrentActive
+                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                    : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                    }`}
                 >
                   <div className="relative flex-shrink-0">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
@@ -251,17 +244,17 @@ export function ChatView() {
                 <div className="relative w-12 h-10">
                   {/* Antenna - Small bent shape on top */}
                   <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-1 h-2 bg-white/90 rounded-t-full transform rotate-12"></div>
-                  
+
                   {/* Body - Rectangle */}
                   <div className="w-full h-full border-2 border-white/90 rounded-sm"></div>
-                  
+
                   {/* Eyes - Two circular eyes */}
                   <div className="absolute top-2 left-2 w-2 h-2 bg-white/90 rounded-full"></div>
                   <div className="absolute top-2 right-2 w-2 h-2 bg-white/90 rounded-full"></div>
                 </div>
               </div>
             </div>
-            
+
             <div className="text-center space-y-2">
               <h2 className="text-2xl font-semibold text-white">Select a Chat</h2>
               <p className="text-sm text-gray-500">Choose an agent from the sidebar to begin.</p>
@@ -315,12 +308,7 @@ export function ChatView() {
               </div>
             </div>
 
-            {error && (
-              <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-2 flex items-center justify-between">
-                <span className="text-red-400 text-xs">{error}</span>
-                <button onClick={clearError} className="text-red-400 hover:text-red-300 text-xs font-medium">Dismiss</button>
-              </div>
-            )}
+
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto py-2">
@@ -401,6 +389,29 @@ export function ChatView() {
           onClose={() => setIsAgentManagerModalOpen(false)}
         />
       )}
+
+      {/* Error Toast */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-10 right-10 z-50 flex items-center gap-3 bg-[#1a1a2e] border border-red-500/30 px-4 py-3 rounded-2xl shadow-2xl shadow-red-500/10"
+          >
+            <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-4 h-4 text-red-500" />
+            </div>
+            <span className="text-sm font-medium text-gray-200">{error}</span>
+            <button
+              onClick={clearError}
+              className="p-1.5 ml-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-gray-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

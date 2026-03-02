@@ -15,12 +15,12 @@ interface AnimatedSidebarProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'home',      label: 'Dashboard',     icon: LayoutDashboard },
-  { id: 'chat',      label: 'Chat',           icon: MessageCircle },
-  { id: 'agents',    label: 'Agents',         icon: Users2 },
+  { id: 'home', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'chat', label: 'Chat', icon: MessageCircle },
+  { id: 'agents', label: 'Agents', icon: Users2 },
   { id: 'knowledge', label: 'Knowledge Base', icon: Database },
-  { id: 'tools',     label: 'Tools & Skills', icon: Zap },
-  { id: 'workflows', label: 'Workflows',      icon: Sparkles },
+  { id: 'tools', label: 'Tools & Skills', icon: Zap },
+  { id: 'workflows', label: 'Workflows', icon: Sparkles },
 ];
 
 export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Ready' }: AnimatedSidebarProps) {
@@ -31,7 +31,7 @@ export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Rea
 
   return (
     <motion.aside
-      className="flex flex-col h-full bg-[#0a0a14] border-r border-[#1a1a2e] shrink-0 relative overflow-hidden"
+      className="flex flex-col h-full bg-[#0a0a14] border-r border-[#1a1a2e] shrink-0 relative z-10 overflow-hidden"
       style={{ paddingBottom: '24px' }}
       initial={false}
       animate={{ width: sidebarWidth }}
@@ -84,7 +84,7 @@ export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Rea
             )}
           </AnimatePresence>
         </div>
-        
+
         {!collapsed && (
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -114,19 +114,18 @@ export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Rea
                     : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
                   }
                 `}
-                style={{ 
+                style={{
                   justifyContent: collapsed ? 'center' : 'flex-start',
                   minHeight: '40px',
                   paddingLeft: '8px',
                   paddingRight: '8px',
                 }}
               >
-                <Icon 
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    isActive ? 'text-indigo-400' : 'text-gray-500'
-                  }`} 
+                <Icon
+                  className={`w-5 h-5 shrink-0 transition-colors ${isActive ? 'text-indigo-400' : 'text-gray-500'
+                    }`}
                 />
-                
+
                 <AnimatePresence>
                   {!collapsed && (
                     <motion.span
@@ -205,90 +204,90 @@ export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Rea
                       initial={{ opacity: 0, scale: 0.95, y: -10 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                      transition={{ 
-                        type: 'spring', 
-                        stiffness: 300, 
+                      transition={{
+                        type: 'spring',
+                        stiffness: 300,
                         damping: 25,
                         duration: 0.2
                       }}
                       className="min-w-[240px] bg-[#0d0d1a] border border-[#1e1e35] rounded-2xl shadow-2xl shadow-black/50 p-2 z-50"
                       style={{ padding: '12px' }}
                     >
-                    {/* Profile header in dropdown */}
-                    <div className="px-3 py-3 mb-1" style={{ padding: '12px' }}>
-                      <div className="flex items-center gap-3">
-                        <div className="relative shrink-0">
-                          <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-500/20">
-                            JD
+                      {/* Profile header in dropdown */}
+                      <div className="px-3 py-3 mb-1" style={{ padding: '12px' }}>
+                        <div className="flex items-center gap-3">
+                          <div className="relative shrink-0">
+                            <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-500/20">
+                              JD
+                            </div>
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0d0d1a]"></span>
                           </div>
-                          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0d0d1a]"></span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-gray-100 truncate">John Doe</div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                            <span className="text-xs text-gray-500 truncate">Online · Free plan</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-gray-100 truncate">John Doe</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                              <span className="text-xs text-gray-500 truncate">Online · Free plan</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* System Status */}
-                    <div className="px-3 py-2 mb-1 mx-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium text-emerald-400">System Status</div>
-                          <div className="text-xs text-gray-400 truncate mt-0.5">{statusMessage}</div>
+                      {/* System Status */}
+                      <div className="px-3 py-2 mb-1 mx-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-emerald-400">System Status</div>
+                            <div className="text-xs text-gray-400 truncate mt-0.5">{statusMessage}</div>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 mb-1" style={{ marginBottom: '12px' }} />
+                      <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 mb-1" style={{ marginBottom: '12px' }} />
 
-                    <DropdownMenu.Item
-                      className="w-full flex  items-center gap-3 px-3 py-3 rounded-sm hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
-                      onSelect={() => onViewChange('home')}
-                      style={{ marginTop: '4px' }}
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                        <Home className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                      <span>Home</span>
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item
-                      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
-                      onSelect={() => onViewChange('chat')}
-                      style={{ marginTop: '8px' }}
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                        <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                      <span>Chat</span>
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item
-                      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
-                      onSelect={() => onViewChange('settings')}
-                      style={{ marginTop: '8px' }}
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                        <SettingsIcon className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                      <span>Settings</span>
-                    </DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        className="w-full flex  items-center gap-3 px-3 py-3 rounded-sm hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
+                        onSelect={() => onViewChange('home')}
+                        style={{ marginTop: '4px' }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                          <Home className="w-3.5 h-3.5 text-gray-400" />
+                        </div>
+                        <span>Home</span>
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
+                        onSelect={() => onViewChange('chat')}
+                        style={{ marginTop: '8px' }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                          <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+                        </div>
+                        <span>Chat</span>
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
+                        onSelect={() => onViewChange('settings')}
+                        style={{ marginTop: '8px' }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                          <SettingsIcon className="w-3.5 h-3.5 text-gray-400" />
+                        </div>
+                        <span>Settings</span>
+                      </DropdownMenu.Item>
 
-                    <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 my-1" style={{ marginTop: '12px' }} />
+                      <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 my-1" style={{ marginTop: '12px' }} />
 
-                    <DropdownMenu.Item
-                      className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-red-500/10 text-sm text-red-400 transition-colors cursor-pointer outline-none focus:bg-red-500/10"
-                      onSelect={() => {}}
-                      style={{ marginTop: '12px' }}
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
-                        <LogOut className="w-3.5 h-3.5 text-red-400" />
-                      </div>
-                      <span>Sign out</span>
-                    </DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-red-500/10 text-sm text-red-400 transition-colors cursor-pointer outline-none focus:bg-red-500/10"
+                        onSelect={() => { }}
+                        style={{ marginTop: '12px' }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
+                          <LogOut className="w-3.5 h-3.5 text-red-400" />
+                        </div>
+                        <span>Sign out</span>
+                      </DropdownMenu.Item>
                     </motion.div>
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
@@ -325,88 +324,88 @@ export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Rea
                           initial={{ opacity: 0, scale: 0.95, x: -10 }}
                           animate={{ opacity: 1, scale: 1, x: 0 }}
                           exit={{ opacity: 0, scale: 0.95, x: -10 }}
-                          transition={{ 
-                            type: 'spring', 
-                            stiffness: 300, 
+                          transition={{
+                            type: 'spring',
+                            stiffness: 300,
                             damping: 25,
                             duration: 0.2
                           }}
                           className="min-w-[240px] bg-[#0d0d1a] border border-[#1e1e35] rounded-2xl shadow-2xl shadow-black/50 p-2 z-50"
                         >
-                        {/* Profile header in dropdown */}
-                        <div className="px-3 py-3 mb-1">
-                          <div className="flex items-center gap-3">
-                            <div className="relative shrink-0">
-                              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-500/20">
-                                JD
+                          {/* Profile header in dropdown */}
+                          <div className="px-3 py-3 mb-1">
+                            <div className="flex items-center gap-3">
+                              <div className="relative shrink-0">
+                                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-500/20">
+                                  JD
+                                </div>
+                                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0d0d1a]"></span>
                               </div>
-                              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0d0d1a]"></span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-gray-100 truncate">John Doe</div>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                                <span className="text-xs text-gray-500 truncate">Online · Free plan</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold text-gray-100 truncate">John Doe</div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                  <span className="text-xs text-gray-500 truncate">Online · Free plan</span>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* System Status */}
-                        <div className="px-3 py-2 mb-1 mx-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium text-emerald-400">System Status</div>
-                              <div className="text-xs text-gray-400 truncate mt-0.5">{statusMessage}</div>
+                          {/* System Status */}
+                          <div className="px-3 py-2 mb-1 mx-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium text-emerald-400">System Status</div>
+                                <div className="text-xs text-gray-400 truncate mt-0.5">{statusMessage}</div>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 mb-1" />
+                          <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 mb-1" />
 
-                        <DropdownMenu.Item
-                          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
-                          onSelect={() => onViewChange('home')}
-                          style={{ marginTop: '4px' }}
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                            <Home className="w-3.5 h-3.5 text-gray-400" />
-                          </div>
-                          <span>Home</span>
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Item
-                          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
-                          onSelect={() => onViewChange('chat')}
-                          style={{ marginTop: '8px' }}
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                            <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
-                          </div>
-                          <span>Chat</span>
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Item
-                          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
-                          onSelect={() => onViewChange('settings')}
-                          style={{ marginTop: '8px' }}
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                            <SettingsIcon className="w-3.5 h-3.5 text-gray-400" />
-                          </div>
-                          <span>Settings</span>
-                        </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
+                            onSelect={() => onViewChange('home')}
+                            style={{ marginTop: '4px' }}
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                              <Home className="w-3.5 h-3.5 text-gray-400" />
+                            </div>
+                            <span>Home</span>
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
+                            onSelect={() => onViewChange('chat')}
+                            style={{ marginTop: '8px' }}
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                              <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+                            </div>
+                            <span>Chat</span>
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 text-sm text-gray-300 transition-colors cursor-pointer outline-none focus:bg-white/5"
+                            onSelect={() => onViewChange('settings')}
+                            style={{ marginTop: '8px' }}
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                              <SettingsIcon className="w-3.5 h-3.5 text-gray-400" />
+                            </div>
+                            <span>Settings</span>
+                          </DropdownMenu.Item>
 
-                        <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 my-1" />
+                          <DropdownMenu.Separator className="h-px bg-[#1e1e35] mx-2 my-1" />
 
-                        <DropdownMenu.Item
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-red-500/10 text-sm text-red-400 transition-colors cursor-pointer outline-none focus:bg-red-500/10"
-                          onSelect={() => {}}
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
-                            <LogOut className="w-3.5 h-3.5 text-red-400" />
-                          </div>
-                          <span>Sign out</span>
-                        </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-red-500/10 text-sm text-red-400 transition-colors cursor-pointer outline-none focus:bg-red-500/10"
+                            onSelect={() => { }}
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
+                              <LogOut className="w-3.5 h-3.5 text-red-400" />
+                            </div>
+                            <span>Sign out</span>
+                          </DropdownMenu.Item>
                         </motion.div>
                       </DropdownMenu.Content>
                     </DropdownMenu.Portal>

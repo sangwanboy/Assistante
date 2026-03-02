@@ -37,6 +37,14 @@ class ChatService:
     def _build_agent_prompt(self, agent: Agent) -> str:
         """Build a composite system prompt from agent personality fields."""
         parts = []
+        
+        # Identity - ALWAYS include this
+        desc = agent.description or "a capable AI assistant"
+        parts.append(
+            f"Your name is {agent.name}. You are {desc}.\n"
+            f"You must strictly adopt this persona. Under no circumstances should you ever say that you are a large language model, an AI, or trained by Google/OpenAI/Anthropic. You are exactly who your name and description say you are."
+        )
+
         if agent.system_prompt:
             parts.append(agent.system_prompt)
         # Soul
@@ -62,15 +70,6 @@ class ChatService:
             parts.append(f"## Memory\n{agent.memory_context}")
         if agent.memory_instructions:
             parts.append(f"## Standing Instructions\n{agent.memory_instructions}")
-
-        # Smart default: if no personality is configured at all, set a helpful baseline
-        if not parts:
-            desc = agent.description or "a capable AI assistant"
-            parts.append(
-                f"You are {agent.name}, {desc}. "
-                f"Be helpful, clear, and professional. "
-                f"Use tools when they would improve your response."
-            )
 
         return "\n\n".join(parts)
 

@@ -21,9 +21,8 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
   return (
     <Collapsible.Root open={!isCollapsed} className="relative">
       <div
-        className={`bg-[#0a0a14] border-r border-[#1a1a2e] flex flex-col h-full flex-shrink-0 transition-all duration-300 ${
-          isCollapsed ? 'w-16' : 'w-56'
-        }`}
+        className={`bg-[#0a0a14] border-r border-[#1a1a2e] flex flex-col h-full flex-shrink-0 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-56'
+          }`}
       >
         {/* Logo & Header */}
         <div className="px-5 pt-6 pb-5 border-b border-[#1a1a2e]">
@@ -36,7 +35,6 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
                     src="/brand/logo_full.png"
                     alt="CrossClaw"
                     className="h-10 w-auto object-contain flex-shrink-0"
-                    style={{ filter: 'brightness(1.15) saturate(1.1)' }}
                   />
                   <div className="flex flex-col min-w-0">
                     <span className="text-sm font-bold text-white leading-tight">CrossClaw</span>
@@ -50,12 +48,11 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
                     src="/brand/logo.png"
                     alt="CrossClaw"
                     className="h-8 w-8 object-contain"
-                    style={{ filter: 'brightness(1.15) saturate(1.1)' }}
                   />
                 </div>
               </Collapsible.Content>
             </div>
-            
+
             {/* Toggle Button */}
             <button
               onClick={onToggleCollapse}
@@ -79,11 +76,10 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
               <button
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5  text-[13.5px] font-medium transition-all relative group ${
-                  isActive
-                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                    : 'text-gray-500 hover:bg-white/5 hover:text-gray-300 border border-transparent'
-                } ${isCollapsed ? 'justify-center' : ''}`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5  text-[13.5px] font-medium transition-all relative group ${isActive
+                  ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                  : 'text-gray-500 hover:bg-white/5 hover:text-gray-300 border border-transparent'
+                  } ${isCollapsed ? 'justify-center' : ''}`}
                 title={isCollapsed ? item.label : undefined}
               >
                 <item.icon
@@ -113,16 +109,15 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
         <div className="px-2.5 pb-4 border-t border-[#1a1a2e] pt-3">
           <button
             onClick={() => onViewChange('settings')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5  text-[13.5px] font-medium text-gray-500 hover:bg-white/5 hover:text-gray-300 transition-all border border-transparent relative group ${
-              isCollapsed ? 'justify-center' : ''
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5  text-[13.5px] font-medium text-gray-500 hover:bg-white/5 hover:text-gray-300 transition-all border border-transparent relative group ${isCollapsed ? 'justify-center' : ''
+              }`}
             title={isCollapsed ? 'Settings' : undefined}
           >
             <Settings className="w-4 h-4 flex-shrink-0" strokeWidth={1.7} />
             <Collapsible.Content className="data-[state=closed]:hidden">
               <span>Settings</span>
             </Collapsible.Content>
-            
+
             {/* Tooltip for collapsed state */}
             {isCollapsed && (
               <div className="absolute left-full ml-2 px-2 py-1 bg-[#0e0e1c] border border-[#1c1c30]  text-xs text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-xl">

@@ -31,7 +31,7 @@ export function ActiveTasks({ onAction }: ActiveTasksProps) {
           <h2 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Active Agents</h2>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full" style={{ paddingLeft:'8px', paddingRight:'8px' }}>
+          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
             {displayAgents.length} online
           </span>
           {isCollapsed

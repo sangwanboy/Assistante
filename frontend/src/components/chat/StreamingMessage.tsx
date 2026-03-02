@@ -1,4 +1,4 @@
-import { Bot } from 'lucide-react';
+import { Bot, Loader2, CheckCircle2 } from 'lucide-react';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
 
 interface ToolCall {
@@ -37,8 +37,9 @@ export function StreamingMessage({ content, toolCalls, agentName }: Props) {
         {/* Tool calls */}
         {toolCalls.map((tc, i) => (
           <div key={i} className="mb-2.5 bg-purple-500/5 border-l-2 border-purple-500/40 rounded-r-xl p-3">
-            <div className="text-[11px] font-semibold text-purple-400 font-mono mb-1">
-              Using tool: {tc.name}
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-purple-400 font-mono mb-1">
+              {tc.result ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <span>Using tool: {tc.name}</span>
             </div>
             {tc.args && (
               <pre className="text-[11px] text-gray-500 mt-1 overflow-x-auto font-mono">

@@ -196,11 +196,10 @@ export function AgentsView() {
                       className="bg-[#0e0e1c] rounded-xl border border-[#1c1c30] p-6 hover:border-indigo-500/30 transition-all group shadow-lg hover:shadow-xl"
                     >
                       <div className="flex items-start justify-between mb-5">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${
-                          agent.is_active
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${agent.is_active
                             ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400 shadow-lg shadow-indigo-500/20'
                             : 'bg-[#141426] border-[#1c1c30] text-gray-600'
-                        }`}>
+                          }`}>
                           <Bot className="w-6 h-6" />
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -208,11 +207,10 @@ export function AgentsView() {
                             onClick={() => handleToggle(agent)}
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
-                            className={`p-2 rounded-lg transition-colors ${
-                              agent.is_active
+                            className={`p-2 rounded-lg transition-colors ${agent.is_active
                                 ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
                                 : 'bg-[#141426] border border-[#1c1c30] text-gray-600 hover:bg-[#1c1c30]'
-                            }`}
+                              }`}
                             title={agent.is_active ? 'Disable' : 'Enable'}
                           >
                             <Power className="w-4 h-4" />
@@ -320,7 +318,7 @@ export function AgentsView() {
                     style={{ height: '85vh', maxHeight: '700px', padding: '10px' }}
                   >
                     <div className="px-6 py-5 border-b border-[#1a1a2e] flex items-center justify-between flex-shrink-0">
-                      <Dialog.Title className="text-lg font-bold text-white">
+                      <Dialog.Title className="text-lg font-bold text-white pr-12">
                         {editingAgent ? 'Edit Agent' : 'Create Agent'}
                       </Dialog.Title>
                       <Dialog.Close asChild>
@@ -368,231 +366,227 @@ export function AgentsView() {
                         </div>
                       </div>
 
-                        {/* Tabs */}
-                        <div className="flex items-center gap-2 px-6 py-4 border-b border-[#1a1a2e] bg-[#080810]">
-                          {[
-                            { key: 'soul' as const, icon: Heart, label: 'Soul' },
-                            { key: 'mind' as const, icon: Brain, label: 'Mind' },
-                            { key: 'memory' as const, icon: Wrench, label: 'Memory' },
-                          ].map(tab => (
-                            <button
-                              key={tab.key} type="button"
-                              onClick={() => setConfigTab(tab.key)}
-                              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                                configTab === tab.key
-                                  ? 'bg-indigo-600 text-white shadow-sm'
-                                  : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
-                              }`}
-                            >
-                              <tab.icon className="w-4 h-4" />
-                              {tab.label}
-                            </button>
-                          ))}
-                        </div>
-
-                          {/* Tab Content */}
-                          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-                            {configTab === 'soul' && (
-                              <>
-                                <div className="flex items-center justify-between">
-                                  <p className="text-sm text-gray-500">Define the core personality.</p>
-                                  <button
-                                    type="button" onClick={handleAutoFill}
-                                    disabled={isGenerating || !formData.name}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-lg transition-all shadow-sm disabled:opacity-40"
-                                  >
-                                    {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                                    Auto-fill Soul
-                                  </button>
-                                </div>
-                                {[
-                                  { label: 'Personality Tone', options: TONE_OPTIONS, field: 'personality_tone', activeColor: 'bg-indigo-600 border-indigo-600' },
-                                  { label: 'Communication Style', options: STYLE_OPTIONS, field: 'communication_style', activeColor: 'bg-emerald-600 border-emerald-600' },
-                                ].map(({ label, options, field, activeColor }) => (
-                                  <div key={field} className="space-y-3">
-                                    <label className="text-xs font-semibold text-gray-400">{label}</label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {options.map(opt => (
+                      {/* Tabs */}
+                      <div className="flex items-center gap-2 px-6 py-4 border-b border-[#1a1a2e] bg-[#080810]">
+                        {[
+                          { key: 'soul' as const, icon: Heart, label: 'Soul' },
+                          { key: 'mind' as const, icon: Brain, label: 'Mind' },
+                          { key: 'memory' as const, icon: Wrench, label: 'Memory' },
+                        ].map(tab => (
                           <button
-                            key={opt} type="button"
-                            onClick={() => setFormData({ ...formData, [field]: (formData as Record<string, any>)[field] === opt ? '' : opt })}
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                              (formData as Record<string, any>)[field] === opt
-                                ? `${activeColor} text-white`
-                                : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
-                            }`}
+                            key={tab.key} type="button"
+                            onClick={() => setConfigTab(tab.key)}
+                            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${configTab === tab.key
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                              }`}
                           >
-                            {opt}
+                            <tab.icon className="w-4 h-4" />
+                            {tab.label}
                           </button>
                         ))}
                       </div>
-                    </div>
-                  ))}
-                                  <div className="space-y-3">
-                                    <label className="text-xs font-semibold text-gray-400">Traits</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {TRAIT_OPTIONS.map(trait => {
-                        const traits: string[] = (() => { try { return JSON.parse(formData.personality_traits); } catch { return []; } })();
-                        const active = traits.includes(trait);
-                        return (
-                          <button
-                            key={trait} type="button"
-                            onClick={() => {
-                              const next = active ? traits.filter(t => t !== trait) : [...traits, trait];
-                              setFormData({ ...formData, personality_traits: JSON.stringify(next) });
-                            }}
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                              active
-                                ? 'bg-purple-600 border-purple-600 text-white'
-                                : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
-                            }`}
-                          >
-                            {trait}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                                  <div className="space-y-2.5">
-                                    <label className="text-xs font-semibold text-gray-400">System Prompt</label>
-                                    <textarea
-                                      rows={4} value={formData.system_prompt}
-                                      onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
-                                      className={`${inputClass} resize-none`}
-                                      placeholder="Custom instructions for this agent..."
-                                    />
-                                  </div>
-                                </>
-                              )}
 
-                              {configTab === 'mind' && (
-                                <>
-                                  <div className="space-y-3">
-                                    <label className="text-xs font-semibold text-gray-400">Enabled Tools</label>
-                    <div className="space-y-1.5">
-                      {availableTools.map(tool => {
-                        const enabled: string[] = (() => { try { return JSON.parse(formData.enabled_tools); } catch { return []; } })();
-                        const active = enabled.includes(tool.name);
-                        return (
-                          <label key={tool.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#1c1c30] hover:bg-white/5 cursor-pointer transition-colors">
-                            <input
-                              type="checkbox" checked={active}
-                              onChange={() => {
-                                const next = active ? enabled.filter(t => t !== tool.name) : [...enabled, tool.name];
-                                setFormData({ ...formData, enabled_tools: JSON.stringify(next) });
-                              }}
-                              className="w-4 h-4 rounded border-gray-700 text-indigo-600 focus:ring-indigo-500 bg-[#141426]"
-                            />
-                            <div>
-                              <span className="text-sm font-medium text-gray-300">{tool.name.replace(/_/g, ' ')}</span>
-                              <p className="text-[10px] text-gray-600">{tool.description}</p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                                  <div className="space-y-3">
-                                    <label className="text-xs font-semibold text-gray-400">Reasoning Style</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {REASONING_OPTIONS.map(r => (
-                        <button
-                          key={r} type="button"
-                          onClick={() => setFormData({ ...formData, reasoning_style: formData.reasoning_style === r ? '' : r })}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                            formData.reasoning_style === r
-                              ? 'bg-orange-600 border-orange-600 text-white'
-                              : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
-                          }`}
-                        >
-                          {r}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                                  <div className="space-y-2.5 mt-4 pt-4 border-t border-[#1a1a2e]">
-                                    <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
-                                      <Key className="w-3 h-3" />
-                                      Agent API Key
-                                    </label>
-                                    <p className="text-[11px] text-gray-500">Override the global API key for this agent (optional):</p>
-                                    <div className="relative">
-                                      <input
-                                        type={showApiKey ? 'text' : 'password'}
-                                        value={formData.api_key}
-                                        onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
-                                        className={`${inputClass} pr-10 font-mono`}
-                                        placeholder={editingAgent?.api_key ? '••••••••' : 'sk-... or AIza...'}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowApiKey(!showApiKey)}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-300"
-                                      >
-                                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                      </button>
-                                    </div>
-                                  </div>
-                </>
-              )}
-
-                              {configTab === 'memory' && (
-                                <>
-                                  <div className="space-y-2.5">
-                                    <label className="text-xs font-semibold text-gray-400">Persistent Context</label>
-                                    <p className="text-sm text-gray-500">Background information this agent always knows:</p>
-                                    <textarea
-                                      rows={5} value={formData.memory_context}
-                                      onChange={(e) => setFormData({ ...formData, memory_context: e.target.value })}
-                                      className={`${inputClass} resize-none`}
-                                      placeholder="e.g. The user's name is Tushar..."
-                                    />
-                                  </div>
-                                  <div className="space-y-2.5">
-                                    <label className="text-xs font-semibold text-gray-400">Standing Instructions</label>
-                                    <p className="text-sm text-gray-500">Rules this agent always follows:</p>
-                                    <textarea
-                                      rows={5} value={formData.memory_instructions}
-                                      onChange={(e) => setFormData({ ...formData, memory_instructions: e.target.value })}
-                                      className={`${inputClass} resize-none`}
-                                      placeholder="e.g. Always respond in bullet points..."
-                                    />
-                                  </div>
-                                </>
-                              )}
-                          </div>
-
-                          {/* Footer */}
-                          <div className="flex items-center gap-3 px-6 py-5 border-t border-[#1a1a2e] flex-shrink-0 bg-[#080810]">
-                            <motion.button
-                              type="submit"
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                              className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-all text-sm shadow-lg shadow-indigo-500/30"
-                              style={{ padding: '16px 32px' }}
-                            >
-                              {editingAgent ? 'Save Changes' : 'Create Agent'}
-                            </motion.button>
-                            <Dialog.Close asChild>
-                              <motion.button
-                                type="button"
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                className="flex-1 text-sm font-semibold text-gray-400 hover:text-gray-200 bg-[#141426] hover:bg-[#1c1c30] rounded-lg transition-all border border-[#1c1c30]"
-                                style={{ padding: '16px 32px' }}
+                      {/* Tab Content */}
+                      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+                        {configTab === 'soul' && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm text-gray-500">Define the core personality.</p>
+                              <button
+                                type="button" onClick={handleAutoFill}
+                                disabled={isGenerating || !formData.name}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-lg transition-all shadow-sm disabled:opacity-40"
                               >
-                                Cancel
-                              </motion.button>
-                            </Dialog.Close>
-                          </div>
-                        </form>
-                      </motion.div>
-                    </Dialog.Content>
-                  </>
-                )}
-              </AnimatePresence>
-            </Dialog.Portal>
-          </Dialog.Root>
-        </div>
-      );
-    }
+                                {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                Auto-fill Soul
+                              </button>
+                            </div>
+                            {[
+                              { label: 'Personality Tone', options: TONE_OPTIONS, field: 'personality_tone', activeColor: 'bg-indigo-600 border-indigo-600' },
+                              { label: 'Communication Style', options: STYLE_OPTIONS, field: 'communication_style', activeColor: 'bg-emerald-600 border-emerald-600' },
+                            ].map(({ label, options, field, activeColor }) => (
+                              <div key={field} className="space-y-3">
+                                <label className="text-xs font-semibold text-gray-400">{label}</label>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {options.map(opt => (
+                                    <button
+                                      key={opt} type="button"
+                                      onClick={() => setFormData({ ...formData, [field]: (formData as Record<string, any>)[field] === opt ? '' : opt })}
+                                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${(formData as Record<string, any>)[field] === opt
+                                          ? `${activeColor} text-white`
+                                          : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
+                                        }`}
+                                    >
+                                      {opt}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                            <div className="space-y-3">
+                              <label className="text-xs font-semibold text-gray-400">Traits</label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {TRAIT_OPTIONS.map(trait => {
+                                  const traits: string[] = (() => { try { return JSON.parse(formData.personality_traits); } catch { return []; } })();
+                                  const active = traits.includes(trait);
+                                  return (
+                                    <button
+                                      key={trait} type="button"
+                                      onClick={() => {
+                                        const next = active ? traits.filter(t => t !== trait) : [...traits, trait];
+                                        setFormData({ ...formData, personality_traits: JSON.stringify(next) });
+                                      }}
+                                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${active
+                                          ? 'bg-purple-600 border-purple-600 text-white'
+                                          : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
+                                        }`}
+                                    >
+                                      {trait}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="space-y-2.5">
+                              <label className="text-xs font-semibold text-gray-400">System Prompt</label>
+                              <textarea
+                                rows={4} value={formData.system_prompt}
+                                onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+                                className={`${inputClass} resize-none`}
+                                placeholder="Custom instructions for this agent..."
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {configTab === 'mind' && (
+                          <>
+                            <div className="space-y-3">
+                              <label className="text-xs font-semibold text-gray-400">Enabled Tools</label>
+                              <div className="space-y-1.5">
+                                {availableTools.map(tool => {
+                                  const enabled: string[] = (() => { try { return JSON.parse(formData.enabled_tools); } catch { return []; } })();
+                                  const active = enabled.includes(tool.name);
+                                  return (
+                                    <label key={tool.name} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#1c1c30] hover:bg-white/5 cursor-pointer transition-colors">
+                                      <input
+                                        type="checkbox" checked={active}
+                                        onChange={() => {
+                                          const next = active ? enabled.filter(t => t !== tool.name) : [...enabled, tool.name];
+                                          setFormData({ ...formData, enabled_tools: JSON.stringify(next) });
+                                        }}
+                                        className="w-4 h-4 rounded border-gray-700 text-indigo-600 focus:ring-indigo-500 bg-[#141426]"
+                                      />
+                                      <div>
+                                        <span className="text-sm font-medium text-gray-300">{tool.name.replace(/_/g, ' ')}</span>
+                                        <p className="text-[10px] text-gray-600">{tool.description}</p>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="space-y-3">
+                              <label className="text-xs font-semibold text-gray-400">Reasoning Style</label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {REASONING_OPTIONS.map(r => (
+                                  <button
+                                    key={r} type="button"
+                                    onClick={() => setFormData({ ...formData, reasoning_style: formData.reasoning_style === r ? '' : r })}
+                                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${formData.reasoning_style === r
+                                        ? 'bg-orange-600 border-orange-600 text-white'
+                                        : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
+                                      }`}
+                                  >
+                                    {r}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2.5 mt-4 pt-4 border-t border-[#1a1a2e]">
+                              <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                                <Key className="w-3 h-3" />
+                                Agent API Key
+                              </label>
+                              <p className="text-[11px] text-gray-500">Override the global API key for this agent (optional):</p>
+                              <div className="relative">
+                                <input
+                                  type={showApiKey ? 'text' : 'password'}
+                                  value={formData.api_key}
+                                  onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                                  className={`${inputClass} pr-10 font-mono`}
+                                  placeholder={editingAgent?.api_key ? '••••••••' : 'sk-... or AIza...'}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowApiKey(!showApiKey)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-300"
+                                >
+                                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        {configTab === 'memory' && (
+                          <>
+                            <div className="space-y-2.5">
+                              <label className="text-xs font-semibold text-gray-400">Persistent Context</label>
+                              <p className="text-sm text-gray-500">Background information this agent always knows:</p>
+                              <textarea
+                                rows={5} value={formData.memory_context}
+                                onChange={(e) => setFormData({ ...formData, memory_context: e.target.value })}
+                                className={`${inputClass} resize-none`}
+                                placeholder="e.g. The user's name is Tushar..."
+                              />
+                            </div>
+                            <div className="space-y-2.5">
+                              <label className="text-xs font-semibold text-gray-400">Standing Instructions</label>
+                              <p className="text-sm text-gray-500">Rules this agent always follows:</p>
+                              <textarea
+                                rows={5} value={formData.memory_instructions}
+                                onChange={(e) => setFormData({ ...formData, memory_instructions: e.target.value })}
+                                className={`${inputClass} resize-none`}
+                                placeholder="e.g. Always respond in bullet points..."
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="flex items-center gap-3 px-6 py-5 border-t border-[#1a1a2e] flex-shrink-0 bg-[#080810]">
+                        <motion.button
+                          type="submit"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-all text-sm shadow-lg shadow-indigo-500/30"
+                          style={{ padding: '16px 32px' }}
+                        >
+                          {editingAgent ? 'Save Changes' : 'Create Agent'}
+                        </motion.button>
+                        <Dialog.Close asChild>
+                          <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="flex-1 text-sm font-semibold text-gray-400 hover:text-gray-200 bg-[#141426] hover:bg-[#1c1c30] rounded-lg transition-all border border-[#1c1c30]"
+                            style={{ padding: '16px 32px' }}
+                          >
+                            Cancel
+                          </motion.button>
+                        </Dialog.Close>
+                      </div>
+                    </form>
+                  </motion.div>
+                </Dialog.Content>
+              </>
+            )}
+          </AnimatePresence>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
+  );
+}

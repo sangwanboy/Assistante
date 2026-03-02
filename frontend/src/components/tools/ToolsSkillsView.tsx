@@ -277,7 +277,7 @@ export function ToolsSkillsView() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3" style={{ gap: 16 }}>
                     {customTools.map(tool => (
-                      <div key={tool.id} className="group" style={{ ...cardStyle, transition: 'border-color 0.2s ease', cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#2a2a45'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1c1c30'; }}>
+                      <div key={tool.id} className="group flex flex-col h-full" style={{ ...cardStyle, transition: 'border-color 0.2s ease', cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#2a2a45'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1c1c30'; }}>
                         <div className="flex items-start justify-between" style={{ marginBottom: 12 }}>
                           <div
                             className="rounded-xl flex items-center justify-center flex-shrink-0"
@@ -295,7 +295,7 @@ export function ToolsSkillsView() {
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 9999, backgroundColor: tool.is_active ? 'rgba(52, 211, 153, 0.1)' : '#141426', color: tool.is_active ? '#34d399' : '#6b7280', border: tool.is_active ? '1px solid rgba(52, 211, 153, 0.2)' : '1px solid #1c1c30' }}>{tool.is_active ? 'ACTIVE' : 'OFF'}</span>
                         </div>
                         <p className="line-clamp-2" style={{ fontSize: 12, color: '#6b7280', marginTop: 4, marginBottom: 0 }}>{tool.description}</p>
-                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #1c1c30' }}>
+                        <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #1c1c30' }}>
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 9999, backgroundColor: 'rgba(168, 85, 247, 0.1)', color: '#a78bfa', border: '1px solid rgba(168, 85, 247, 0.2)' }}>CUSTOM</span>
                         </div>
                       </div>
@@ -407,8 +407,8 @@ export function ToolsSkillsView() {
           <form onSubmit={handleSubmitTool} className="flex-1 overflow-y-auto flex flex-col">
             <div className="flex-1" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
               {[
-                { label: 'Name', value: toolForm.name, onChange: (v: string) => setToolForm({...toolForm, name: v}), placeholder: 'e.g. json_formatter', required: true },
-                { label: 'Description', value: toolForm.description, onChange: (v: string) => setToolForm({...toolForm, description: v}), placeholder: 'What this tool does...', required: true },
+                { label: 'Name', value: toolForm.name, onChange: (v: string) => setToolForm({ ...toolForm, name: v }), placeholder: 'e.g. json_formatter', required: true },
+                { label: 'Description', value: toolForm.description, onChange: (v: string) => setToolForm({ ...toolForm, description: v }), placeholder: 'What this tool does...', required: true },
               ].map(({ label, value, onChange, placeholder, required }) => (
                 <div key={label}>
                   <label style={formLabelStyle}>{label}</label>
@@ -427,7 +427,7 @@ export function ToolsSkillsView() {
                 <textarea
                   rows={5}
                   value={toolForm.parameters_schema}
-                  onChange={e => setToolForm({...toolForm, parameters_schema: e.target.value})}
+                  onChange={e => setToolForm({ ...toolForm, parameters_schema: e.target.value })}
                   style={{ ...formInputStyle, resize: 'none' as const, fontFamily: 'monospace' }}
                 />
               </div>
@@ -441,7 +441,7 @@ export function ToolsSkillsView() {
                 <textarea
                   rows={10}
                   value={toolForm.code}
-                  onChange={e => setToolForm({...toolForm, code: e.target.value})}
+                  onChange={e => setToolForm({ ...toolForm, code: e.target.value })}
                   style={{ ...formInputStyle, resize: 'none' as const, fontFamily: 'monospace', backgroundColor: '#050508' }}
                 />
               </div>
@@ -449,7 +449,7 @@ export function ToolsSkillsView() {
                 <input
                   type="checkbox"
                   checked={toolForm.is_active}
-                  onChange={e => setToolForm({...toolForm, is_active: e.target.checked})}
+                  onChange={e => setToolForm({ ...toolForm, is_active: e.target.checked })}
                   style={{ width: 18, height: 18, accentColor: '#7c3aed' }}
                 />
                 <span style={{ fontSize: 14, color: '#9ca3af', fontWeight: 500 }}>Active (agents can use this tool)</span>
@@ -528,7 +528,7 @@ export function ToolsSkillsView() {
                   required
                   type="text"
                   value={skillForm.name}
-                  onChange={e => setSkillForm({...skillForm, name: e.target.value})}
+                  onChange={e => setSkillForm({ ...skillForm, name: e.target.value })}
                   placeholder="e.g. API Integration"
                   style={formInputStyle}
                 />
@@ -538,7 +538,7 @@ export function ToolsSkillsView() {
                 <input
                   type="text"
                   value={skillForm.description}
-                  onChange={e => setSkillForm({...skillForm, description: e.target.value})}
+                  onChange={e => setSkillForm({ ...skillForm, description: e.target.value })}
                   placeholder="Brief description..."
                   style={formInputStyle}
                 />
@@ -552,7 +552,7 @@ export function ToolsSkillsView() {
                   required
                   rows={12}
                   value={skillForm.instructions}
-                  onChange={e => setSkillForm({...skillForm, instructions: e.target.value})}
+                  onChange={e => setSkillForm({ ...skillForm, instructions: e.target.value })}
                   placeholder={"# Instructions\n\nDescribe what the agent should do..."}
                   style={{ ...formInputStyle, resize: 'none' as const, fontFamily: 'monospace' }}
                 />
@@ -562,15 +562,15 @@ export function ToolsSkillsView() {
                 <input
                   type="text"
                   value={skillForm.trigger_pattern}
-                  onChange={e => setSkillForm({...skillForm, trigger_pattern: e.target.value})}
+                  onChange={e => setSkillForm({ ...skillForm, trigger_pattern: e.target.value })}
                   placeholder='e.g. **/*.tsx'
                   style={{ ...formInputStyle, fontFamily: 'monospace' }}
                 />
               </div>
               <div className="flex items-center gap-6" style={{ marginTop: 4 }}>
                 {[
-                  { label: 'Active', checked: skillForm.is_active, onChange: (v: boolean) => setSkillForm({...skillForm, is_active: v}) },
-                  { label: 'User Invocable', checked: skillForm.user_invocable, onChange: (v: boolean) => setSkillForm({...skillForm, user_invocable: v}) },
+                  { label: 'Active', checked: skillForm.is_active, onChange: (v: boolean) => setSkillForm({ ...skillForm, is_active: v }) },
+                  { label: 'User Invocable', checked: skillForm.user_invocable, onChange: (v: boolean) => setSkillForm({ ...skillForm, user_invocable: v }) },
                 ].map(({ label, checked, onChange }) => (
                   <label key={label} className="flex items-center gap-2" style={{ cursor: 'pointer' }}>
                     <input
