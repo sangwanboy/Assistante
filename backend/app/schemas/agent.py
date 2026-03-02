@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 
 class AgentBase(BaseModel):
@@ -19,6 +19,8 @@ class AgentBase(BaseModel):
     # Memory
     memory_context: Optional[str] = None
     memory_instructions: Optional[str] = None
+    # Per-agent API key
+    api_key: Optional[str] = None
 
 class AgentCreate(AgentBase):
     pass
@@ -40,10 +42,19 @@ class AgentUpdate(BaseModel):
     # Memory
     memory_context: Optional[str] = None
     memory_instructions: Optional[str] = None
+    api_key: Optional[str] = None
 
 class AgentOut(AgentBase):
     id: str
+    is_system: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('api_key', mode='before')
+    @classmethod
+    def mask_api_key(cls, v: str | None) -> str | None:
+        if not v:
+            return None
+        return '•' * (len(v) - 4) + v[-4:] if len(v) > 4 else '•' * len(v)

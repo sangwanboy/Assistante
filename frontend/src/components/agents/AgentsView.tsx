@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Bot, X, Loader2, Power, Wrench, Brain, Heart, Sparkles } from 'lucide-react';
+import { Plus, Edit2, Trash2, Bot, X, Loader2, Power, Wrench, Brain, Heart, Sparkles, Eye, EyeOff, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useAgentStore } from '../../stores/agentStore';
 import { useChatStore } from '../../stores/chatStore';
+import { useAgentStatusStore } from '../../stores/agentStatusStore';
 import type { Agent } from '../../types';
 import { api } from '../../services/api';
 
@@ -22,6 +23,7 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 export function AgentsView() {
   const { agents, loadAgents, createAgent, updateAgent, deleteAgent, isLoading } = useAgentStore();
   const { models } = useChatStore();
+  const { statuses } = useAgentStatusStore();
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [showPanel, setShowPanel] = useState(false);
 
@@ -29,9 +31,11 @@ export function AgentsView() {
     name: '', description: '', provider: '', model: '', system_prompt: '', is_active: true,
     personality_tone: '', personality_traits: '[]', communication_style: '',
     enabled_tools: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
+    api_key: '',
   });
   const [configTab, setConfigTab] = useState<'soul' | 'mind' | 'memory'>('soul');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
 
   const TONE_OPTIONS = ['professional', 'friendly', 'sarcastic', 'empathetic', 'witty', 'serious', 'playful'];
@@ -48,6 +52,7 @@ export function AgentsView() {
     name: '', description: '', provider: '', model: '', system_prompt: '', is_active: true,
     personality_tone: '', personality_traits: '[]', communication_style: '',
     enabled_tools: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
+    api_key: '',
   };
 
   const handleOpenCreate = () => { setEditingAgent(null); setFormData(emptyForm); setConfigTab('soul'); setShowPanel(true); };
@@ -60,6 +65,7 @@ export function AgentsView() {
       communication_style: agent.communication_style || '', enabled_tools: agent.enabled_tools || '[]',
       reasoning_style: agent.reasoning_style || '', memory_context: agent.memory_context || '',
       memory_instructions: agent.memory_instructions || '',
+      api_key: '',
     });
     setConfigTab('soul');
     setShowPanel(true);
@@ -232,13 +238,22 @@ export function AgentsView() {
 
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="text-base font-bold text-white">{agent.name}</h3>
-                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                          agent.is_active
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-[#141426] text-gray-600 border border-[#1c1c30]'
-                        }`}>
-                          {agent.is_active ? 'ACTIVE' : 'OFF'}
-                        </span>
+                        {(() => {
+                          const status = statuses[agent.id] || { state: 'offline' };
+                          let badge = agent.is_active ? 'ACTIVE' : 'OFF';
+                          let badgeClass = agent.is_active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-[#141426] text-gray-600 border border-[#1c1c30]';
+                          if (agent.is_active && status.state === 'working') {
+                            badge = 'WORKING';
+                            badgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
+                          } else if (agent.is_active && status.state === 'idle') {
+                            badge = 'ONLINE';
+                            badgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                          } else if (agent.is_active) {
+                            badge = 'OFFLINE';
+                            badgeClass = 'bg-[#141426] text-gray-500 border border-[#1c1c30]';
+                          }
+                          return <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${badgeClass}`}>{badge}</span>;
+                        })()}
                       </div>
                       <p className="text-sm text-gray-500 line-clamp-2 min-h-[40px] mb-4">
                         {agent.description || 'No description provided.'}
@@ -495,6 +510,29 @@ export function AgentsView() {
                       ))}
                     </div>
                   </div>
+                                  <div className="space-y-2.5 mt-4 pt-4 border-t border-[#1a1a2e]">
+                                    <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                                      <Key className="w-3 h-3" />
+                                      Agent API Key
+                                    </label>
+                                    <p className="text-[11px] text-gray-500">Override the global API key for this agent (optional):</p>
+                                    <div className="relative">
+                                      <input
+                                        type={showApiKey ? 'text' : 'password'}
+                                        value={formData.api_key}
+                                        onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                                        className={`${inputClass} pr-10 font-mono`}
+                                        placeholder={editingAgent?.api_key ? '••••••••' : 'sk-... or AIza...'}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowApiKey(!showApiKey)}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-300"
+                                      >
+                                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                      </button>
+                                    </div>
+                                  </div>
                 </>
               )}
 

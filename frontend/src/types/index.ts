@@ -8,6 +8,15 @@ export interface Message {
   created_at?: string;
 }
 
+export interface Channel {
+  id: string;
+  name: string;
+  description: string | null;
+  is_announcement: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -15,6 +24,7 @@ export interface Conversation {
   system_prompt: string | null;
   is_group?: boolean;
   agent_id?: string | null;
+  channel_id?: string | null;
   created_at: string;
   updated_at: string;
   messages?: Message[];
@@ -76,6 +86,9 @@ export interface Agent {
   // Memory
   memory_context: string | null;
   memory_instructions: string | null;
+  // Per-agent API key (masked in responses)
+  api_key: string | null;
+  is_system?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -38,11 +38,14 @@ class WorkflowBase(BaseModel):
     description: Optional[str] = None
 
 class WorkflowCreate(WorkflowBase):
-    pass
+    agent_id: Optional[str] = None
+    channel_id: Optional[str] = None
 
 class WorkflowOut(WorkflowBase):
     id: str
     is_active: bool
+    agent_id: Optional[str] = None
+    channel_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

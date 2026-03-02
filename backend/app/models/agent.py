@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 import uuid
 from sqlalchemy import String, Text, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
@@ -34,6 +35,12 @@ class Agent(Base):
     # ── Memory (Persistent Context) ──
     memory_context: Mapped[str | None] = mapped_column(Text, nullable=True)           # persistent context notes
     memory_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)      # standing instructions
+
+    # ── Per-Agent API Key ──
+    api_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    # Core system flag (protects from deletion)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

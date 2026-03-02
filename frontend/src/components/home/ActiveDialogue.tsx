@@ -4,6 +4,7 @@ import { useChatStore } from '../../stores/chatStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { WorkspaceView } from './WorkspaceView';
+import { useAgentStore } from '../../stores/agentStore';
 
 interface ActiveDialogueProps {
   onAction: (message: string) => void;
@@ -24,7 +25,10 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
     sendMessage,
     createConversation,
     stopGeneration,
+    startOrLoadAgentChat,
   } = useChatStore();
+
+  const { agents } = useAgentStore();
 
   const { selectedModel } = useSettingsStore();
 
@@ -67,7 +71,16 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
     if (!draft.trim() || isStreaming) return;
     let convId = activeConversationId;
     if (!convId) {
-      convId = await createConversation(selectedModel, isGroupMode);
+      if (!isGroupMode) {
+        const mainAgent = agents.find(a => a.is_system);
+        if (mainAgent) {
+          convId = await startOrLoadAgentChat(mainAgent);
+        } else {
+          convId = await createConversation(selectedModel, false);
+        }
+      } else {
+        convId = await createConversation(selectedModel, true);
+      }
     }
     if (convId) {
       sendMessage(draft, selectedModel);
@@ -88,7 +101,7 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
   };
 
   return (
-    <div className="bg-[#0a0a18]  border border-[#1a1a30] overflow-hidden flex flex-col h-full relative">
+    <div className="bg-[#0a0a18] border border-[#1a1a30] overflow-hidden flex flex-col h-full relative">
       {/* Header */}
       <div className="flex items-center justify-between py-6 border-b border-[#1a1a30] shrink-0 relative min-h-[60px]" style={{ paddingLeft: '32px', paddingRight: '32px' }}>
         {/* Left: Title */}

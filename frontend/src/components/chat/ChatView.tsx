@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { StreamingMessage } from './StreamingMessage';
 import { MessageInput } from './MessageInput';
+import { CreateChannelModal } from './CreateChannelModal';
+import { ChannelAgentManagerModal } from './ChannelAgentManagerModal';
 import { useChatStore } from '../../stores/chatStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAgentStore } from '../../stores/agentStore';
-import { Bot, BookOpen, Users, MessageSquare } from 'lucide-react';
+import { useChannelStore } from '../../stores/channelStore';
+import { Bot, Search, BookOpen, Users, MessageSquare, Plus, X } from 'lucide-react';
 
 export function ChatView() {
   const {
@@ -15,24 +18,28 @@ export function ChatView() {
     isStreaming,
     streamingContent,
     streamingToolCalls,
+    streamingAgentName,
     sendMessage,
-    selectConversation,
-    createConversation,
     startOrLoadAgentChat,
+    startOrLoadChannelChat,
     loadConversations,
     error,
     clearError,
   } = useChatStore();
 
   const { agents, loadAgents } = useAgentStore();
+  const { channels, loadChannels } = useChannelStore();
   const { selectedModel } = useSettingsStore();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreateChannelModalOpen, setIsCreateChannelModalOpen] = useState(false);
+  const [isAgentManagerModalOpen, setIsAgentManagerModalOpen] = useState(false);
 
   useEffect(() => {
     loadConversations();
     loadAgents();
-  }, [loadConversations, loadAgents]);
+    loadChannels();
+  }, [loadConversations, loadAgents, loadChannels]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -44,69 +51,159 @@ export function ChatView() {
     (a.description && a.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const handleGroupChat = async () => {
-    const existingGroupConv = conversations.find(c => c.is_group);
-    if (existingGroupConv) {
-      await selectConversation(existingGroupConv.id);
-    } else {
-      await createConversation(selectedModel, true);
-    }
-  };
+  const systemAgents = filteredAgents.filter(a => a.is_system).sort((a, b) => a.name.localeCompare(b.name));
+  const standardAgents = filteredAgents.filter(a => !a.is_system).sort((a, b) => a.name.localeCompare(b.name));
+
+  const filteredChannels = channels.filter(c =>
+    !searchQuery ||
+    c.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const announcementsChannel = filteredChannels.find(c => c.is_announcement);
+  const customChannels = filteredChannels.filter(c => !c.is_announcement).sort((a, b) => a.name.localeCompare(b.name));
+
+  const activeConv = conversations.find(c => c.id === activeConversationId);
+  const activeChannel = activeConv?.channel_id ? channels.find(c => c.id === activeConv.channel_id) : null;
+  const isCustomChannel = activeChannel && !activeChannel.is_announcement;
 
   return (
     <div className="flex-1 flex min-h-0 bg-[#080810]" style={{ }}>
       {/* Left pane — Agent list */}
-      <div className="w-[260px] border-r border-[#1a1a2e] flex flex-col bg-[#0a0a14] flex-shrink-0" style={{ paddingTop: '5px' }}>
+      <div className="w-[260px] border-r border-[#1a1a2e] flex flex-col bg-[#0a0a14] flex-shrink-0">
         <div className="p-4 border-b border-[#1a1a2e]">
           <div className="relative">
+            <div className="absolute left-4 top-0 bottom-0 flex items-center pointer-events-none z-10">
+              <Search className="w-5 h-5 text-gray-600" />
+            </div>
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search agents..."
-              className="w-full pl-12 pr-4 py-4 text-base bg-[#0e0e1c] border border-[#1c1c30] focus:border-indigo-500/50 text-gray-300 placeholder-gray-600 transition-colors"
-              style={{ padding: '5px' }}
+              className="w-full pl-12 pr-4 py-3 text-sm bg-[#0e0e1c] border border-[#1c1c30] rounded-lg focus:border-indigo-500/50 text-gray-300 placeholder-gray-600 transition-colors"
             />
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {/* Group Chat */}
+          {/* Announcements Channel */}
+          {announcementsChannel && (
+            <div className="p-2 border-b border-[#1a1a2e]">
+              <button
+                onClick={() => startOrLoadChannelChat(announcementsChannel)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                  conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id
+                    ? 'bg-indigo-600 text-indigo-100 border border-indigo-500/30 shadow-lg shadow-indigo-500/20'
+                    : 'text-gray-500 hover:bg-white/5 border border-transparent hover:text-gray-300'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id
+                    ? 'bg-white/20 text-white'
+                    : 'bg-[#141426] text-gray-500'
+                }`}>
+                  <MessageSquare className="w-4 h-4" />
+                </div>
+                <div className="text-left flex-1 min-w-0">
+                  <div className={`text-sm font-semibold truncate flex items-center gap-2 ${
+                    conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id ? 'text-white' : ''
+                  }`}>
+                    {announcementsChannel.name}
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200">ALL</span>
+                  </div>
+                  <div className={`text-[11px] truncate mt-0.5 ${
+                    conversations.find(c => c.id === activeConversationId)?.channel_id === announcementsChannel.id ? 'text-indigo-200' : 'text-gray-600'
+                  }`}>{announcementsChannel.description || 'Broadcast to all agents'}</div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Custom Channels */}
           <div className="p-2 border-b border-[#1a1a2e]">
-            <button
-              onClick={handleGroupChat}
-              className={`w-full flex items-center gap-3 px-3 py-2.5  transition-all ${
-                conversations.find(c => c.id === activeConversationId)?.is_group
-                  ? 'bg-indigo-600 text-indigo-100 border border-indigo-500/30 shadow-lg shadow-indigo-500/20'
-                  : 'text-gray-500 hover:bg-white/5 border border-transparent hover:text-gray-300'
-              }`}
-              style={{ padding: '5px' }}
-            >
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                conversations.find(c => c.id === activeConversationId)?.is_group
-                  ? 'bg-white/20 text-white'
-                  : 'bg-[#141426] text-gray-500'
-              }`}>
-                <Users className="w-4 h-4" />
-              </div>
-              <div className="text-left flex-1 min-w-0">
-                <div className={`text-sm font-semibold truncate ${
-                  conversations.find(c => c.id === activeConversationId)?.is_group ? 'text-white' : ''
-                }`}>Group Chat</div>
-                <div className={`text-[11px] truncate mt-0.5 ${
-                  conversations.find(c => c.id === activeConversationId)?.is_group ? 'text-indigo-200' : 'text-gray-600'
-                }`}>Talk to all active agents</div>
-              </div>
-            </button>
+            <div className="px-2 py-1 mb-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+              <span>Custom Groups</span>
+              <button
+                onClick={() => setIsCreateChannelModalOpen(true)}
+                className="p-1.5 hover:bg-white/5 rounded-lg text-gray-500 hover:text-gray-300 transition-colors"
+                title="Create new group"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {customChannels.map(channel => {
+              const isCurrentActive = conversations.find(c => c.id === activeConversationId)?.channel_id === channel.id;
+              return (
+                <button
+                  key={channel.id}
+                  onClick={() => startOrLoadChannelChat(channel)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all mb-1 last:mb-0 ${
+                    isCurrentActive
+                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                      : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                  }`}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    isCurrentActive ? 'bg-indigo-500/20 text-indigo-300' : 'bg-[#141426] text-gray-500'
+                  }`}>
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div className="text-left flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{channel.name}</div>
+                    {channel.description && <div className="text-[11px] text-gray-600 truncate mt-0.5">{channel.description}</div>}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="px-4 py-2.5 text-[9px] font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2" style={{ padding: '5px' }}>
+          {/* System Agents */}
+          {systemAgents.length > 0 && (
+            <>
+              <div className="px-4 py-2.5 text-[9px] font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2">
+                <span>System Agents</span>
+                <div className="h-px bg-[#1c1c30] flex-1"></div>
+              </div>
+              <div className="px-2 space-y-0.5 pb-2">
+                {systemAgents.map(agent => {
+                  const isCurrentActive = conversations.find(c => c.id === activeConversationId)?.agent_id === agent.id;
+                  return (
+                    <button
+                      key={agent.id}
+                      onClick={() => startOrLoadAgentChat(agent)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                        isCurrentActive
+                          ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                          : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                      }`}
+                    >
+                      <div className="relative flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 text-xs font-bold">
+                          {agent.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 border-2 border-[#0a0a14] rounded-full ${agent.is_active ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                      </div>
+                      <div className="text-left flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate flex items-center gap-2">
+                          {agent.name}
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">SYSTEM</span>
+                        </div>
+                        {agent.description && <div className="text-[11px] text-gray-600 truncate mt-0.5">{agent.description}</div>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <div className="px-4 py-2.5 text-[9px] font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2">
             <span>Direct Messages</span>
             <div className="h-px bg-[#1c1c30] flex-1"></div>
           </div>
 
           <div className="px-2 space-y-0.5 pb-4">
-            {filteredAgents.map(agent => {
+            {standardAgents.map(agent => {
               const isCurrentActive = conversations.find(c => c.id === activeConversationId)?.agent_id === agent.id;
               return (
                 <button
@@ -134,7 +231,7 @@ export function ChatView() {
               );
             })}
 
-            {filteredAgents.length === 0 && (
+            {standardAgents.length === 0 && (
               <div className="text-center py-8 px-4">
                 <p className="text-sm text-gray-600">No agents found.</p>
               </div>
@@ -175,14 +272,14 @@ export function ChatView() {
             {/* Chat header */}
             <div className="px-5 py-3 border-b border-[#1a1a2e] flex items-center justify-between bg-[#0a0a14]">
               <div className="flex items-center gap-3">
-                {conversations.find(c => c.id === activeConversationId)?.is_group ? (
+                {activeConv?.is_group ? (
                   <>
                     <div className="w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
                       <Users className="w-4 h-4" />
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-gray-200 leading-none">Group Chat</div>
-                      <div className="text-[11px] text-gray-600 mt-1">Multi-agent collaboration</div>
+                      <div className="text-sm font-semibold text-gray-200 leading-none">{activeChannel?.name || 'Group Chat'}</div>
+                      <div className="text-[11px] text-gray-600 mt-1">{activeChannel?.description || 'Multi-agent collaboration'}</div>
                     </div>
                   </>
                 ) : (
@@ -203,6 +300,14 @@ export function ChatView() {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {isCustomChannel && (
+                  <button
+                    onClick={() => setIsAgentManagerModalOpen(true)}
+                    className="px-3 py-1.5 text-xs font-semibold bg-[#141426] border border-[#1c1c30] text-gray-300 rounded-lg hover:bg-white/5 hover:border-[#2a2a45] transition-colors"
+                  >
+                    Manage Agents
+                  </button>
+                )}
                 <span className="text-[11px] bg-[#1a1a2e] text-gray-500 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1.5">
                   <MessageSquare className="w-3 h-3" />
                   {messages.length}
@@ -221,8 +326,8 @@ export function ChatView() {
             <div className="flex-1 overflow-y-auto py-2">
               <div className="max-w-3xl mx-auto">
                 {messages.length === 0 && !isStreaming && (
-                  <div className="flex flex-col items-center justify-center py-20 text-gray-700">
-                    <Bot className="w-10 h-10 text-gray-800 mb-3" />
+                  <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                    <Bot className="w-10 h-10 text-gray-600 mb-3" />
                     <p className="text-sm">Send a message to start the conversation.</p>
                   </div>
                 )}
@@ -230,7 +335,7 @@ export function ChatView() {
                   <MessageBubble key={msg.id || `msg-${i}`} message={msg} />
                 ))}
                 {isStreaming && (
-                  <StreamingMessage content={streamingContent} toolCalls={streamingToolCalls} />
+                  <StreamingMessage content={streamingContent} toolCalls={streamingToolCalls} agentName={streamingAgentName} />
                 )}
                 <div ref={bottomRef} />
               </div>
@@ -280,6 +385,21 @@ export function ChatView() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Create Channel Modal */}
+      <CreateChannelModal
+        isOpen={isCreateChannelModalOpen}
+        onClose={() => setIsCreateChannelModalOpen(false)}
+      />
+
+      {/* Channel Agent Manager Modal */}
+      {activeChannel && (
+        <ChannelAgentManagerModal
+          channel={activeChannel}
+          isOpen={isAgentManagerModalOpen}
+          onClose={() => setIsAgentManagerModalOpen(false)}
+        />
       )}
     </div>
   );

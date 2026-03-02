@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 
 from app.db.engine import get_session
 from app.schemas.workflow import WorkflowOut, WorkflowCreate, WorkflowGraph, NodeCreate, EdgeCreate
@@ -12,15 +12,24 @@ def get_workflow_service(session: AsyncSession = Depends(get_session)) -> Workfl
     return WorkflowService(session)
 
 @router.get("", response_model=List[WorkflowOut])
-async def list_workflows(service: WorkflowService = Depends(get_workflow_service)):
-    return await service.list_workflows()
+async def list_workflows(
+    agent_id: Optional[str] = Query(None),
+    channel_id: Optional[str] = Query(None),
+    service: WorkflowService = Depends(get_workflow_service),
+):
+    return await service.list_workflows(agent_id=agent_id, channel_id=channel_id)
 
 @router.post("", response_model=WorkflowOut)
 async def create_workflow(
     workflow: WorkflowCreate,
     service: WorkflowService = Depends(get_workflow_service)
 ):
-    return await service.create_workflow(workflow.name, workflow.description)
+    return await service.create_workflow(
+        name=workflow.name,
+        description=workflow.description,
+        agent_id=workflow.agent_id,
+        channel_id=workflow.channel_id,
+    )
 
 @router.get("/{workflow_id}", response_model=WorkflowGraph)
 async def get_workflow(workflow_id: str, service: WorkflowService = Depends(get_workflow_service)):

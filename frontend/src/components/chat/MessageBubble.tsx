@@ -9,6 +9,7 @@ interface Props {
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
+  const displayName = isUser ? 'You' : (message.agent_name || 'Assistant');
 
   if (isTool) {
     return (
@@ -43,16 +44,37 @@ export function MessageBubble({ message }: Props) {
   }
 
   return (
-    <div className="flex gap-3 px-4 py-3">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-        <Bot className="w-4 h-4 text-white" />
+    <div className={`flex gap-3 px-4 py-3 ${isUser ? '' : ''}`}>
+      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
+        {isUser ? (
+          <div className="w-full h-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+            <User className="w-4 h-4 text-indigo-400" />
+          </div>
+        ) : message.agent_name ? (
+          <img
+            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(message.agent_name)}&background=random&color=fff&size=32`}
+            alt={message.agent_name}
+            className="w-full h-full rounded-full"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
+            <Bot className="w-4 h-4 text-white" />
+          </div>
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-semibold text-emerald-400 mb-1.5 uppercase tracking-wider">Assistant</div>
+        <div className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${isUser ? 'text-indigo-400' : 'text-emerald-400'}`}>
+          {displayName}
+        </div>
         <div className="text-[15px] text-gray-300 leading-relaxed">
-          <MarkdownRenderer content={message.content} />
+          {isUser ? (
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          ) : (
+            <MarkdownRenderer content={message.content} />
+          )}
         </div>
       </div>
     </div>
   );
 }
+

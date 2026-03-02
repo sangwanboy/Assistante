@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+import json
+from app.services.agent_status import AgentStatusManager
 
 from app.config import settings
 import app.models.document  # Ensure model is registered before init_database
@@ -21,7 +23,7 @@ async def lifespan(app: FastAPI):
     await init_database()
     app.state.provider_registry = ProviderRegistry(settings)
     app.state.tool_registry = ToolRegistry()
-    app.state.tool_registry.register_defaults()
+    app.state.tool_registry.register_defaults(provider_registry=app.state.provider_registry)
     # Load user-created custom tools from DB
     async with async_session() as session:
         await app.state.tool_registry.load_custom_tools(session)
@@ -43,6 +45,29 @@ app.include_router(api_router, prefix="/api")
 
 # Mount WebSocket at root (not under /api) so frontend can connect to /ws/chat/{id}
 app.websocket("/ws/chat/{conversation_id}")(websocket_chat)
+
+
+@app.websocket("/api-ws/agents/status")
+async def websocket_agents_status(websocket: WebSocket):
+    await websocket.accept()
+    manager = await AgentStatusManager.get_instance()
+    
+    # Send initial state
+    await websocket.send_text(json.dumps({
+        "type": "initial_status",
+        "statuses": manager.get_all_statuses()
+    }))
+
+    queue = manager.subscribe()
+    try:
+        while True:
+            # Wait for updates from the manager
+            message = await queue.get()
+            await websocket.send_text(message)
+    except WebSocketDisconnect:
+        manager.unsubscribe(queue)
+    except Exception:
+        manager.unsubscribe(queue)
 
 
 @app.get("/api/health")

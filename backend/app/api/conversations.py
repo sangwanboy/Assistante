@@ -28,7 +28,7 @@ async def list_conversations(
 async def create_conversation(
     req: ConversationCreate, service: ConversationService = Depends(get_conv_service)
 ):
-    return await service.create(title=req.title, model=req.model, system_prompt=req.system_prompt, is_group=req.is_group, agent_id=req.agent_id)
+    return await service.create(title=req.title, model=req.model, system_prompt=req.system_prompt, is_group=req.is_group, agent_id=req.agent_id, channel_id=req.channel_id)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailOut)
@@ -46,7 +46,7 @@ async def update_conversation(
     conversation_id: str, req: ConversationUpdate, service: ConversationService = Depends(get_conv_service)
 ):
     conv = await service.update(
-        conversation_id, title=req.title, model=req.model, system_prompt=req.system_prompt, is_group=req.is_group, agent_id=req.agent_id
+        conversation_id, title=req.title, model=req.model, system_prompt=req.system_prompt, is_group=req.is_group, agent_id=req.agent_id, channel_id=req.channel_id
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")

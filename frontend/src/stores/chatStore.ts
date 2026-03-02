@@ -25,8 +25,9 @@ interface ChatState {
   loadConversations: () => Promise<void>;
   loadModels: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
-  createConversation: (model?: string, is_group?: boolean, agent_id?: string) => Promise<string>;
+  createConversation: (model?: string, is_group?: boolean, agent_id?: string, channel_id?: string) => Promise<string>;
   startOrLoadAgentChat: (agent: any) => Promise<string>;
+  startOrLoadChannelChat: (channel: import('../types').Channel) => Promise<string>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   sendMessage: (content: string, model: string) => void;
@@ -80,9 +81,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  createConversation: async (model?: string, is_group?: boolean, agent_id?: string) => {
+  createConversation: async (model?: string, is_group?: boolean, agent_id?: string, channel_id?: string) => {
     try {
-      const conv = await api.createConversation({ model: model || 'gemini/gemini-2.5-flash', is_group, agent_id });
+      const conv = await api.createConversation({ model: model || 'gemini/gemini-2.5-flash', is_group, agent_id, channel_id } as any);
       set((state) => ({
         conversations: [conv, ...state.conversations],
         activeConversationId: conv.id,
@@ -110,6 +111,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       // If not found, create new conversation tied to this agent
       return await state.createConversation(agent.model, false, agent.id);
+    } catch (e: any) {
+      set({ error: e.message });
+      return '';
+    }
+  },
+
+  startOrLoadChannelChat: async (channel) => {
+    try {
+      const state = get();
+      const existing = state.conversations.find((c) => c.channel_id === channel.id);
+
+      if (existing) {
+        await state.selectConversation(existing.id);
+        return existing.id;
+      }
+
+      // Group mode triggered implicitly by it being a channel
+      return await state.createConversation(undefined, true, undefined, channel.id);
     } catch (e: any) {
       set({ error: e.message });
       return '';

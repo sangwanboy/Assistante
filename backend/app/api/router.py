@@ -10,6 +10,7 @@ from app.api.knowledge import router as knowledge_router
 from app.api.workflows import router as workflows_router
 from app.api.custom_tools import router as custom_tools_router
 from app.api.skills import router as skills_router
+from app.api.channels import router as channels_router
 
 api_router = APIRouter()
 
@@ -23,4 +24,5 @@ api_router.include_router(knowledge_router, prefix="/knowledge", tags=["Knowledg
 api_router.include_router(workflows_router, prefix="/workflows", tags=["Workflows"])
 api_router.include_router(custom_tools_router, prefix="/custom-tools", tags=["Custom Tools"])
 api_router.include_router(skills_router, prefix="/skills", tags=["Skills"])
+api_router.include_router(channels_router, prefix="/channels", tags=["Channels"])
 

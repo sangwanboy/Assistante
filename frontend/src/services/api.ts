@@ -99,7 +99,7 @@ export const api = {
 
   // Workflows
   getWorkflows: () => request<import('../types/workflow').Workflow[]>('/workflows'),
-  createWorkflow: (data: { name: string; description?: string }) =>
+  createWorkflow: (data: { name: string; description?: string; agent_id?: string; channel_id?: string }) =>
     request<import('../types/workflow').Workflow>('/workflows', { method: 'POST', body: JSON.stringify(data) }),
   deleteWorkflow: (id: string) =>
     request<{ status: string }>(`/workflows/${id}`, { method: 'DELETE' }),
@@ -133,5 +133,21 @@ export const api = {
     request<import('../types').Skill>('/skills/import', { method: 'POST', body: JSON.stringify({ content }) }),
   exportSkill: (id: string) =>
     request<{ filename: string; content: string }>(`/skills/${id}/export`),
+
+  // Channels
+  getChannels: () => request<import('../types').Channel[]>('/channels'),
+  createChannel: (data: { name: string; description?: string; is_announcement?: boolean }) =>
+    request<import('../types').Channel>('/channels', { method: 'POST', body: JSON.stringify(data) }),
+  updateChannel: (id: string, data: { name?: string; description?: string }) =>
+    request<import('../types').Channel>(`/channels/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteChannel: (id: string) =>
+    request<{ status: string }>(`/channels/${id}`, { method: 'DELETE' }),
+  getChannelAgents: (id: string) =>
+    request<import('../types').Agent[]>(`/channels/${id}/agents`),
+  addAgentToChannel: (channelId: string, agentId: string) =>
+    request<{ status: string }>(`/channels/${channelId}/agents`, { method: 'POST', body: JSON.stringify({ agent_id: agentId }) }),
+  removeAgentFromChannel: (channelId: string, agentId: string) =>
+    request<{ status: string }>(`/channels/${channelId}/agents/${agentId}`, { method: 'DELETE' }),
+
 };
 

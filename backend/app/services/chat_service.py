@@ -5,11 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.agent import Agent
+from app.models.channel import Channel
+from app.models.channel_agent import ChannelAgent
 from app.providers.base import ChatMessage
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
 from app.services.conversation_service import ConversationService
 from app.services.skill_service import SkillService
+from app.services.agent_status import AgentStatusManager, AgentState
 
 
 class ChatService:
@@ -173,6 +176,9 @@ class ChatService:
             prompt = self._build_agent_prompt(agent)
             tool_schemas = self._filter_tools_for_agent(agent)
             agent_name = agent.name
+            # Use agent's own API key if set
+            if agent.api_key:
+                provider = self.providers.create_ephemeral(agent.provider, agent.api_key)
         else:
             prompt = system_prompt or conv.system_prompt
             tool_schemas = self.tools.as_provider_format() if self.tools else None
@@ -182,34 +188,52 @@ class ChatService:
 
         # Agentic loop
         max_iterations = 10
-        for _ in range(max_iterations):
-            result = await provider.complete(messages, model_id, tools=tool_schemas, temperature=temperature)
+        status_manager = await AgentStatusManager.get_instance()
+        agent_id = agent.id if agent else "assistant"
+        
+        status_manager.set_status(agent_id, AgentState.WORKING, "Generating response...")
 
-            if result.tool_calls:
-                # Save assistant message with tool calls
-                await self.conv_service.add_message(
-                    conversation_id, "assistant", result.content,
-                    agent_name=agent_name,
-                    tool_calls_json=json.dumps(result.tool_calls),
-                )
-                messages.append(result)
+        try:
+            for _ in range(max_iterations):
+                result = await provider.complete(messages, model_id, tools=tool_schemas, temperature=temperature)
 
-                # Execute tools
-                tool_results = await self._execute_tool_calls(result.tool_calls)
-                for tr in tool_results:
+                if result.tool_calls:
+                    # Save assistant message with tool calls
                     await self.conv_service.add_message(
-                        conversation_id, "tool", tr.content,
-                        tool_call_id=tr.tool_call_id,
+                        conversation_id, "assistant", result.content,
+                        agent_name=agent_name,
+                        tool_calls_json=json.dumps(result.tool_calls),
                     )
-                    messages.append(tr)
-            else:
-                # Final response
-                await self.conv_service.add_message(
-                    conversation_id, "assistant", result.content, agent_name=agent_name
-                )
-                return result.content
+                    messages.append(result)
 
-        return "Max tool iterations reached."
+                    # Execute tools
+                    for tc in result.tool_calls:
+                        func = tc.get("function", {})
+                        tool_name = func.get("name", "")
+                        status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
+                    
+                    tool_results = await self._execute_tool_calls(result.tool_calls)
+                    status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
+                    
+                    for tr in tool_results:
+                        await self.conv_service.add_message(
+                            conversation_id, "tool", tr.content,
+                            tool_call_id=tr.tool_call_id,
+                        )
+                        messages.append(tr)
+                else:
+                    # Final response
+                    await self.conv_service.add_message(
+                        conversation_id, "assistant", result.content, agent_name=agent_name
+                    )
+                    status_manager.set_status(agent_id, AgentState.IDLE)
+                    return result.content
+
+            status_manager.set_status(agent_id, AgentState.IDLE)
+            return "Max tool iterations reached."
+        except Exception as e:
+            status_manager.set_status(agent_id, AgentState.IDLE)
+            raise e
 
     async def stream_chat(
         self,
@@ -244,6 +268,9 @@ class ChatService:
             prompt = self._build_agent_prompt(agent)
             tool_schemas = self._filter_tools_for_agent(agent)
             agent_name = agent.name
+            # Use agent's own API key if set
+            if agent.api_key:
+                provider = self.providers.create_ephemeral(agent.provider, agent.api_key)
         else:
             prompt = system_prompt or conv.system_prompt
             tool_schemas = self.tools.as_provider_format() if self.tools else None
@@ -257,71 +284,96 @@ class ChatService:
 
         # Agentic loop with streaming
         max_iterations = 10
+        # Resolve agent_id for status updates
+        status_manager = await AgentStatusManager.get_instance()
+        agent_id = None
+        if agent:
+            agent_id = agent.id
+        else:
+            # Fallback: try to find the system orchestrator agent id
+            stmt = select(Agent).where(Agent.is_system == True)
+            res = await self.session.execute(stmt)
+            system_agent = res.scalar_one_or_none()
+            if system_agent:
+                agent_id = system_agent.id
+            else:
+                agent_id = "assistant" # Last resort
+
+
         for _ in range(max_iterations):
             full_response = ""
             final_tool_calls = None
 
+            status_manager.set_status(agent_id, AgentState.WORKING, f"Generating response...")
             yield {"type": "agent_turn_start", "agent_name": agent_name}
 
-            async for chunk in provider.stream(messages, model_id, tools=tool_schemas, temperature=temperature):
-                if chunk.delta:
-                    full_response += chunk.delta
-                    yield {"type": "chunk", "delta": chunk.delta}
+            try:
+                async for chunk in provider.stream(messages, model_id, tools=tool_schemas, temperature=temperature):
+                    if chunk.delta:
+                        full_response += chunk.delta
+                        yield {"type": "chunk", "delta": chunk.delta}
 
-                if chunk.tool_calls:
-                    final_tool_calls = chunk.tool_calls
+                    if chunk.tool_calls:
+                        final_tool_calls = chunk.tool_calls
 
-            if final_tool_calls:
-                # Save assistant message with tool calls
-                await self.conv_service.add_message(
-                    conversation_id, "assistant", full_response,
-                    agent_name=agent_name,
-                    tool_calls_json=json.dumps(final_tool_calls),
-                )
-                messages.append(ChatMessage(
-                    role="assistant", content=full_response, tool_calls=final_tool_calls,
-                ))
-
-                # Execute tools and stream results
-                for tc in final_tool_calls:
-                    func = tc.get("function", {})
-                    tool_name = func.get("name", "")
-
-                    yield {
-                        "type": "tool_call",
-                        "tool_name": tool_name,
-                        "tool_args": json.loads(func.get("arguments", "{}")),
-                    }
-
-                tool_results = await self._execute_tool_calls(final_tool_calls)
-                for tr in tool_results:
+                if final_tool_calls:
+                    # Save assistant message with tool calls
                     await self.conv_service.add_message(
-                        conversation_id, "tool", tr.content,
-                        tool_call_id=tr.tool_call_id,
+                        conversation_id, "assistant", full_response,
+                        agent_name=agent_name,
+                        tool_calls_json=json.dumps(final_tool_calls),
                     )
-                    messages.append(tr)
-                    yield {
-                        "type": "tool_result",
-                        "tool_name": "",
-                        "tool_result": tr.content,
-                    }
-            else:
-                # Final response
-                msg = await self.conv_service.add_message(
-                    conversation_id, "assistant", full_response, agent_name=agent_name
-                )
-                yield {
-                    "type": "agent_turn_end",
-                    "agent_name": agent_name,
-                    "message_id": msg.id,
-                }
-                yield {
-                    "type": "done",
-                    "message_id": msg.id,
-                    "conversation_id": conversation_id,
-                }
-                return
+                    messages.append(ChatMessage(
+                        role="assistant", content=full_response, tool_calls=final_tool_calls,
+                    ))
 
+                    # Execute tools and stream results
+                    for tc in final_tool_calls:
+                        func = tc.get("function", {})
+                        tool_name = func.get("name", "")
+
+                        status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
+                        yield {
+                            "type": "tool_call",
+                            "tool_name": tool_name,
+                            "tool_args": json.loads(func.get("arguments", "{}")),
+                        }
+
+                    tool_results = await self._execute_tool_calls(final_tool_calls)
+                    for tr in tool_results:
+                        await self.conv_service.add_message(
+                            conversation_id, "tool", tr.content,
+                            tool_call_id=tr.tool_call_id,
+                        )
+                        messages.append(tr)
+                        yield {
+                            "type": "tool_result",
+                            "tool_name": "",
+                            "tool_result": tr.content,
+                        }
+                else:
+                    # Final response
+                    msg = await self.conv_service.add_message(
+                        conversation_id, "assistant", full_response, agent_name=agent_name
+                    )
+                    
+                    status_manager.set_status(agent_id, AgentState.IDLE)
+                    yield {
+                        "type": "agent_turn_end",
+                        "agent_name": agent_name,
+                        "message_id": msg.id,
+                    }
+                    yield {
+                        "type": "done",
+                        "message_id": msg.id,
+                        "conversation_id": conversation_id,
+                    }
+                    return
+            except Exception as e:
+                status_manager.set_status(agent_id, AgentState.IDLE)
+                raise e
+
+        status_manager.set_status(agent_id, AgentState.IDLE)
         yield {"type": "done", "conversation_id": conversation_id}
 
     async def stream_group_chat(
@@ -341,9 +393,29 @@ class ChatService:
         # Save user message
         await self.conv_service.add_message(conversation_id, "user", user_message)
 
-        # Get all active agents
-        result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
-        active_agents = list(result.scalars().all())
+        # Determine which agents to include
+        active_agents = []
+        if conv.channel_id:
+            channel = await self.session.get(Channel, conv.channel_id)
+            if channel:
+                if channel.is_announcement:
+                    # Announcements get everyone
+                    result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
+                    active_agents = list(result.scalars().all())
+                else:
+                    # Custom groups get only assigned agents
+                    stmt = (
+                        select(Agent)
+                        .join(ChannelAgent, Agent.id == ChannelAgent.agent_id)
+                        .where(ChannelAgent.channel_id == conv.channel_id, Agent.is_active == True)
+                        .order_by(Agent.id)
+                    )
+                    result = await self.session.execute(stmt)
+                    active_agents = list(result.scalars().all())
+        else:
+            # Fallback legacy behavior if somehow channel_id is not set but is_group=True
+            result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
+            active_agents = list(result.scalars().all())
 
         if not active_agents:
             yield {
@@ -418,59 +490,74 @@ class ChatService:
 
             msg_record = None
             
+            status_manager = await AgentStatusManager.get_instance()
+            agent_id = agent.id if agent else "assistant"
+            
             # Agentic tool loop (allow the agent to use tools and observe results during its turn)
             for _ in range(5):  # Max 5 tool iterations per agent turn
                 full_response = ""
                 final_tool_calls = None
+                
+                status_manager.set_status(agent_id, AgentState.WORKING, "Generating response...")
 
-                async for chunk in provider.stream(agent_msgs, model_id, tools=agent_tools, temperature=temperature):
-                    if chunk.delta:
-                        full_response += chunk.delta
-                        yield {
-                            "type": "chunk", 
-                            "delta": chunk.delta,
-                            "agent_name": agent.name
-                        }
-                    
-                    if chunk.tool_calls:
-                        final_tool_calls = chunk.tool_calls
 
-                if final_tool_calls:
-                    msg_record = await self.conv_service.add_message(
-                        conversation_id, "assistant", full_response,
-                        agent_name=agent.name,
-                        tool_calls_json=json.dumps(final_tool_calls),
-                    )
-                    agent_msgs.append(ChatMessage(
-                        role="assistant", content=full_response, tool_calls=final_tool_calls
-                    ))
-                    
-                    # Execute tools and stream results
-                    for tc in final_tool_calls:
-                        yield {
-                            "type": "tool_call",
-                            "tool_name": tc.get("function", {}).get("name"),
-                            "tool_args": tc.get("function", {}).get("arguments", {}),
-                        }
-                    
-                    tool_results = await self._execute_tool_calls(final_tool_calls)
-                    for tr in tool_results:
-                        await self.conv_service.add_message(
-                            conversation_id, "tool", tr.content, tool_call_id=tr.tool_call_id
+                try:
+                    async for chunk in provider.stream(agent_msgs, model_id, tools=agent_tools, temperature=temperature):
+                        if chunk.delta:
+                            full_response += chunk.delta
+                            yield {
+                                "type": "chunk", 
+                                "delta": chunk.delta,
+                                "agent_name": agent.name
+                            }
+                        
+                        if chunk.tool_calls:
+                            final_tool_calls = chunk.tool_calls
+
+                    if final_tool_calls:
+                        msg_record = await self.conv_service.add_message(
+                            conversation_id, "assistant", full_response,
+                            agent_name=agent.name,
+                            tool_calls_json=json.dumps(final_tool_calls),
                         )
-                        agent_msgs.append(tr)
-                        yield {
-                            "type": "tool_result",
-                            "tool_name": tr.tool_name,
-                            "tool_result": tr.content,
-                        }
-                    # Loop continues, agent observes tool output and replies again
-                else:
-                    msg_record = await self.conv_service.add_message(
-                        conversation_id, "assistant", full_response, agent_name=agent.name
-                    )
-                    break # Finished turn
+                        agent_msgs.append(ChatMessage(
+                            role="assistant", content=full_response, tool_calls=final_tool_calls
+                        ))
+                        
+                        # Execute tools and stream results
+                        for tc in final_tool_calls:
+                            tool_name = tc.get("function", {}).get("name")
+                            status_manager.set_status(agent.id, AgentState.WORKING, f"Using tool: {tool_name}...")
+                            yield {
+                                "type": "tool_call",
+                                "tool_name": tool_name,
+                                "tool_args": tc.get("function", {}).get("arguments", {}),
+                            }
+                        
+                        tool_results = await self._execute_tool_calls(final_tool_calls)
+                        status_manager.set_status(agent.id, AgentState.WORKING, "Evaluating tool results...")
+                        for tr in tool_results:
+                            await self.conv_service.add_message(
+                                conversation_id, "tool", tr.content, tool_call_id=tr.tool_call_id
+                            )
+                            agent_msgs.append(tr)
+                            yield {
+                                "type": "tool_result",
+                                "tool_name": tr.tool_name,
+                                "tool_result": tr.content,
+                            }
+                    else:
+                        msg_record = await self.conv_service.add_message(
+                            conversation_id, "assistant", full_response, agent_name=agent.name
+                        )
+                        status_manager.set_status(agent_id, AgentState.IDLE)
+                        break # Finished turn
+                except Exception as e:
+                    status_manager.set_status(agent_id, AgentState.IDLE)
+                    raise e
             
+            status_manager.set_status(agent_id, AgentState.IDLE)
+
             yield {
                 "type": "agent_turn_end",
                 "agent_name": agent.name,
@@ -478,3 +565,56 @@ class ChatService:
             }
 
         yield {"type": "done", "conversation_id": conversation_id}
+
+    # ──────────────────────────────────────────────────────────────────
+    # Agent Delegation
+    # ──────────────────────────────────────────────────────────────────
+
+    async def delegate_to_agent(
+        self,
+        target_agent_id: str,
+        prompt: str,
+        delegated_by: str = "Main Agent",
+    ) -> tuple[str, str]:
+        """
+        Delegate a task to a target agent.
+
+        - Finds or creates the target agent's dedicated conversation (so the
+          work history is visible when the user clicks on that agent in Chat).
+        - Wraps the prompt with delegation context.
+        - Runs the non-streaming agentic loop (personality + tools).
+        - Returns (response_text, conversation_id).
+        """
+        # 1. Load the target agent
+        target_agent = await self.session.get(Agent, target_agent_id)
+        if not target_agent:
+            raise ValueError(f"Agent with ID '{target_agent_id}' not found.")
+
+        # 2. Find or create the agent's dedicated conversation
+        existing = await self.conv_service.list_all(limit=1, agent_id=target_agent_id)
+        if existing:
+            conversation = existing[0]
+        else:
+            conversation = await self.conv_service.create(
+                title=f"Chat with {target_agent.name}",
+                model=target_agent.model,
+                agent_id=target_agent_id,
+            )
+
+        # 3. Build a well-structured delegation prompt
+        delegation_prompt = (
+            f"[Task delegated by {delegated_by}]\n\n"
+            f"{prompt}\n\n"
+            f"Please complete this task thoroughly using your expertise and any tools available to you."
+        )
+
+        # 4. Run the full agentic loop (persists all messages in the agent's conversation)
+        response_text = await self.chat(
+            conversation_id=conversation.id,
+            user_message=delegation_prompt,
+            model_string=target_agent.model,
+            temperature=0.7,
+        )
+
+        return response_text, conversation.id
+

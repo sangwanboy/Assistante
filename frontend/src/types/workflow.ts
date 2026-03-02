@@ -20,6 +20,8 @@ export interface Workflow {
     name: string;
     description: string | null;
     is_active: boolean;
+    agent_id: string | null;
+    channel_id: string | null;
     created_at: string;
     updated_at: string | null;
 }

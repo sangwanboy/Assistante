@@ -34,6 +34,7 @@ class GeminiProvider(BaseProvider):
                     k: types.Schema(
                         type=v.get("type", "STRING"),
                         description=v.get("description", ""),
+                        items=types.Schema(type=v.get("items", {}).get("type", "STRING")) if v.get("type") == "array" else None,
                     )
                     for k, v in params.get("properties", {}).items()
                 },

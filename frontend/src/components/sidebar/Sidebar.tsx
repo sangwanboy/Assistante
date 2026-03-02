@@ -99,8 +99,6 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
                 {isActive && isCollapsed && (
                   <span className="absolute right-1.5 w-1.5 h-1.5  bg-indigo-400"></span>
                 )}
-                
-                {/* Tooltip for collapsed state */}
                 {isCollapsed && (
                   <div className="absolute left-full ml-2 px-2 py-1 bg-[#0e0e1c] border border-[#1c1c30]  text-xs text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-xl">
                     {item.label}
