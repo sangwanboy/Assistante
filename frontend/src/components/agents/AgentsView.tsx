@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Edit2, Trash2, Bot, X, Loader2, Power, Wrench, Brain, Heart, Sparkles, Eye, EyeOff, Key } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useChatStore } from '../../stores/chatStore';
+import { useAgentStatusStore } from '../../stores/agentStatusStore';
 import type { Agent } from '../../types';
 import { api } from '../../services/api';
 
@@ -21,6 +22,7 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 export function AgentsView() {
     const { agents, loadAgents, createAgent, updateAgent, deleteAgent, isLoading } = useAgentStore();
     const { models } = useChatStore();
+    const { statuses } = useAgentStatusStore();
     const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
     const [showPanel, setShowPanel] = useState(false);
 
@@ -184,6 +186,20 @@ export function AgentsView() {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                             {agents.map((agent) => {
                                 const sparkData = getSparkData();
+                                const status = statuses[agent.id] || { state: 'offline' };
+                                let badgeClass = "bg-gray-100 text-gray-500";
+                                let badgeText = "OFFLINE";
+                                if (!agent.is_active) {
+                                    badgeClass = "bg-gray-100 text-gray-500";
+                                    badgeText = "OFF";
+                                } else if (status.state === 'working') {
+                                    badgeClass = "bg-amber-100 text-amber-700 animate-pulse";
+                                    badgeText = "WORKING";
+                                } else if (status.state === 'idle') {
+                                    badgeClass = "bg-green-100 text-green-700";
+                                    badgeText = "ONLINE";
+                                }
+
                                 return (
                                     <div
                                         key={agent.id}
@@ -227,8 +243,8 @@ export function AgentsView() {
                                                     SYSTEM
                                                 </span>
                                             )}
-                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${agent.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                                {agent.is_active ? 'ACTIVE' : 'OFF'}
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${badgeClass}`}>
+                                                {badgeText}
                                             </span>
                                         </div>
                                         <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5 min-h-[16px]">

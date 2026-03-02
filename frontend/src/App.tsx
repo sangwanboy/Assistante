@@ -10,6 +10,7 @@ import { ToolsSkillsView } from './components/tools/ToolsSkillsView';
 import { Bell, ChevronDown, CheckCircle2, ExternalLink, Settings } from 'lucide-react';
 import { useChatStore } from './stores/chatStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useAgentStatusStore } from './stores/agentStatusStore';
 
 export default function App() {
   const [activeView, setActiveView] = useState('home');
@@ -22,6 +23,11 @@ export default function App() {
   useEffect(() => {
     loadConversations();
     loadModels();
+    useAgentStatusStore.getState().connect();
+
+    return () => {
+      useAgentStatusStore.getState().disconnect();
+    };
   }, [loadConversations, loadModels]);
 
   const handleViewChange = (view: string) => {
@@ -124,7 +130,7 @@ export default function App() {
 
         {/* Content area */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          {activeView === 'home' && <HomeView />}
+          {activeView === 'home' && <HomeView onViewChange={handleViewChange} />}
           {activeView === 'chat' && <ChatView />}
           {activeView === 'knowledge' && <KnowledgeView />}
           {activeView === 'workflows' && <WorkflowsView />}

@@ -10,7 +10,11 @@ const recentEvents = [
   { icon: Bot, text: 'Support Bot responded to 3 queries', time: '2h ago', color: 'text-purple-500' },
 ];
 
-export function HomeView() {
+interface HomeViewProps {
+  onViewChange: (view: string) => void;
+}
+
+export function HomeView({ onViewChange }: HomeViewProps) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#f8f9fa] overflow-hidden">
@@ -25,7 +29,9 @@ export function HomeView() {
 
           {/* Right: Collapsible cards */}
           <div className="space-y-4 flex flex-col min-h-0 overflow-y-auto pr-1">
-            <ActiveTasks onAction={() => { }} />
+            <ActiveTasks onAction={(msg) => {
+              if (msg === 'View All Agents') onViewChange('agents');
+            }} />
             <QuickActions onAction={() => { }} />
           </div>
         </div>

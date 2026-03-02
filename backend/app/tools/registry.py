@@ -55,6 +55,7 @@ class ToolRegistry:
         from app.tools.agent_delegate import AgentDelegationTool
         from app.tools.model_manager import ModelManagerTool
         from app.tools.workflow_manager import WorkflowManagerTool
+        from app.tools.browser_tool import BrowserTool
 
         for tool in [
             WebSearchTool(), FileManagerTool(), CodeExecutorTool(),
@@ -67,6 +68,7 @@ class ToolRegistry:
             ),
             ModelManagerTool(),
             WorkflowManagerTool(),
+            BrowserTool(),
         ]:
             self.register(tool)
             self._builtin_names.add(tool.name)

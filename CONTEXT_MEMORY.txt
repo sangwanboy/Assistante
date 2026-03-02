@@ -91,6 +91,7 @@ HOW TO RUN:
 - app/services/workflow_engine.py -> WorkflowEngine: executes DAG of nodes (trigger -> actions via LLM)
 - app/services/custom_tool_service.py -> CustomToolService: CRUD for custom tools, DynamicTool wrapper, sandbox execution
 - app/services/skill_service.py -> SkillService: CRUD for skills, OpenClaw SKILL.md parse/export, active instructions aggregation
+- app/services/agent_status.py -> AgentStatusManager singleton: in-memory agent status (idle/working/offline), async queue broadcast to WebSocket subscribers
 
 - app/schemas/__init__.py -> Empty init
 - app/schemas/chat.py -> ChatRequest, ChatResponse, StreamChunkResponse pydantic models
@@ -135,11 +136,12 @@ HOW TO RUN:
 - src/stores/channelStore.ts -> Zustand store: channels CRUD, channel agent assignments
 - src/stores/settingsStore.ts -> Zustand store: selected model, temperature, show settings
 - src/stores/agentStore.ts -> Zustand store: agents CRUD and loading
+- src/stores/agentStatusStore.ts -> Zustand store: WebSocket connection to backend /api-ws/agents/status, real-time agent state tracking (idle/working/offline)
 
 - src/components/home/HomeView.tsx -> Hub layout: large dialogue canvas left, collapsible cards right, activity feed bottom
 - src/components/home/ActiveDialogue.tsx -> Tabbed (Chat/Workspace) with Cmd+K universal command bar
 - src/components/home/WorkspaceView.tsx -> Workflow visualization with trigger and action nodes
-- src/components/home/ActiveTasks.tsx -> Collapsible card showing live active agents from agentStore
+- src/components/home/ActiveTasks.tsx -> Collapsible card showing live active agents from agentStore + real-time status badges (ONLINE/WORKING/OFFLINE) from agentStatusStore
 - src/components/home/QuickActions.tsx -> Collapsible card with icon-labeled action buttons
 - src/components/chat/ChatView.tsx -> Three-pane: agent contact list (left), chat thread (center), context panel (right)
 - src/components/chat/MessageBubble.tsx -> Single message bubble (user/assistant/tool)
@@ -379,6 +381,8 @@ HOW TO RUN:
 - Knowledge Base uses ChromaDB for local vector storage. Documents are chunked and embedded on upload.
 - Workflows use a DAG model: Workflow -> Nodes (trigger/action) -> Edges. WorkflowEngine traverses linearly for MVP.
 - ReactFlow library used for visual node graph editor in the frontend.
+- Agent status uses in-memory singleton + WebSocket broadcast pattern (no DB overhead).
+  Frontend connects directly to backend port 8321 for agent status WS (bypasses Vite proxy).
 
 ================================================================================
                               KNOWN ISSUES
@@ -393,6 +397,9 @@ HOW TO RUN:
 - No Alembic migrations set up yet (using create_all + manual ALTER TABLEs).
 - Gemini uses synchronous google-genai SDK methods (not async). For production,
   consider wrapping in run_in_executor or switching to async httpx calls.
+- Agent Status WebSocket: Frontend must connect directly to backend port 8321
+  (ws://localhost:8321/api-ws/agents/status), NOT through Vite proxy. The Vite dev
+  proxy is unstable for WebSocket connections and drops them unexpectedly.
 - [FIXED 2026-02-28] generate-personality endpoint was using deprecated model
   `gemini-2.5-flash-lite-preview-06-17`. Changed to `gemini-2.5-flash`.
 
@@ -499,6 +506,31 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
   - Agents can now create and customize workflows via chat commands.
   - Verified: Main Agent created "Marketing Pipeline" workflow, assigned to marketing_agent,
     with webhook trigger + LLM action nodes connected. Visible in Workflows page.
+
+[2026-03-01] Real-Time Agent Status Tracking:
+  Backend:
+    - Created `AgentStatusManager` singleton (app/services/agent_status.py): in-memory status
+      tracker with async queue-based broadcast to all connected WebSocket subscribers.
+    - Added WebSocket endpoint `/api-ws/agents/status` in main.py: sends initial_status on
+      connect, then streams agent_status_update messages in real-time.
+    - Integrated status hooks in ChatService (stream_chat + stream_group_chat): set_status(WORKING)
+      before generation, set_status(WORKING, "Using tool: X") during tool use, set_status(IDLE)
+      after completion. Includes fallback agent_id resolution for system orchestrator.
+    - Added exception handling to WebSocket endpoint to prevent subscriber leaks.
+  Frontend:
+    - Created `agentStatusStore.ts` (Zustand): manages WebSocket connection lifecycle with
+      auto-reconnect and intentional close tracking. Connects directly to backend port 8321.
+    - Updated `ActiveTasks.tsx`: dynamic color-coded badges (🟢 ONLINE=idle, 🟠 WORKING=amber
+      pulse, ⚪ OFFLINE=gray) + task description text during working state.
+    - Updated `AgentsView.tsx`: integrated status badges on agent cards.
+    - Updated `App.tsx`: initializes/cleans up agent status WebSocket connection on mount/unmount.
+  Key Decision:
+    - Frontend connects directly to backend WebSocket (port 8321) instead of going through
+      Vite dev proxy, which was unstable and dropping connections.
+  Verified:
+    - Backend pipeline confirmed working via Python test script (test_status_pipeline.py).
+    - Browser test confirmed full lifecycle: initial_status → WORKING → Using tool → IDLE.
+    - Active Agents sidebar correctly reflects transitions in real-time.
 
 ================================================================================
                               TO-DO LIST
