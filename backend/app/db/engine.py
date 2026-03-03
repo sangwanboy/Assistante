@@ -12,19 +12,24 @@ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit
 
 async def init_database():
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+    # Ensure all new ORM models are imported before create_all
+    import app.models.integration  # noqa: F401
+    import app.models.agent_schedule  # noqa: F401
+    import app.models.agent_message  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migrate: add new columns if they don't exist (SQLite doesn't support IF NOT EXISTS for columns)
         new_agent_cols = [
             ("personality_tone", "TEXT"),
             ("personality_traits", "TEXT"),
             ("communication_style", "TEXT"),
             ("enabled_tools", "TEXT"),
+            ("enabled_skills", "TEXT"),
             ("reasoning_style", "TEXT"),
             ("memory_context", "TEXT"),
             ("memory_instructions", "TEXT"),
             ("api_key", "TEXT"),
             ("is_system", "BOOLEAN DEFAULT 0"),
+            ("total_cost", "FLOAT DEFAULT 0.0"),
         ]
         import sqlalchemy
         from sqlalchemy import select, func

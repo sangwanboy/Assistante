@@ -22,8 +22,10 @@ export class WebSocketClient {
     this.disconnect();
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    this.ws = new WebSocket(`${protocol}//${host}/ws/chat/${conversationId}`);
+    const host = window.location.hostname;
+    // Connect directly to backend port to bypass unstable Vite WS proxy
+    const backendPort = '8321';
+    this.ws = new WebSocket(`${protocol}//${host}:${backendPort}/ws/chat/${conversationId}`);
 
     this.ws.onopen = () => {
       this.onOpen();

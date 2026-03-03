@@ -27,10 +27,12 @@ class ConversationService:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_all(self, limit: int = 50, offset: int = 0, agent_id: str | None = None) -> list[Conversation]:
+    async def list_all(self, limit: int = 50, offset: int = 0, agent_id: str | None = None, is_group: bool | None = None) -> list[Conversation]:
         stmt = select(Conversation)
         if agent_id:
             stmt = stmt.where(Conversation.agent_id == agent_id)
+        if is_group is not None:
+            stmt = stmt.where(Conversation.is_group == is_group)
         
         stmt = (
             stmt.order_by(desc(Conversation.updated_at))

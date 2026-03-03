@@ -1,12 +1,14 @@
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
 from app.db.engine import get_session
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import ChatService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_chat_service(request: Request, session: AsyncSession = Depends(get_session)) -> ChatService:
@@ -79,6 +81,7 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
                         ):
                             await websocket.send_json(event)
                 except Exception as e:
+                    logger.error("Chat error in conversation %s: %s", conversation_id, e, exc_info=True)
                     await websocket.send_json({"type": "error", "error": str(e)})
 
     except WebSocketDisconnect:

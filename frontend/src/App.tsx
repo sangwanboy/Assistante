@@ -7,9 +7,12 @@ import { AgentsView } from './components/agents/AgentsView';
 import { KnowledgeView } from './components/knowledge/KnowledgeView';
 import { WorkflowsView } from './components/workflows/WorkflowsView';
 import { ToolsSkillsView } from './components/tools/ToolsSkillsView';
+import { IntegrationsView } from './components/integrations/IntegrationsView';
+import { HeartbeatView } from './components/heartbeat/HeartbeatView';
 import { useChatStore } from './stores/chatStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useAgentStatusStore } from './stores/agentStatusStore';
+import { useAgentControlStore } from './stores/agentControlStore';
 
 export default function App() {
   const [activeView, setActiveView] = useState('home');
@@ -21,9 +24,11 @@ export default function App() {
     loadConversations();
     loadModels();
     useAgentStatusStore.getState().connect();
+    useAgentControlStore.getState().connect();
 
     return () => {
       useAgentStatusStore.getState().disconnect();
+      useAgentControlStore.getState().disconnect();
     };
   }, [loadConversations, loadModels]);
 
@@ -54,6 +59,8 @@ export default function App() {
           {activeView === 'workflows' && <WorkflowsView />}
           {activeView === 'agents' && <AgentsView />}
           {activeView === 'tools' && <ToolsSkillsView />}
+          {activeView === 'integrations' && <IntegrationsView />}
+          {activeView === 'heartbeat' && <HeartbeatView />}
         </div>
 
         {/* Status bar */}

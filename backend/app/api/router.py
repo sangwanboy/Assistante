@@ -11,6 +11,11 @@ from app.api.workflows import router as workflows_router
 from app.api.custom_tools import router as custom_tools_router
 from app.api.skills import router as skills_router
 from app.api.channels import router as channels_router
+from app.api.audio import router as audio_router
+from app.api.integrations import router as integrations_router
+from app.api.schedules import router as schedules_router
+from app.api.marketplace import router as marketplace_router
+from app.api.agent_messaging import router as agent_messaging_router
 
 api_router = APIRouter()
 
@@ -25,4 +30,8 @@ api_router.include_router(workflows_router, prefix="/workflows", tags=["Workflow
 api_router.include_router(custom_tools_router, prefix="/custom-tools", tags=["Custom Tools"])
 api_router.include_router(skills_router, prefix="/skills", tags=["Skills"])
 api_router.include_router(channels_router, prefix="/channels", tags=["Channels"])
-
+api_router.include_router(audio_router, prefix="/audio", tags=["Audio"])
+api_router.include_router(integrations_router, prefix="/integrations", tags=["Omnichannel"])
+api_router.include_router(schedules_router, prefix="/schedules", tags=["Heartbeat"])
+api_router.include_router(marketplace_router, prefix="/marketplace", tags=["Marketplace"])
+api_router.include_router(agent_messaging_router, prefix="/messaging", tags=["Agent Messaging"])

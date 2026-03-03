@@ -13,6 +13,10 @@ from app.tools.registry import ToolRegistry
 from app.services.conversation_service import ConversationService
 from app.services.skill_service import SkillService
 from app.services.agent_status import AgentStatusManager, AgentState
+from app.services.hitl_service import HITLManager
+from app.services.context_pruner import ContextPruner
+from app.providers.base import TokenUsage
+import uuid
 
 
 class ChatService:
@@ -26,6 +30,7 @@ class ChatService:
         self.tools = tool_registry
         self.conv_service = ConversationService(session)
         self.session = session
+        self.pruner = ContextPruner(provider_registry)
 
     def _parse_model_string(self, model_string: str) -> tuple[str, str]:
         """Parse 'provider/model' into (provider_name, model_id)."""
@@ -68,10 +73,12 @@ class ChatService:
         # Memory
         if agent.memory_context:
             parts.append(f"## Memory\n{agent.memory_context}")
+        
+        prompt = "\n\n".join(parts)
         if agent.memory_instructions:
-            parts.append(f"## Standing Instructions\n{agent.memory_instructions}")
+            prompt += f"\n\n# Standing Instructions\n{agent.memory_instructions}"
 
-        return "\n\n".join(parts)
+        return prompt
 
     def _filter_tools_for_agent(self, agent: Agent) -> list[dict] | None:
         """Return only the tools enabled for this agent."""
@@ -88,10 +95,30 @@ class ChatService:
         except (json.JSONDecodeError, TypeError):
             return all_tools
 
-    async def _get_skill_instructions(self) -> str:
-        """Get combined instructions from all active skills."""
+    async def _get_skill_instructions(self, agent: Agent | None = None) -> str:
+        """Get combined instructions from enabled skills. 
+        If no agent is provided or agent is system orchestrator, gets ALL active skills.
+        If an agent is provided with enabled_skills, gets only those skills."""
         svc = SkillService(self.session)
-        return await svc.get_active_instructions()
+        skills = await svc.list_all()
+        
+        # Determine which skills to render
+        allowed_names = None
+        if agent and not agent.is_system:
+            try:
+                allowed_names = set(json.loads(agent.enabled_skills or "[]"))
+            except (json.JSONDecodeError, TypeError):
+                allowed_names = set()
+                
+        active_skills = []
+        for s in skills:
+            if not s.is_active:
+                continue
+            if allowed_names is not None and s.name not in allowed_names:
+                continue
+            active_skills.append(s)
+            
+        return svc.render_instructions(active_skills)
 
     def _db_messages_to_chat(self, db_messages, system_prompt: str | None = None) -> list[ChatMessage]:
         messages = []
@@ -118,6 +145,8 @@ class ChatService:
     async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[ChatMessage]:
         """Execute tool calls and return tool result messages."""
         results = []
+        hitl_manager = HITLManager.get_instance()
+
         for tc in tool_calls:
             func = tc.get("function", {})
             tool_name = func.get("name", "")
@@ -128,19 +157,73 @@ class ChatService:
             except json.JSONDecodeError:
                 args = {}
 
+            # HITL Check for sensitive tools
+            sensitive_tools = [
+                "code_executor", "command_executor", "execute_code_sandboxed",
+                "file_manager", "AgentManagerTool", "ToolCreatorTool", "SkillCreatorTool",
+            ]
+            if tool_name in sensitive_tools:
+                task_id = tc.get("id", str(uuid.uuid4()))
+                try:
+                    approved = await hitl_manager.request_approval(task_id, tool_name, args)
+                except Exception:
+                    # If HITL itself fails (e.g. no control WS connected), auto-deny
+                    approved = False
+                if not approved:
+                    results.append(ChatMessage(
+                        role="tool",
+                        content="Execution denied by user.",
+                        tool_call_id=tc.get("id", "")
+                    ))
+                    continue
+
+            images = None
             try:
                 tool = self.tools.get(tool_name)
-                result = await tool.execute(**args)
+                # Ensure result is a string
+                result_raw = await tool.execute(**args)
+                result_str = str(result_raw)
+                
+                # Check if result is a JSON string that might contain an image payload
+                try:
+                    parsed_result = json.loads(result_str)
+                    if isinstance(parsed_result, dict) and "image_base64" in parsed_result:
+                        images = [parsed_result.pop("image_base64")]
+                        # Format the remaining properties nicely to pass back to the LLM
+                        result_str = json.dumps(parsed_result)
+                except (json.JSONDecodeError, TypeError):
+                    pass
             except Exception as e:
-                result = f"Tool error: {str(e)}"
+                import traceback
+                error_trace = traceback.format_exc()
+                result_str = (
+                    f"Tool '{tool_name}' failed with error:\n{str(e)}\n\n"
+                    f"Traceback:\n{error_trace}\n"
+                    f"Analyze the error carefully and try a different approach or fix your parameters."
+                )
 
             results.append(ChatMessage(
                 role="tool",
-                content=result,
+                content=result_str,
                 tool_call_id=tc.get("id", ""),
+                images=images,
             ))
 
         return results
+
+    def _calculate_cost(self, provider_name: str, model_id: str, usage: TokenUsage) -> float:
+        """Calculate estimated cost based on token usage."""
+        if not usage:
+            return 0.0
+            
+        rate_1k_prompt = 0.0001
+        rate_1k_comp = 0.0002
+        
+        if "flash" in model_id.lower():
+            rate_1k_prompt = 0.000075
+            rate_1k_comp = 0.00030
+        
+        return (usage.prompt_tokens / 1000.0 * rate_1k_prompt) + (usage.completion_tokens / 1000.0 * rate_1k_comp)
 
     async def chat(
         self,
@@ -184,17 +267,28 @@ class ChatService:
             agent_name = "Assistant"
             
         messages = self._db_messages_to_chat(db_messages, prompt)
+        
+        agent_id = agent.id if agent else "assistant"
+        
+        # Prune context if needed (safe default 100k tokens)
+        messages = await self.pruner.prune_context_if_needed(messages, 100000, agent_id)
 
         # Agentic loop
         max_iterations = 10
         status_manager = await AgentStatusManager.get_instance()
-        agent_id = agent.id if agent else "assistant"
         
         status_manager.set_status(agent_id, AgentState.WORKING, "Generating response...")
 
         try:
             for _ in range(max_iterations):
                 result = await provider.complete(messages, model_id, tools=tool_schemas, temperature=temperature)
+
+                if hasattr(result, "usage") and result.usage and getattr(agent, "id", None):
+                    cost = self._calculate_cost(provider.name, model_id, result.usage)
+                    if cost > 0:
+                        agent.total_cost = getattr(agent, 'total_cost', 0) + cost
+                        await self.session.commit()
+                        await status_manager.emit_event({"type": "TOKEN_UPDATE", "agent_id": agent.id, "cost_added": cost, "total_cost": agent.total_cost})
 
                 if result.tool_calls:
                     # Save assistant message with tool calls
@@ -276,13 +370,11 @@ class ChatService:
             agent_name = "Assistant"
             
         # Inject active skill instructions
-        skill_instructions = await self._get_skill_instructions()
+        skill_instructions = await self._get_skill_instructions(agent)
         if skill_instructions:
             prompt = (prompt or "") + "\n\n# Available Skills\n" + skill_instructions
         messages = self._db_messages_to_chat(db_messages, prompt)
 
-        # Agentic loop with streaming
-        max_iterations = 10
         # Resolve agent_id for status updates
         status_manager = await AgentStatusManager.get_instance()
         agent_id = None
@@ -297,6 +389,12 @@ class ChatService:
                 agent_id = system_agent.id
             else:
                 agent_id = "assistant" # Last resort
+                
+        # Prune context if needed
+        messages = await self.pruner.prune_context_if_needed(messages, 100000, agent_id)
+
+        # Agentic loop with streaming
+        max_iterations = 10
 
 
         for _ in range(max_iterations):
@@ -307,13 +405,26 @@ class ChatService:
             yield {"type": "agent_turn_start", "agent_name": agent_name}
 
             try:
+                final_usage = None
                 async for chunk in provider.stream(messages, model_id, tools=tool_schemas, temperature=temperature):
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        final_usage = chunk.usage
+                        
                     if chunk.delta:
-                        full_response += chunk.delta
+                        full_response += str(chunk.delta)
                         yield {"type": "chunk", "delta": chunk.delta}
 
                     if chunk.tool_calls:
-                        final_tool_calls = chunk.tool_calls
+                        if final_tool_calls is None:
+                            final_tool_calls = []
+                        final_tool_calls.extend(chunk.tool_calls)
+
+                if final_usage and getattr(agent, "id", None):
+                    cost = self._calculate_cost(provider.name, model_id, final_usage)
+                    if cost > 0:
+                        agent.total_cost = getattr(agent, 'total_cost', 0) + cost
+                        await self.session.commit()
+                        await status_manager.emit_event({"type": "TOKEN_UPDATE", "agent_id": agent.id, "cost_added": cost, "total_cost": agent.total_cost})
 
                 if final_tool_calls:
                     # Save assistant message with tool calls
@@ -412,9 +523,14 @@ class ChatService:
                     result = await self.session.execute(stmt)
                     active_agents = list(result.scalars().all())
         else:
-            # Fallback legacy behavior if somehow channel_id is not set but is_group=True
-            result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
-            active_agents = list(result.scalars().all())
+            # No channel_id — do not fall through to all agents.
+            # This prevents unintended broadcast to every active agent.
+            yield {
+                "type": "error",
+                "content": "Group conversation has no channel assigned. Cannot determine participants.",
+                "conversation_id": conversation_id
+            }
+            return
 
         if not active_agents:
             yield {
@@ -445,7 +561,7 @@ class ChatService:
             )
             final_prompt = (agent_prompt or "") + multi_agent_instruction
             # Inject active skill instructions
-            skill_instructions = await self._get_skill_instructions()
+            skill_instructions = await self._get_skill_instructions(agent)
             if skill_instructions:
                 final_prompt += "\n\n# Available Skills\n" + skill_instructions
             agent_msgs.append(ChatMessage(role="system", content=final_prompt))
@@ -477,6 +593,9 @@ class ChatService:
                         role=msg.role, content=msg.content,
                         tool_calls=tool_calls, tool_call_id=msg.tool_call_id
                     ))
+                    
+            agent_id = agent.id if agent else "assistant"
+            agent_msgs = await self.pruner.prune_context_if_needed(agent_msgs, 100000, agent_id)
 
             # Filter tools for this agent
             agent_tools = self._filter_tools_for_agent(agent)
@@ -501,9 +620,13 @@ class ChatService:
 
 
                 try:
+                    final_usage = None
                     async for chunk in provider.stream(agent_msgs, model_id, tools=agent_tools, temperature=temperature):
+                        if hasattr(chunk, "usage") and chunk.usage:
+                            final_usage = chunk.usage
+                            
                         if chunk.delta:
-                            full_response += chunk.delta
+                            full_response += str(chunk.delta)
                             yield {
                                 "type": "chunk", 
                                 "delta": chunk.delta,
@@ -511,7 +634,16 @@ class ChatService:
                             }
                         
                         if chunk.tool_calls:
-                            final_tool_calls = chunk.tool_calls
+                            if final_tool_calls is None:
+                                final_tool_calls = []
+                            final_tool_calls.extend(chunk.tool_calls)
+
+                    if final_usage and getattr(agent, "id", None):
+                        cost = self._calculate_cost(provider.name, model_id, final_usage)
+                        if cost > 0:
+                            agent.total_cost = getattr(agent, 'total_cost', 0) + cost
+                            await self.session.commit()
+                            await status_manager.emit_event({"type": "TOKEN_UPDATE", "agent_id": agent.id, "cost_added": cost, "total_cost": agent.total_cost})
 
                     if final_tool_calls:
                         msg_record = await self.conv_service.add_message(
@@ -525,14 +657,16 @@ class ChatService:
                         
                         # Execute tools and stream results
                         for tc in final_tool_calls:
-                            tool_name = tc.get("function", {}).get("name")
+                            func = tc.get("function", {})
+                            tool_name = func.get("name", "")
+                            args_raw = func.get("arguments", "{}")
                             status_manager.set_status(agent.id, AgentState.WORKING, f"Using tool: {tool_name}...")
                             yield {
                                 "type": "tool_call",
                                 "tool_name": tool_name,
-                                "tool_args": tc.get("function", {}).get("arguments", {}),
+                                "tool_args": json.loads(args_raw) if isinstance(args_raw, str) else args_raw,
                             }
-                        
+
                         tool_results = await self._execute_tool_calls(final_tool_calls)
                         status_manager.set_status(agent.id, AgentState.WORKING, "Evaluating tool results...")
                         for tr in tool_results:
@@ -542,7 +676,7 @@ class ChatService:
                             agent_msgs.append(tr)
                             yield {
                                 "type": "tool_result",
-                                "tool_name": tr.tool_name,
+                                "tool_name": "",
                                 "tool_result": tr.content,
                             }
                     else:
@@ -589,8 +723,8 @@ class ChatService:
         if not target_agent:
             raise ValueError(f"Agent with ID '{target_agent_id}' not found.")
 
-        # 2. Find or create the agent's dedicated conversation
-        existing = await self.conv_service.list_all(limit=1, agent_id=target_agent_id)
+        # 2. Find or create the agent's dedicated single-agent conversation
+        existing = await self.conv_service.list_all(limit=1, agent_id=target_agent_id, is_group=False)
         if existing:
             conversation = existing[0]
         else:

@@ -92,6 +92,9 @@ HOW TO RUN:
 - app/services/custom_tool_service.py -> CustomToolService: CRUD for custom tools, DynamicTool wrapper, sandbox execution
 - app/services/skill_service.py -> SkillService: CRUD for skills, OpenClaw SKILL.md parse/export, active instructions aggregation
 - app/services/agent_status.py -> AgentStatusManager singleton: in-memory agent status (idle/working/offline), async queue broadcast to WebSocket subscribers
+- app/services/hitl_service.py -> HITLManager: manages asyncio.Event locks and pending tool approvals for sensitive operations
+- app/services/context_pruner.py -> ContextPruner: estimates token usage and summarizes conversation history when limits are reached
+- app/api/audio.py -> Audio API: transcribes speech via Gemini 2.0 Flash and generates speech via edge-tts
 
 - app/schemas/__init__.py -> Empty init
 - app/schemas/chat.py -> ChatRequest, ChatResponse, StreamChunkResponse pydantic models
@@ -119,6 +122,26 @@ HOW TO RUN:
 - app/api/workflows.py -> CRUD /api/workflows + POST /{id}/graph (save node graph)
 - app/api/custom_tools.py -> CRUD /api/custom-tools + POST /{id}/test (custom tool management + test execution)
 - app/api/skills.py -> CRUD /api/skills + POST /import + GET /{id}/export (skill management + OpenClaw import/export)
+- app/api/integrations.py -> CRUD + webhook endpoints for omnichannel integrations (/api/integrations)
+- app/api/schedules.py -> CRUD REST endpoints for heartbeat schedules (/api/schedules)
+- app/api/marketplace.py -> GET /marketplace list/detail, POST /{id}/install (skill marketplace)
+- app/api/agent_messaging.py -> REST (groups CRUD, messages) + WebSocket /api/messaging/ws (P2P agent messaging); auto-delegates @AgentName: task via _auto_delegate background task calling ChatService.delegate_to_agent()
+- app/models/integration.py -> ExternalIntegration ORM (platform, config_json, agent_id)
+- app/models/agent_schedule.py -> AgentSchedule ORM (agent_id, interval_minutes, task_config_json, last_run)
+- app/models/agent_message.py -> AgentMessage ORM + AgentGroupDiscussion ORM (P2P messaging)
+- app/schemas/integration.py -> IntegrationCreate/Update/Out schemas
+- app/schemas/schedule.py -> ScheduleCreate/Update/Out schemas
+- app/schemas/agent_message.py -> message + group schemas
+- app/services/heartbeat.py -> HeartbeatService singleton: asyncio 60s tick, interval-based schedule firing
+- app/services/agent_messaging.py -> AgentMessagingService: per-agent asyncio.Queue inboxes, send_direct/send_group
+- app/services/marketplace_service.py -> reads/parses .md skill files from marketplace catalog directory
+- app/services/context_pruner.py -> ContextPruner: estimates token usage, summarizes old context when limits reached
+- app/tools/agent_messenger.py -> AgentMessengerTool: send_direct/send_group/list_groups/create_group/get_inbox
+- app/tools/command_executor.py -> CommandExecutorTool: runs PowerShell/shell commands with HITL approval
+- app/tools/docker_executor.py -> DockerCodeExecutorTool: runs code in Docker container (no network, RAM/CPU capped)
+- app/tools/memory_tool.py -> MemoryTool: persistent agent memory read/write
+- app/services/omnichannel/ -> BaseChannelAdapter + Telegram/Discord/Slack/WhatsApp adapters + OmnichannelManager
+- data/marketplace/ -> 7 pre-built skill .md files (web_researcher, code_reviewer, daily_briefing, etc.)
 
 --- Frontend (frontend/) ---
 - vite.config.ts -> Vite config with React, Tailwind, dev proxy to backend
@@ -136,16 +159,18 @@ HOW TO RUN:
 - src/stores/channelStore.ts -> Zustand store: channels CRUD, channel agent assignments
 - src/stores/settingsStore.ts -> Zustand store: selected model, temperature, show settings
 - src/stores/agentStore.ts -> Zustand store: agents CRUD and loading
-- src/stores/agentStatusStore.ts -> Zustand store: WebSocket connection to backend /api-ws/agents/status, real-time agent state tracking (idle/working/offline)
+- src/stores/agentStatusStore.ts -> Zustand store: WebSocket connection to backend /api-ws/agents/status, real-time agent state tracking (idle/working/offline), cost updates, and HITL pending approvals
+- src/services/audio.ts -> Audio Service: client-side handling for MediaRecorder transcription and TTS playback
 
 - src/components/home/HomeView.tsx -> Hub layout: large dialogue canvas left, collapsible cards right, activity feed bottom
 - src/components/home/ActiveDialogue.tsx -> Tabbed (Chat/Workspace) with Cmd+K universal command bar
 - src/components/home/WorkspaceView.tsx -> Workflow visualization with trigger and action nodes
 - src/components/home/ActiveTasks.tsx -> Collapsible card showing live active agents from agentStore + real-time status badges (ONLINE/WORKING/OFFLINE) from agentStatusStore
 - src/components/home/QuickActions.tsx -> Collapsible card with icon-labeled action buttons
-- src/components/chat/ChatView.tsx -> Three-pane: agent contact list (left), chat thread (center), context panel (right)
+- src/components/chat/ChatView.tsx -> Unified chat: sidebar with Announcements/Team Channels/Agent Groups/System Agents/DMs; dual center pane (P2P group view OR LLM agent chat); @AgentName: task auto-delegation UI
 - src/components/chat/MessageBubble.tsx -> Single message bubble (user/assistant/tool)
-- src/components/chat/MessageInput.tsx -> Text input with send button, Shift+Enter support
+- src/components/chat/MessageInput.tsx -> Text input with send button, Shift+Enter support, and Integrated Microphone for STT
+- src/components/chat/ApprovalModal.tsx -> Glassmorphism modal for Human-in-the-Loop tool approval/denial
 - src/components/chat/StreamingMessage.tsx -> In-progress streaming message with cursor + tool calls
 - src/components/common/MarkdownRenderer.tsx -> ReactMarkdown with GFM + syntax highlighting
 - src/components/common/ModelSelector.tsx -> Model picker dropdown
@@ -154,6 +179,14 @@ HOW TO RUN:
 - src/components/agents/AgentsView.tsx -> Dashboard cards with sparklines, power toggle, slide-out config panel
 - src/components/sidebar/Sidebar.tsx -> Navigation sidebar (Home, Chat, KB, Workflows, Agents, Settings)
 - src/components/settings/SettingsPanel.tsx -> Tabbed modal (API Keys, Local Models, Defaults) with connectivity indicators
+- src/components/integrations/IntegrationsView.tsx -> Omnichannel integrations UI: platform cards, add/toggle/delete modals
+- src/components/heartbeat/HeartbeatView.tsx -> Heartbeat Schedules UI: list schedules, create modal, pause/resume/delete
+- src/components/messaging/AgentMessagingView.tsx -> P2P agent messaging: group discussions + direct messages, WS real-time feed
+- src/components/ErrorBoundary.tsx -> React class-based error boundary: shows error stack trace + "Try Again" button
+- src/stores/agentControlStore.ts -> Zustand: HITL WebSocket control (ws://localhost:8321/api-ws/agents/control),
+    pendingApprovals list, alwaysAllowedTools, resolveApproval. Fixed: uses event.target not module-level ws.
+- src/stores/themeStore.ts -> Zustand theme store
+- src/stores/agentControlStore.ts -> Zustand agent control WS store (HITL approvals)
 
 ================================================================================
                            CHANGES LOG
@@ -383,6 +416,33 @@ HOW TO RUN:
 - ReactFlow library used for visual node graph editor in the frontend.
 - Agent status uses in-memory singleton + WebSocket broadcast pattern (no DB overhead).
   Frontend connects directly to backend port 8321 for agent status WS (bypasses Vite proxy).
+- Human-in-the-Loop: Sensitive tools (code_executor, file_manager) are blocked by default until user approval.
+- Context Pruning uses a small/cheap model (e.g., gemini-1.5-flash) for summarizing old context to save money.
+- Audio implementation uses Gemini for STT and edge-tts for TTS to avoid proprietary OpenAI audio costs/keys.
+
+[2026-03-03] Session 6 — Fixed Agent Tool Use Failures (4 bugs):
+
+  1. stream_group_chat AttributeError (chat_service.py line 673):
+     - `tr.tool_name` was accessed but ChatMessage has no `tool_name` attribute.
+     - Fixed: changed to `""` (consistent with stream_chat which already used "").
+
+  2. stream_group_chat tool_args not parsed (chat_service.py line 661):
+     - `tc.get("function", {}).get("arguments", {})` returned raw JSON string.
+     - Fixed: now uses `json.loads(args_raw) if isinstance(args_raw, str) else args_raw`
+       (consistent with stream_chat which used json.loads).
+
+  3. Gemini tool response name mismatch (gemini_provider.py _build_contents):
+     - Tool results sent back with hardcoded name="tool_response" instead of actual
+       function name. Gemini API requires the exact function name to match tool calls.
+     - Fixed: _build_contents now pre-builds a `tool_call_id_to_name` lookup dict
+       from all assistant messages before processing, then uses the real function name
+       (fallback to "tool_response" only if not found).
+
+  4. Anthropic/Gemini multiple tool calls overwritten (chat_service.py stream_chat + stream_group_chat):
+     - `final_tool_calls = chunk.tool_calls` was overwriting on each chunk,
+       so only the LAST tool call survived for multi-tool responses.
+     - Fixed: changed to `if final_tool_calls is None: final_tool_calls = []` then
+       `final_tool_calls.extend(chunk.tool_calls)` in both stream functions.
 
 ================================================================================
                               KNOWN ISSUES
@@ -531,6 +591,128 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
     - Backend pipeline confirmed working via Python test script (test_status_pipeline.py).
     - Browser test confirmed full lifecycle: initial_status → WORKING → Using tool → IDLE.
     - Active Agents sidebar correctly reflects transitions in real-time.
+[2026-03-03] Advanced Architecture Upgrades (5 Major Features):
+  1. Human-in-the-Loop (HITL):
+     - Added `HITLManager` with `asyncio.Event` locks to pause sensitive tool execution.
+     - Created `ApprovalModal.tsx` in frontend to intercept and resolve tool calls.
+  2. Token Economy & Cost Tracking:
+     - Implemented native usage parsing for OpenAI, Anthropic, Gemini, and Ollama.
+     - Added `total_cost` persistence in SQLite and real-time broadcasting via WebSocket.
+     - Updated `AgentsView.tsx` to display agent-specific lifetime costs.
+  3. Context Window Pruning:
+     - Created `ContextPruner` service to summarize conversation middle-segments on-the-fly.
+     - Integrated into `ChatService` to prevent context window overflows autonomously.
+  4. Graceful Error Handling & Self-Correction:
+     - Wrapped tool execution in try/except blocks with detailed traceback injection.
+     - Agents now receive their own tool error messages as instructions for self-correction.
+  5. Seamless Video/Audio I/O (Gemini + edge-tts):
+     - Implemented native audio transcription using Gemini 2.0 Flash's multimodal input.
+     - Integrated `edge-tts` for high-quality, free speech synthesis.
+     - Added Mic/Speaker buttons to `MessageInput` and `MessageBubble` components.
+  - Fixed frontend build errors related to unused variables in `WorkflowsView.tsx` and `AgentStatusPanel.tsx`.
+
+[2026-03-03] Five OpenClaw-Edge Feature Parity Upgrades:
+
+  1. OMNICHANNEL INTEGRATION (Telegram, Discord, Slack, WhatsApp):
+     Backend:
+     - Created `backend/app/services/omnichannel/` directory with:
+       * `base.py` — BaseChannelAdapter ABC, IncomingMessage/OutgoingMessage dataclasses
+       * `telegram_adapter.py` — Long-polling Telegram bot (no dependency, httpx-only)
+       * `discord_adapter.py` — REST-polling Discord bot adapter
+       * `slack_adapter.py` — Webhook-based Slack Events API adapter
+       * `whatsapp_adapter.py` — Twilio WhatsApp form-encoded webhook adapter
+       * `manager.py` — OmnichannelManager singleton: starts/stops adapters, dispatches messages
+     - Created `backend/app/models/integration.py` — ExternalIntegration ORM (platform, config_json, agent_id)
+     - Created `backend/app/schemas/integration.py` — IntegrationCreate/Update/Out schemas
+     - Created `backend/app/api/integrations.py` — CRUD + webhook endpoints for Slack/WhatsApp
+     - Updated `backend/app/main.py` — startup loads active integrations, sets message handler
+       routing messages to the assigned agent via ChatService, replies back on the platform
+     Frontend:
+     - Created `frontend/src/components/integrations/IntegrationsView.tsx` — Full UI: platform
+       info cards, integration list (toggle/delete), modal to add new integration with
+       dynamic config fields per platform type
+     - Added `Integration` / `IntegrationCreate` interfaces to `frontend/src/types/index.ts`
+     - Added omnichannel API methods to `frontend/src/services/api.ts`
+     - Added "Integrations" (Globe icon) to `AnimatedSidebar.tsx` NAV_ITEMS
+     - Wired `IntegrationsView` in `App.tsx`
+
+  2. PROACTIVE HEARTBEAT (Background scheduled agent tasks):
+     Backend:
+     - Created `backend/app/services/heartbeat.py` — HeartbeatService singleton with asyncio
+       loop (60s tick), interval-based schedule firing, runs ChatService non-streaming call
+       on the agent's dedicated heartbeat conversation
+     - Created `backend/app/models/agent_schedule.py` — AgentSchedule ORM (agent_id,
+       interval_minutes, task_config_json, last_run)
+     - Created `backend/app/schemas/schedule.py` — ScheduleCreate/Update/Out schemas
+     - Created `backend/app/api/schedules.py` — CRUD REST endpoints with agent_id filter
+     - Updated `backend/app/main.py` — HeartbeatService.configure() + .start() on startup,
+       .stop() on shutdown
+     Frontend:
+     - Added `AgentSchedule` interface to `frontend/src/types/index.ts`
+     - Added schedule API methods to `frontend/src/services/api.ts`
+
+  3. DOCKER CONTAINERIZED SANDBOXING:
+     Backend:
+     - Created `backend/app/tools/docker_executor.py` — `DockerCodeExecutorTool`:
+       * Runs Python code in a fresh Docker container (image: python:3.12-slim)
+       * No network access, 256MB RAM cap, 50% CPU cap, container destroyed after run
+       * Smooth graceful fallback to subprocess execution if Docker unavailable
+     - Updated `backend/app/tools/registry.py` — DockerCodeExecutorTool registered as
+       new built-in tool `execute_code_sandboxed` alongside the existing code_executor
+
+  4. SKILL MARKETPLACE (Pre-built catalog + install UI):
+     Backend:
+     - Created 7 pre-built skill files in `backend/data/marketplace/`:
+       web_researcher.md, code_reviewer.md, daily_briefing.md, smart_summarizer.md,
+       email_drafter.md, data_analyst.md, task_automator.md
+     - Created `backend/app/services/marketplace_service.py` — reads/parses .md skill files
+       from the marketplace catalog directory (minimal YAML frontmatter parser, no pyyaml dep)
+     - Created `backend/app/api/marketplace.py` — GET /marketplace (list), GET /{id} (detail),
+       POST /{id}/install (installs into user's active Skill library, idempotent)
+     Frontend:
+     - Added `MarketplaceSkill` interface to `frontend/src/types/index.ts`
+     - Added marketplace API methods to `frontend/src/services/api.ts`
+     - Updated `ToolsSkillsView.tsx` — Added "Marketplace" as 3rd tab (ShoppingBag icon).
+       Grid of skill cards with tags, version, author, and Install button (CheckCircle if
+       already installed). State managed with `installingSkillId` and `installResults`.
+
+  5. P2P AGENT MESSAGING WITH GROUP DISCUSSIONS:
+     Backend:
+     - Created `backend/app/models/agent_message.py` — AgentMessage ORM (from_agent_id,
+       to_agent_id, group_id, content) + AgentGroupDiscussion ORM (name, agent_ids_json)
+     - Created `backend/app/schemas/agent_message.py` — message + group schemas
+     - Created `backend/app/services/agent_messaging.py` — AgentMessagingService singleton:
+       * Per-agent asyncio.Queue inboxes for async delivery
+       * send_direct() / send_group() methods with DB persistence + WS broadcast
+       * WebSocket subscriber management (frontend real-time feed)
+     - Created `backend/app/tools/agent_messenger.py` — AgentMessengerTool:
+       * Actions: send_direct, send_group, list_groups, create_group, get_inbox
+       * Registered as built-in tool so any agent can send messages via LLM tool call
+     - Created `backend/app/api/agent_messaging.py` — REST (groups CRUD, messages) +
+       WebSocket /api/messaging/ws (history on connect, real-time broadcast). Groups
+       automatically include the system agent (Main Agent).
+     Frontend:
+     - Created `frontend/src/components/messaging/AgentMessagingView.tsx`:
+       * Sidebar: Group discussions (with + button) + Direct Messages per agent
+       * Create Group modal (agent checklist; main system agent auto-included)
+       * Chat thread: messages with avatar, agent name (★ for system), timestamp
+       * "Send as" selector to choose which agent sends the message
+       * Real-time updates via WebSocket at `ws://localhost:8321/api/messaging/ws`
+     - Added `AgentMessage` / `AgentGroupDiscussion` interfaces to types/index.ts
+     - Added messaging API methods to api.ts
+     - Added "Agent Messaging" (Network icon) to AnimatedSidebar NAV_ITEMS
+     - Wired `AgentMessagingView` in `App.tsx`
+
+  SHARED INFRA UPDATES:
+  - Updated `backend/app/api/router.py` — 4 new routers: integrations, schedules, marketplace,
+    messaging (all under /api prefix)
+  - Updated `backend/app/db/engine.py` — Import 3 new models before create_all:
+    ExternalIntegration, AgentSchedule, AgentMessage/AgentGroupDiscussion
+  - Updated `backend/app/tools/registry.py` — `register_defaults()` now accepts
+    `session_factory` param; registers DockerCodeExecutorTool + AgentMessengerTool
+  - Updated `backend/app/main.py` — HeartbeatService + OmnichannelManager lifecycle,
+    omnichannel message → agent routing handler
+  - Build verified: `tsc -b && vite build` → 0 TypeScript errors, 0 warnings
 
 ================================================================================
                               TO-DO LIST
@@ -576,7 +758,456 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
 
   --- RECENT FIXES ---
   [2026-03-02] Fixed ChatService. chat and stream_chat routines to explicitly enforce agent name/Description and insert personality fields (Soul, Mind, Memory) before the conversation. Reinstalled backend using isolated Python 3.12 via `uv run --python 3.12` to fix Pydantic incompatibility with Python 3.14.
+  [2026-03-02] Pushed all fixes to `origin/merging-branch` successfully.
+  [2026-03-02] Implemented True Browser Vision via Playwright. Updated BrowserTool to run visibly (headless=False) and added a `screenshot` action. Updated `ChatMessage` schema and `ChatService` to extract base64 images from tool responses and pipe them to Gemini natively via `gemini_provider.py`. Agents can now physically see the screen.
+  [2026-03-03] Added Agent PowerShell CLI execution (`CommandExecutorTool`) and integrated it into the HITL safety net. Verified end-to-end functionality via browser.
+  [2026-03-03] Fixed stuck HITL Approval Modal. Added proper websocket disconnect handling, state clearing on disconnect, and visual alerts to the user to prevent UI freezing.
+  [2026-03-03] Refactored HITL Approval UI into an inline chat view within `MessageInput.tsx`. The floating modal was completely removed. Added an "Always Allow Tool" button that persists user preferences to `localStorage` via the `agentControlStore`.
+
+[2026-03-03] Session 4 — Unified Chat Architecture + Agent Group Auto-Delegation:
+
+  UNIFIED CHAT VIEW (frontend/src/components/chat/ChatView.tsx) — COMPLETE REWRITE:
+  - Removed tab bar (chatMode state). Agent Messaging fully merged into Chat view.
+  - Single sidebar with: Announcements channel → Team Channels (LLM, + button) →
+    Agent Groups (P2P, + button, delete on hover) → System Agents → Direct Messages.
+  - Dual center pane: isP2PView (activeMessagingGroup !== null) shows P2P group chat;
+    isLLMView (!isP2PView && activeConversationId !== null) shows LLM agent/channel chat.
+  - P2P group chat header shows member list + "@AgentName: task → auto-executes" hint badge.
+  - Messages with [📋 Result for prefix get green emerald bubble styling.
+  - Create Agent Group modal inline (fixed overlay, agent checklist by non-system agents).
+  - P2P WebSocket connects to ws://localhost:8321/api/messaging/ws on mount, deduplicates by msg.id.
+  - Right context pane only rendered for LLM chat view.
+
+  BACKEND AUTO-DELEGATION (backend/app/api/agent_messaging.py):
+  - Added _MENTION_RE = re.compile(r'^@([\w][\w\s]*?):\s*(.+)', re.DOTALL) at module level.
+  - send_group_message endpoint now accepts request: Request parameter.
+  - After saving the message, matches content against _MENTION_RE.
+  - On match: spawns asyncio.create_task(_auto_delegate(...)) with provider_registry from app.state.
+  - _auto_delegate(): looks up agent by name (ilike partial match), resolves requester name,
+    instantiates ChatService(provider_registry, session), calls delegate_to_agent(target.id, task),
+    posts result back as "[📋 Result for @{requester_name}]\n\n{response}" via messaging.send_group().
+  - Full error handling + logging for delegation failures.
+
+  TypeScript check: 0 errors after rewrite.
+
+[2026-03-03] Session 4 (continued) — Fix All-Agents-Responding Loop in Agent Groups:
+
+  ROOT CAUSE ANALYSIS:
+  - When user sent a message in a Team Channel (LLM multi-agent view), the WebSocket handler
+    received is_group=True and called stream_group_chat. If conv.channel_id was None (legacy
+    fallback), stream_group_chat fetched ALL active agents, causing every agent to respond.
+  - _auto_delegate in agent_messaging.py was also crashing silently because ChatService was
+    instantiated without the required tool_registry parameter.
+
+  FIXES APPLIED:
+  1. backend/app/services/chat_service.py — stream_group_chat (lines 523-531):
+     - Removed the dangerous fallback that selected ALL active agents when channel_id is None.
+     - Replaced with a yield error and return, so the group chat fails gracefully instead of
+       broadcasting to every agent in the system.
+
+  2. backend/app/api/agent_messaging.py — _auto_delegate:
+     - Added tool_registry=None parameter to _auto_delegate signature.
+     - send_group_message now extracts tool_registry from request.app.state and passes it.
+     - _auto_delegate now instantiates ChatService(provider_registry, tool_registry, session)
+       correctly — fixes the silent TypeError crash that prevented auto-delegation from working.
+
+  3. backend/app/services/conversation_service.py — list_all:
+     - Added is_group: bool | None = None parameter.
+     - When is_group is not None, adds Conversation.is_group == is_group filter to query.
+
+  4. backend/app/services/chat_service.py — delegate_to_agent:
+     - Changed list_all(limit=1, agent_id=target_agent_id) to
+       list_all(limit=1, agent_id=target_agent_id, is_group=False).
+     - Ensures delegation always uses a non-group single-agent conversation, never a
+       group/channel conversation.
+
+  BEHAVIOR AFTER FIX:
+  - Agent Groups (P2P): @AgentName: task only triggers the named agent. Result posted back.
+  - Team Channels (LLM): Only agents assigned to that channel respond. If channel_id is None,
+    returns error rather than broadcasting to all agents.
+  - Agents only respond when explicitly called: by @mention, by another agent, or by Janny.
+
+[2026-03-03] Session 4 (continued 2) — @all: Broadcast + Multi-Agent Mention in One Message:
+
+  BACKEND (backend/app/api/agent_messaging.py) — COMPLETE REWRITE:
+  - Replaced single _MENTION_RE with two patterns:
+    * _ALL_RE: r'(?i)^@all:\s*(.+)' — matches @all: task at start of message
+    * _MULTI_MENTION_RE: r'@(?!all\b)([\w][\w ]*):\s*(.*?)(?=\s*@[\w][\w ]*:|\Z)'
+      Finds ALL @Name: task pairs in a single message, with each task content running
+      up to the next @Name: or end of string (re.DOTALL).
+
+  - send_group_message now handles two distinct paths:
+    1. @all: task — only fires if sender.is_system == True (system agent or user operating
+       as system agent). Spawns one _auto_delegate task per participant (excluding self).
+       Non-system senders get a logged warning and @all: is silently ignored.
+    2. Multiple @Name: task — uses _MULTI_MENTION_RE.finditer() to find all mentions.
+       Spawns a separate _auto_delegate task for each valid mention found.
+
+  - _auto_delegate signature changed to keyword-based:
+    * agent_name: str | None = None  (name-based lookup, for regular @mention)
+    * target_agent_id: str | None = None  (direct ID lookup, for @all expansion)
+    Either one must be provided.
+
+  FRONTEND (frontend/src/components/chat/ChatView.tsx):
+  - Agent Group header: shows @all: broadcast amber-colored hint badge only when the
+    selected "Send as" agent is a system agent.
+  - Input placeholder: changes based on sender — system agent sees @all: hint,
+    regular agents see chaining hint (@Alice: task @Bob: task).
+  - Empty state: shows multi-mention and @all: documentation text.
+  - Create Group modal: updated description to mention @all: and chaining.
+
+  RULES ENFORCED:
+  - Only system agent (Janny) and user (operating as system agent) can use @all:
+  - All other agents use @AgentName: for single or multi-agent delegation
+  - Multiple agents can be delegated in one message: @Alice: task1 @Bob: task2
+  - TypeScript: 0 errors after changes.
+
+[2026-03-03] Session 5 — @mention Autocomplete Dropdown + Bug Fixes:
+
+  BUG FIXES (all-agents-responding loop):
+  1. backend/app/services/chat_service.py — stream_group_chat:
+     - Removed dangerous fallback that fetched ALL active agents when channel_id=None.
+     - Replaced with a yield error + return, so group chat fails gracefully.
+  2. backend/app/api/agent_messaging.py — _auto_delegate:
+     - Added tool_registry=None param and pass-through from request.app.state.
+     - ChatService now instantiated correctly with all 3 required params.
+  3. backend/app/services/conversation_service.py — list_all:
+     - Added is_group: bool | None = None filter parameter.
+  4. backend/app/services/chat_service.py — delegate_to_agent:
+     - Changed list_all call to pass is_group=False, preventing group conv pickup.
+
+  @MENTION AUTOCOMPLETE DROPDOWN (frontend/src/components/chat/ChatView.tsx):
+  - Typing `@` in the Agent Group P2P input now shows a Discord/WhatsApp-style
+    floating dropdown above the input (position: absolute, bottom: 100%).
+  - Dropdown shows agents in the current group, filtered live as user types.
+  - `@all` option (amber star icon) appears at top if sender is a system agent.
+  - Keyboard navigation: ↑/↓ to move, Enter/Tab to select, Esc to dismiss.
+  - Mouse click also selects (uses onMouseDown + preventDefault to avoid blur).
+  - Selection inserts `@AgentName: ` at the `@` position, replaces partial query.
+  - Hides automatically when user types a space (name is complete).
+  - State: showMentionPicker, mentionQuery, mentionIndex, mentionStart.
+  - mentionCandidates computed via useMemo (agent list filtered by group + query).
+  - TypeScript: 0 errors after changes.
+
+[2026-03-03] Session 5 (continued) — Unified Channels + @mention in All Inputs:
+
+  MERGED AGENT GROUPS INTO CHANNELS (frontend/src/components/chat/ChatView.tsx):
+  - Removed separate "Team Channels" and "Agent Groups" sidebar sections.
+  - Replaced with ONE unified "Channels" section showing both types in the same list.
+  - LLM channels: Users icon, indigo badge labeled "LLM".
+  - P2P agent groups: Network icon, violet badge labeled "P2P", subtitle "@mention to delegate".
+  - Section header has two create buttons: + (LLM channel) and Network icon (P2P agent group).
+  - Both are still functionally independently (LLM streaming vs P2P delegation).
+  - TypeScript: 0 errors.
+
+  @MENTION IN MessageInput (frontend/src/components/chat/MessageInput.tsx):
+  - Added optional `agents?: MentionAgent[]` prop (id, name, description).
+  - Added `@mention` autocomplete dropdown above the textarea (same UX as Agent Group input).
+  - Triggers on `@` keypress, hides on space, Esc to dismiss.
+  - ↑/↓ arrow keys, Enter/Tab to select, mouse click to select.
+  - State: showMentionPicker, mentionQuery, mentionIndex, mentionStart.
+  - mentionCandidates computed via useMemo.
+  - handleInputChange replaces direct setInput; handleKeyDown replaces direct onKeyDown.
+  - Dropdown position: absolute bottom-full (floats above the textarea).
+
+  ChatView.tsx: Added `agents={agents.map(...)}` prop to the LLM view's MessageInput,
+  so Direct Messages and LLM Channels both get the @mention dropdown.
+  TypeScript: 0 errors.
+
+[2026-03-03] Session 3 — HITL Fix, Heartbeat UI, ErrorBoundary, Agent Messaging in Chat:
+
+  HITL FIX (agentControlStore.ts):
+  - Root cause: React Strict Mode double-mounts App; first mount's disconnect() sets ws=null;
+    old WebSocket gets APPROVAL_REQUIRED but its onmessage reads null ws → approval never sent.
+  - Fix: Use `event.target as WebSocket` (sourceSocket) inside onmessage instead of module-level ws.
+    Approval is sent directly on the socket that received the request, bypassing the stale reference.
+  - Added APPROVAL_TIMEOUT handling: auto-removes timed-out approvals from pendingApprovals.
+
+  HITL BACKEND (hitl_service.py):
+  - Added asyncio.wait_for(event.wait(), timeout=120.0) with asyncio.TimeoutError handling.
+  - On timeout: sets status to "denied", broadcasts APPROVAL_TIMEOUT to connected clients.
+  - Added logging for request, timeout, and resolution events.
+
+  HITL CHAT SERVICE (chat_service.py):
+  - Added try/except around hitl_manager.request_approval() — auto-denies if HITL WS not connected.
+  - Added "execute_code_sandboxed" to sensitive_tools list (was missing, bypassed HITL before).
+
+  HITL API (chat.py):
+  - Added `import logging` and `logger = logging.getLogger(__name__)`.
+  - Replaced bare except with `logger.error(...)` including exc_info=True.
+
+  WEBSOCKET FIX (websocket.ts):
+  - Changed WebSocket connection from window.location.host (Vite proxy) to direct :8321 port.
+    Vite WS proxy was unstable; frontend now connects directly to backend for chat WebSocket.
+
+  CHAT ERROR TOAST (ChatView.tsx):
+  - Added useEffect to auto-dismiss the error toast after 8 seconds via setTimeout → clearError().
+
+  HEARTBEAT UI (frontend/src/components/heartbeat/HeartbeatView.tsx) — NEW FILE:
+  - Full CRUD UI for Heartbeat Schedules: lists schedules with status badges, interval chips,
+    last-run timestamps, pause/resume toggle, delete.
+  - Create modal: agent dropdown, name input, interval quick-select (15m/30m/1h/3h/6h/12h/1d),
+    task prompt textarea, optional description field.
+  - Matches app dark color scheme (#080810, #0e0e1c, border-[#1c1c30]).
+
+  SIDEBAR (AnimatedSidebar.tsx):
+  - Added AlarmClock icon import from lucide-react.
+  - Added { id: 'heartbeat', label: 'Heartbeat', icon: AlarmClock } to NAV_ITEMS.
+  - Removed { id: 'messaging', label: 'Agent Messaging', icon: Network } from NAV_ITEMS
+    (Agent Messaging moved into the Chat view as a tab).
+
+  APP ROUTING (App.tsx):
+  - Added HeartbeatView import and `{activeView === 'heartbeat' && <HeartbeatView />}` route.
+  - Removed AgentMessagingView import and its route (now lives inside ChatView as a tab).
+
+  ERROR BOUNDARY (frontend/src/components/ErrorBoundary.tsx) — NEW FILE:
+  - Class component catching React runtime errors; shows error message + stack trace.
+  - Has a "Try Again" button that resets state.
+
+  MAIN.TSX:
+  - Wrapped entire app in <ErrorBoundary> so crashes show useful stack trace instead of blank page.
+
+  CHAT VIEW AGENT MESSAGING TAB (ChatView.tsx):
+  - Added `chatMode` state ('chat' | 'messaging') and a tab bar at the top of the view.
+  - When 'messaging' tab is active: renders <AgentMessagingView /> full-width inside ChatView.
+  - When 'chat' tab is active: renders existing three-pane agent chat interface.
+  - Agent Messaging is now accessible via Chat → "Agent Messaging" tab (not a separate sidebar nav).
+
+  VITE STABILITY (Windows):
+  - Vite must be launched via `Start-Process -NoNewWindow -FilePath 'cmd.exe'` to create a truly
+    detached Windows process that survives shell termination (bash & processes die with parent shell).
+  - Vite output redirected to frontend/vite.log for diagnostics.
+  - Must kill all node processes (`Get-Process node | Stop-Process -Force`) before restarting to
+    avoid Vite silently bumping to port 5174 due to stale process holding 5173.
 
 ================================================================================
                                  END
 ================================================================================
+
+
+---
+
+### 1. Human-in-the-Loop (HITL) Approval Flows
+
+To prevent your agent from running destructive Python code or sending unauthorized emails, you need an asynchronous pause mechanism in your backend that waits for a frontend signal.
+
+**The Strategy:** Wrap sensitive tools with an approval flag. When triggered, the backend pauses execution using an `asyncio.Event`, emits a WebSocket payload to the frontend requesting permission, and waits.
+
+**Backend Pseudo-code (FastAPI):**
+
+```python
+import asyncio
+
+# A dictionary to hold pending approvals mapped by task ID
+pending_approvals = {}
+
+async def execute_tool_with_hitl(tool_name, arguments, task_id, ws_manager):
+    if tool_requires_approval(tool_name):
+        # Create an event lock
+        approval_event = asyncio.Event()
+        pending_approvals[task_id] = {"event": approval_event, "status": "pending"}
+        
+        # Emit WebSocket event to Frontend
+        await ws_manager.send({"type": "APPROVAL_REQUIRED", "task_id": task_id, "tool": tool_name})
+        
+        # Pause execution until the frontend resolves the event
+        await approval_event.wait()
+        
+        if pending_approvals[task_id]["status"] != "approved":
+            return "Execution denied by user."
+            
+    # Proceed with actual tool execution
+    return await run_sandbox_tool(tool_name, arguments)
+
+# WebSocket Listener Endpoint
+@app.websocket("/api-ws/agents/control")
+async def websocket_control(websocket: WebSocket):
+    data = await websocket.receive_json()
+    if data["action"] in ["APPROVE", "DENY"]:
+        task_id = data["task_id"]
+        pending_approvals[task_id]["status"] = "approved" if data["action"] == "APPROVE" else "denied"
+        pending_approvals[task_id]["event"].set() # Unblocks the execution
+
+```
+
+**Frontend Pseudo-code (Zustand + React):**
+
+```typescript
+// Zustand Store
+const useAgentStore = create((set) => ({
+  pendingApproval: null,
+  setPendingApproval: (data) => set({ pendingApproval: data }),
+  resolveApproval: (ws, taskId, action) => {
+    ws.send(JSON.stringify({ action, task_id: taskId }));
+    set({ pendingApproval: null });
+  }
+}));
+
+// React Component
+function ApprovalModal() {
+  const { pendingApproval, resolveApproval } = useAgentStore();
+  if (!pendingApproval) return null;
+
+  return (
+    <div className="glassmorphism-modal">
+      <h3>Agent wants to run: {pendingApproval.tool}</h3>
+      <button onClick={() => resolveApproval(ws, pendingApproval.task_id, "APPROVE")}>Allow</button>
+      <button onClick={() => resolveApproval(ws, pendingApproval.task_id, "DENY")} className="bg-red-500">Deny</button>
+    </div>
+  );
+}
+
+```
+
+---
+
+### 2. Token Economy & Cost Tracking
+
+When you have multiple agents delegating tasks, API rate limits are easily hit, and costs can skyrocket. You need a centralized middleware in your `ProviderRegistry` to catch the `usage` metadata from every LLM response.
+
+**The Strategy:** Standardize the token tracking across Gemini, Claude, and OpenAI. Save this to your SQLite DB asynchronously and stream the running total to the frontend.
+
+**Backend Pseudo-code (FastAPI / ProviderRegistry):**
+
+```python
+async def call_llm_provider(agent_config, messages):
+    provider = ProviderRegistry.get(agent_config.provider)
+    
+    # Standardized response from any provider
+    response, usage = await provider.generate(messages) 
+    
+    # Calculate cost based on provider pricing tiers
+    cost = calculate_cost(agent_config.model, usage.prompt_tokens, usage.completion_tokens)
+    
+    # Async background task to update SQLite so it doesn't block the stream
+    background_tasks.add_task(save_token_usage_to_db, agent_config.id, usage, cost)
+    
+    # Emit to frontend via WS for real-time dashboard updates
+    await ws_manager.send({"type": "TOKEN_UPDATE", "agent_id": agent_config.id, "cost_added": cost})
+    
+    return response
+
+```
+
+---
+
+### 3. Context Window Pruning & Memory Consolidation
+
+A long-running Orchestrator agent will eventually fill its context window. You need a rolling memory pruner.
+
+**The Strategy:** Before passing the `messages` array to the LLM, check the token length. If it exceeds a threshold (e.g., 80% of max context), extract the oldest $N$ messages (skipping the system prompt), send them to a cheaper/faster model to be summarized, and replace them with a single `system` or `assistant` summary block.
+
+**Backend Pseudo-code (Python):**
+
+```python
+async def prune_context_if_needed(messages, max_tokens=8000):
+    current_tokens = count_tokens(messages)
+    
+    if current_tokens < max_tokens:
+        return messages
+        
+    # Keep the system prompt (index 0) and the most recent 5 messages
+    system_prompt = messages[0]
+    recent_messages = messages[-5:]
+    messages_to_summarize = messages[1:-5]
+    
+    # Use a fast local model (Ollama) or cheaper cloud model for the summary
+    summary = await generate_summary(messages_to_summarize)
+    
+    # Rebuild the array
+    pruned_messages = [
+        system_prompt,
+        {"role": "system", "content": f"Summary of earlier conversation: {summary}"},
+        *recent_messages
+    ]
+    
+    return pruned_messages
+
+```
+
+---
+
+### 4. Graceful Error Handling & "Self-Correction" Loops
+
+Anyone who has spent time debugging multi-agent frameworks knows that tools fail constantly—syntax errors, network timeouts, or missing variables. The framework shouldn't crash; it should hand the error back to the LLM.
+
+**The Strategy:** Wrap tool execution in a `try/except` block. Catch the traceback and return it as the tool's string output, appending instructions for the agent to fix the mistake.
+
+**Backend Pseudo-code (Python):**
+
+```python
+import traceback
+
+async def execute_tool_safely(tool_name, args, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            # Attempt to run the python script or API call
+            result = await run_tool(tool_name, args)
+            return result 
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            
+            # Formulate the error as feedback for the LLM
+            correction_prompt = f"Tool '{tool_name}' failed with error:\n{error_trace}\nAnalyze the error and try a different approach."
+            
+            # Send this back to the LLM's message history to try again
+            args = await ask_llm_for_correction(correction_prompt)
+            
+    return f"Task failed after {max_retries} attempts. Final error: {error_trace}"
+
+```
+
+---
+
+### 5. Seamless Voice/Audio Input/Output
+
+To make CrossClaw feel like a true assistant, you need to handle audio streams.
+
+**The Strategy:** Use the browser's `MediaRecorder` API to capture audio, send the binary buffer over WebSockets to FastAPI, process it with a Speech-to-Text model (like Whisper), pass the text to the Orchestrator, and then pipe the Orchestrator's response text into a Text-to-Speech engine.
+
+**Frontend Pseudo-code (React):**
+
+```javascript
+// Using MediaRecorder to capture audio
+const startRecording = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const mediaRecorder = new MediaRecorder(stream);
+  
+  mediaRecorder.ondataavailable = (event) => {
+    // Send audio blob directly to the FastAPI WebSocket
+    if (event.data.size > 0) {
+      ws.send(event.data); 
+    }
+  };
+  mediaRecorder.start(1000); // chunk every second
+};
+
+```
+
+**Backend Pseudo-code (FastAPI WS Endpoint):**
+
+```python
+@app.websocket("/ws/audio")
+async def audio_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    
+    # Receive binary audio chunks from Vite frontend
+    audio_bytes = await websocket.receive_bytes()
+    
+    # 1. Speech to Text (e.g., local Whisper or external API)
+    user_text = await stt_service.transcribe(audio_bytes)
+    
+    # 2. Process via CrossClaw Orchestrator
+    llm_response = await orchestrator.chat(user_text)
+    
+    # 3. Text to Speech (e.g., edge-tts or ElevenLabs)
+    response_audio_bytes = await tts_service.synthesize(llm_response)
+    
+    # 4. Send audio back to frontend to play
+    await websocket.send_bytes(response_audio_bytes)
+
+```
+
+---
+
+Implementing these will take CrossClaw from a great multi-model router to a highly resilient agentic OS.

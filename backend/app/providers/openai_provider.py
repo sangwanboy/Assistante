@@ -2,7 +2,7 @@ from typing import AsyncIterator
 
 from openai import AsyncOpenAI
 
-from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo
+from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
 
 
 class OpenAIProvider(BaseProvider):
@@ -75,11 +75,20 @@ class OpenAIProvider(BaseProvider):
                 }
                 for tc in choice.message.tool_calls
             ]
+            
+        usage = None
+        if response.usage:
+            usage = TokenUsage(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens
+            )
 
         return ChatMessage(
             role="assistant",
             content=choice.message.content or "",
             tool_calls=tool_calls,
+            usage=usage
         )
 
     async def stream(
@@ -94,6 +103,7 @@ class OpenAIProvider(BaseProvider):
             "messages": self._format_messages(messages),
             "temperature": temperature,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
         formatted_tools = self._format_tools(tools)
         if formatted_tools:
@@ -135,11 +145,20 @@ class OpenAIProvider(BaseProvider):
             tool_calls_list = None
             if finish == "tool_calls" and accumulated_tool_calls:
                 tool_calls_list = list(accumulated_tool_calls.values())
+                
+            usage = None
+            if hasattr(chunk, "usage") and chunk.usage:
+                usage = TokenUsage(
+                    prompt_tokens=chunk.usage.prompt_tokens,
+                    completion_tokens=chunk.usage.completion_tokens,
+                    total_tokens=chunk.usage.total_tokens
+                )
 
             yield StreamChunk(
                 delta=text,
                 finish_reason=finish,
                 tool_calls=tool_calls_list,
+                usage=usage
             )
 
     async def list_models(self) -> list[ModelInfo]:

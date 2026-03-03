@@ -7,6 +7,7 @@ from app.schemas.skill import (
     SkillUpdate,
     SkillOut,
     SkillImportRequest,
+    SkillInstallRequest,
     SkillExportResponse,
 )
 from app.services.skill_service import SkillService, export_skill_md
@@ -58,6 +59,16 @@ async def import_skill(data: SkillImportRequest, session: AsyncSession = Depends
     """Import a skill from raw SKILL.md content (OpenClaw format)."""
     svc = SkillService(session)
     return await svc.import_from_content(data.content)
+
+
+@router.post("/install", response_model=SkillOut, status_code=201)
+async def install_skill(data: SkillInstallRequest, session: AsyncSession = Depends(get_session)):
+    """Install a skill by providing its ClawHub slug or full GitHub URL."""
+    svc = SkillService(session)
+    try:
+        return await svc.import_from_github_url(data.url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("/{skill_id}/export", response_model=SkillExportResponse)

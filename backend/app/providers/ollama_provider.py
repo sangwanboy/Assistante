@@ -2,7 +2,7 @@ import json
 import httpx
 from typing import AsyncIterator
 
-from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo
+from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
 
 
 class OllamaProvider(BaseProvider):
@@ -56,9 +56,18 @@ class OllamaProvider(BaseProvider):
             resp.raise_for_status()
             data = resp.json()
 
+        usage = None
+        if "prompt_eval_count" in data or "eval_count" in data:
+            usage = TokenUsage(
+                prompt_tokens=data.get("prompt_eval_count", 0),
+                completion_tokens=data.get("eval_count", 0),
+                total_tokens=data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+            )
+
         return ChatMessage(
             role="assistant",
             content=data.get("message", {}).get("content", ""),
+            usage=usage
         )
 
     async def stream(
@@ -90,9 +99,18 @@ class OllamaProvider(BaseProvider):
                     msg = data.get("message", {})
                     done = data.get("done", False)
 
+                    usage = None
+                    if done and ("prompt_eval_count" in data or "eval_count" in data):
+                        usage = TokenUsage(
+                            prompt_tokens=data.get("prompt_eval_count", 0),
+                            completion_tokens=data.get("eval_count", 0),
+                            total_tokens=data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+                        )
+
                     yield StreamChunk(
                         delta=msg.get("content", ""),
                         finish_reason="stop" if done else None,
+                        usage=usage
                     )
 
     async def list_models(self) -> list[ModelInfo]:

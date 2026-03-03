@@ -73,17 +73,11 @@ export function AgentStatusPanel({ onNavigateAgents }: AgentStatusPanelProps) {
                     allAgents.map((agent) => {
                         const status = statuses[agent.id] || { state: 'offline' };
                         let dotColor = 'bg-gray-400';
-                        let label = 'OFFLINE';
-                        let labelClass = isDark ? 'text-gray-500 bg-gray-800' : 'text-gray-500 bg-gray-100';
 
                         if (status.state === 'working') {
                             dotColor = 'bg-amber-500 animate-pulse';
-                            label = 'WORKING';
-                            labelClass = isDark ? 'text-amber-400 bg-amber-900/40' : 'text-amber-600 bg-amber-50';
                         } else if (status.state === 'idle') {
                             dotColor = 'bg-green-500';
-                            label = 'ONLINE';
-                            labelClass = isDark ? 'text-green-400 bg-green-900/40' : 'text-green-600 bg-green-50';
                         }
 
                         return (

@@ -30,13 +30,14 @@ export function AgentsView() {
   const [formData, setFormData] = useState({
     name: '', description: '', provider: '', model: '', system_prompt: '', is_active: true,
     personality_tone: '', personality_traits: '[]', communication_style: '',
-    enabled_tools: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
+    enabled_tools: '[]', enabled_skills: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
     api_key: '',
   });
   const [configTab, setConfigTab] = useState<'soul' | 'mind' | 'memory'>('soul');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<{ id: string; name: string; description: string }[]>([]);
 
   const TONE_OPTIONS = ['professional', 'friendly', 'sarcastic', 'empathetic', 'witty', 'serious', 'playful'];
   const STYLE_OPTIONS = ['formal', 'casual', 'technical', 'storytelling', 'concise', 'verbose'];
@@ -46,12 +47,13 @@ export function AgentsView() {
   useEffect(() => {
     loadAgents();
     api.getTools().then(tools => setAvailableTools(tools.map(t => ({ name: t.name, description: t.description })))).catch(() => { });
+    api.getSkills().then(skills => setAvailableSkills(skills.filter(s => s.is_active).map(s => ({ id: s.id, name: s.name, description: s.description || '' })))).catch(() => { });
   }, [loadAgents]);
 
   const emptyForm = {
     name: '', description: '', provider: '', model: '', system_prompt: '', is_active: true,
     personality_tone: '', personality_traits: '[]', communication_style: '',
-    enabled_tools: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
+    enabled_tools: '[]', enabled_skills: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
     api_key: '',
   };
 
@@ -62,7 +64,9 @@ export function AgentsView() {
       name: agent.name, description: agent.description || '', provider: agent.provider,
       model: agent.model, system_prompt: agent.system_prompt || '', is_active: agent.is_active,
       personality_tone: agent.personality_tone || '', personality_traits: agent.personality_traits || '[]',
-      communication_style: agent.communication_style || '', enabled_tools: agent.enabled_tools || '[]',
+      communication_style: agent.communication_style || '',
+      enabled_tools: agent.enabled_tools || '[]',
+      enabled_skills: agent.enabled_skills || '[]',
       reasoning_style: agent.reasoning_style || '', memory_context: agent.memory_context || '',
       memory_instructions: agent.memory_instructions || '',
       api_key: '',
@@ -197,8 +201,8 @@ export function AgentsView() {
                     >
                       <div className="flex items-start justify-between mb-5">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${agent.is_active
-                            ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400 shadow-lg shadow-indigo-500/20'
-                            : 'bg-[#141426] border-[#1c1c30] text-gray-600'
+                          ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400 shadow-lg shadow-indigo-500/20'
+                          : 'bg-[#141426] border-[#1c1c30] text-gray-600'
                           }`}>
                           <Bot className="w-6 h-6" />
                         </div>
@@ -208,8 +212,8 @@ export function AgentsView() {
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
                             className={`p-2 rounded-lg transition-colors ${agent.is_active
-                                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
-                                : 'bg-[#141426] border border-[#1c1c30] text-gray-600 hover:bg-[#1c1c30]'
+                              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                              : 'bg-[#141426] border border-[#1c1c30] text-gray-600 hover:bg-[#1c1c30]'
                               }`}
                             title={agent.is_active ? 'Disable' : 'Enable'}
                           >
@@ -265,9 +269,15 @@ export function AgentsView() {
                         </div>
                       </div>
 
-                      <div className="mt-4 pt-4 border-t border-[#1c1c30]">
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Model</span>
-                        <p className="text-xs text-gray-400 font-mono mt-1.5 truncate">{agent.model}</p>
+                      <div className="mt-4 pt-4 border-t border-[#1c1c30] flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Model</span>
+                          <p className="text-xs text-gray-400 font-mono mt-1.5 truncate">{agent.model}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cost</span>
+                          <p className="text-xs font-mono font-medium text-emerald-400 mt-1.5">${(agent.total_cost || 0).toFixed(4)}</p>
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#1c1c30]">
@@ -377,8 +387,8 @@ export function AgentsView() {
                             key={tab.key} type="button"
                             onClick={() => setConfigTab(tab.key)}
                             className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${configTab === tab.key
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
                               }`}
                           >
                             <tab.icon className="w-4 h-4" />
@@ -414,8 +424,8 @@ export function AgentsView() {
                                       key={opt} type="button"
                                       onClick={() => setFormData({ ...formData, [field]: (formData as Record<string, any>)[field] === opt ? '' : opt })}
                                       className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${(formData as Record<string, any>)[field] === opt
-                                          ? `${activeColor} text-white`
-                                          : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
+                                        ? `${activeColor} text-white`
+                                        : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
                                         }`}
                                     >
                                       {opt}
@@ -438,8 +448,8 @@ export function AgentsView() {
                                         setFormData({ ...formData, personality_traits: JSON.stringify(next) });
                                       }}
                                       className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${active
-                                          ? 'bg-purple-600 border-purple-600 text-white'
-                                          : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
+                                        ? 'bg-purple-600 border-purple-600 text-white'
+                                        : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
                                         }`}
                                     >
                                       {trait}
@@ -487,7 +497,36 @@ export function AgentsView() {
                                 })}
                               </div>
                             </div>
-                            <div className="space-y-3">
+                            <div className="space-y-3 mt-6 pt-4 border-t border-[#1a1a2e]">
+                              <label className="text-xs font-semibold text-gray-400">Enabled Skills</label>
+                              <div className="space-y-1.5">
+                                {availableSkills.map(skill => {
+                                  let enabled: string[] = [];
+                                  try { enabled = JSON.parse(formData.enabled_skills || '[]'); } catch { }
+                                  const active = enabled.includes(skill.name);
+                                  return (
+                                    <label key={skill.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#1c1c30] hover:bg-white/5 cursor-pointer transition-colors">
+                                      <input
+                                        type="checkbox" checked={active}
+                                        onChange={() => {
+                                          const next = active ? enabled.filter(s => s !== skill.name) : [...enabled, skill.name];
+                                          setFormData({ ...formData, enabled_skills: JSON.stringify(next) });
+                                        }}
+                                        className="w-4 h-4 rounded border-gray-700 text-purple-600 focus:ring-purple-500 bg-[#141426]"
+                                      />
+                                      <div>
+                                        <span className="text-sm font-medium text-gray-300">{skill.name}</span>
+                                        <p className="text-[10px] text-gray-600 line-clamp-1 break-all">{skill.description}</p>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                                {availableSkills.length === 0 && (
+                                  <p className="text-[11px] text-gray-600">No active skills found. Install some from Tools & Skills.</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-3 mt-6 pt-4 border-t border-[#1a1a2e]">
                               <label className="text-xs font-semibold text-gray-400">Reasoning Style</label>
                               <div className="flex flex-wrap gap-1.5">
                                 {REASONING_OPTIONS.map(r => (
@@ -495,8 +534,8 @@ export function AgentsView() {
                                     key={r} type="button"
                                     onClick={() => setFormData({ ...formData, reasoning_style: formData.reasoning_style === r ? '' : r })}
                                     className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${formData.reasoning_style === r
-                                        ? 'bg-orange-600 border-orange-600 text-white'
-                                        : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
+                                      ? 'bg-orange-600 border-orange-600 text-white'
+                                      : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
                                       }`}
                                   >
                                     {r}

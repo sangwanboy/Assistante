@@ -10,6 +10,7 @@ interface AgentState {
     loadAgents: () => Promise<void>;
     createAgent: (data: Partial<Agent>) => Promise<void>;
     updateAgent: (id: string, data: Partial<Agent>) => Promise<void>;
+    updateAgentCost: (id: string, cost: number) => void;
     deleteAgent: (id: string) => Promise<void>;
 }
 
@@ -46,6 +47,12 @@ export const useAgentStore = create<AgentState>((set) => ({
         } catch (e: any) {
             set({ error: e.message });
         }
+    },
+
+    updateAgentCost: (id: string, newTotalCost: number) => {
+        set((state) => ({
+            agents: state.agents.map((a) => (a.id === id ? { ...a, total_cost: newTotalCost } : a)),
+        }));
     },
 
     deleteAgent: async (id: string) => {

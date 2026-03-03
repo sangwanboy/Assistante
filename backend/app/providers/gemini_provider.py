@@ -4,8 +4,9 @@ from typing import AsyncIterator
 
 from google import genai
 from google.genai import types
+import base64
 
-from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo
+from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
 
 
 class GeminiProvider(BaseProvider):
@@ -54,16 +55,30 @@ class GeminiProvider(BaseProvider):
         contents: list[types.Content] = []
         system_instruction = None
 
+        # Build a lookup: tool_call_id -> function name (from assistant messages)
+        tool_call_id_to_name: dict[str, str] = {}
+        for msg in messages:
+            if msg.role == "assistant" and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tc_id = tc.get("id", "")
+                    tc_name = tc.get("function", {}).get("name", "")
+                    if tc_id and tc_name:
+                        tool_call_id_to_name[tc_id] = tc_name
+
         for msg in messages:
             if msg.role == "system":
                 system_instruction = msg.content
                 continue
 
             if msg.role == "user":
-                contents.append(types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=msg.content)],
-                ))
+                parts = [types.Part.from_text(text=msg.content)]
+                if msg.images:
+                    for b64 in msg.images:
+                        parts.append(types.Part.from_bytes(
+                            data=base64.b64decode(b64),
+                            mime_type="image/jpeg",
+                        ))
+                contents.append(types.Content(role="user", parts=parts))
             elif msg.role == "assistant":
                 parts = []
                 if msg.content:
@@ -80,13 +95,19 @@ class GeminiProvider(BaseProvider):
                 if parts:
                     contents.append(types.Content(role="model", parts=parts))
             elif msg.role == "tool":
-                contents.append(types.Content(
-                    role="user",
-                    parts=[types.Part.from_function_response(
-                        name="tool_response",
-                        response={"result": msg.content},
-                    )],
-                ))
+                # Use the actual function name so Gemini can match the result to its call
+                func_name = tool_call_id_to_name.get(msg.tool_call_id or "", "tool_response")
+                parts = [types.Part.from_function_response(
+                    name=func_name,
+                    response={"result": msg.content},
+                )]
+                if msg.images:
+                    for b64 in msg.images:
+                        parts.append(types.Part.from_bytes(
+                            data=base64.b64decode(b64),
+                            mime_type="image/jpeg",
+                        ))
+                contents.append(types.Content(role="user", parts=parts))
 
         return contents, system_instruction
 
@@ -136,7 +157,16 @@ class GeminiProvider(BaseProvider):
                         },
                     })
 
-        return ChatMessage(role="assistant", content=text, tool_calls=tool_calls)
+        usage = None
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            md = response.usage_metadata
+            usage = TokenUsage(
+                prompt_tokens=md.prompt_token_count or 0,
+                completion_tokens=md.candidates_token_count or 0,
+                total_tokens=md.total_token_count or 0
+            )
+
+        return ChatMessage(role="assistant", content=text, tool_calls=tool_calls, usage=usage)
 
     async def stream(
         self,
@@ -195,11 +225,21 @@ class GeminiProvider(BaseProvider):
             tool_calls_out = None
             if finish and accumulated_tool_calls:
                 tool_calls_out = accumulated_tool_calls
+                
+            usage = None
+            if hasattr(chunk, "usage_metadata") and chunk.usage_metadata:
+                md = chunk.usage_metadata
+                usage = TokenUsage(
+                    prompt_tokens=md.prompt_token_count or 0,
+                    completion_tokens=md.candidates_token_count or 0,
+                    total_tokens=md.total_token_count or 0
+                )
 
             yield StreamChunk(
                 delta=text,
                 finish_reason=finish,
                 tool_calls=tool_calls_out,
+                usage=usage
             )
 
     async def list_models(self) -> list[ModelInfo]:

@@ -1,5 +1,6 @@
 import json
 import re
+import httpx
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,15 +150,68 @@ class SkillService:
             parsed["name"] = "Imported Skill"
         return await self.create(**parsed)
 
-    async def get_active_skills(self) -> list[Skill]:
-        result = await self.session.execute(
-            select(Skill).where(Skill.is_active == True).order_by(Skill.name)
-        )
-        return list(result.scalars().all())
+    async def import_from_github_url(self, slug_or_url: str) -> Skill:
+        """Import a skill by providing its ClawHub slug or a full GitHub URL.
+        
+        A slug (e.g., 'academic-research') maps to:
+        https://raw.githubusercontent.com/openclaw/skills/main/skills/{author}/{slug}/SKILL.md
+        
+        A URL (e.g., 'https://github.com/user/repo') maps to:
+        https://raw.githubusercontent.com/user/repo/main/SKILL.md
+        """
+        slug_or_url = slug_or_url.strip()
+        
+        async with httpx.AsyncClient() as client:
+            if slug_or_url.startswith("http://") or slug_or_url.startswith("https://"):
+                # Assume it's a full GitHub URL
+                url = slug_or_url
+                if "github.com" in url and "raw.githubusercontent.com" not in url:
+                    url = url.replace("github.com", "raw.githubusercontent.com")
+                    url = f"{url}/main/SKILL.md"
+                elif "raw.githubusercontent.com" in url and not url.endswith(".md"):
+                    url = f"{url}/SKILL.md"
+            else:
+                # Assume it's an OpenClaw slug. We need to find the author directory first.
+                tree_url = "https://api.github.com/repos/openclaw/skills/git/trees/main?recursive=1"
+                try:
+                    tree_resp = await client.get(tree_url, headers={"User-Agent": "Assitance-AI"})
+                    tree_resp.raise_for_status()
+                    tree_data = tree_resp.json()
+                    
+                    # Search for skills/{author}/{slug}/SKILL.md
+                    target_path = None
+                    # The slug isn't guaranteed to be the exact folder name 
+                    # but usually it's author/slug/SKILL.md or author/slug-something/SKILL.md
+                    slug_lower = slug_or_url.lower()
+                    for item in tree_data.get("tree", []):
+                        path = item.get("path", "")
+                        if path.startswith("skills/") and path.endswith("SKILL.md"):
+                            # Extrct the folder name just before SKILL.md
+                            parts = path.split("/")
+                            if len(parts) >= 3:
+                                folder_name = parts[-2].lower()
+                                if folder_name == slug_lower or slug_lower in folder_name:
+                                    target_path = path
+                                    break
+                    
+                    if not target_path:
+                        raise ValueError(f"Skill slug '{slug_or_url}' not found in the OpenClaw skills registry.")
+                        
+                    url = f"https://raw.githubusercontent.com/openclaw/skills/main/{target_path}"
+                except Exception as e:
+                    if isinstance(e, ValueError):
+                        raise
+                    raise ValueError(f"Failed to query OpenClaw skills registry: {e}")
 
-    async def get_active_instructions(self) -> str:
-        """Return combined instructions from all active skills, for system prompt injection."""
-        skills = await self.get_active_skills()
+            response = await client.get(url, follow_redirects=True)
+            if response.status_code != 200:
+                raise ValueError(f"Failed to fetch SKILL.md from {url}. Status: {response.status_code}")
+            
+            content = response.text
+            return await self.import_from_content(content)
+
+    def render_instructions(self, skills: list[Skill]) -> str:
+        """Return combined instructions from a list of skills."""
         if not skills:
             return ""
         parts = []
@@ -167,3 +221,14 @@ class SkillService:
                 header += f"\n{s.description}"
             parts.append(f"{header}\n\n{s.instructions}")
         return "\n\n---\n\n".join(parts)
+
+    async def get_active_skills(self) -> list[Skill]:
+        result = await self.session.execute(
+            select(Skill).where(Skill.is_active == True).order_by(Skill.name)
+        )
+        return list(result.scalars().all())
+
+    async def get_active_instructions(self) -> str:
+        """Return combined instructions from all active skills, for system prompt injection."""
+        skills = await self.get_active_skills()
+        return self.render_instructions(skills)

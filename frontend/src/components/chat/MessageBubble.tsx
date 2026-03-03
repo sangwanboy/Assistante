@@ -1,5 +1,7 @@
-import { User, Bot, Wrench } from 'lucide-react';
+import { useState } from 'react';
+import { User, Bot, Wrench, Volume2, Loader2 } from 'lucide-react';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
+import { audioApi } from '../../services/audio';
 import type { Message } from '../../types';
 
 interface Props {
@@ -7,9 +9,23 @@ interface Props {
 }
 
 export function MessageBubble({ message }: Props) {
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
   const displayName = isUser ? 'You' : (message.agent_name || 'Assistant');
+
+  const handlePlayAudio = async () => {
+    if (!message.content || isGeneratingAudio) return;
+    try {
+      setIsGeneratingAudio(true);
+      await audioApi.playTTS(message.content);
+    } catch (e) {
+      console.error('Failed to play audio:', e);
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  };
 
   if (isTool) {
     return (
@@ -63,8 +79,24 @@ export function MessageBubble({ message }: Props) {
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${isUser ? 'text-indigo-400' : 'text-emerald-400'}`}>
-          {displayName}
+        <div className="flex items-center justify-between mb-1.5">
+          <div className={`text-[10px] font-semibold uppercase tracking-wider ${isUser ? 'text-indigo-400' : 'text-emerald-400'}`}>
+            {displayName}
+          </div>
+          {!isUser && !isTool && message.content && (
+            <button
+              onClick={handlePlayAudio}
+              disabled={isGeneratingAudio}
+              title="Listen to message"
+              className="p-1 hover:bg-white/5 rounded text-gray-500 hover:text-emerald-400 transition-colors disabled:opacity-50"
+            >
+              {isGeneratingAudio ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
         </div>
         <div className="text-[15px] text-gray-300 leading-relaxed">
           {isUser ? (

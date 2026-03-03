@@ -66,3 +66,14 @@ class AgentStatusManager:
                 print(f"DEBUG: Queue full for a subscriber!")
             except Exception as e:
                 print(f"DEBUG: Error broadcasting: {e}")
+
+    async def emit_event(self, event_data: dict):
+        """Emit a generic JSON event to all WebSocket subscribers."""
+        message = json.dumps(event_data)
+        for queue in self.subscribers:
+            try:
+                queue.put_nowait(message)
+            except asyncio.QueueFull:
+                pass
+            except Exception as e:
+                print(f"DEBUG: Error emitting event: {e}")

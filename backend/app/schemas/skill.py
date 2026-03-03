@@ -40,6 +40,11 @@ class SkillImportRequest(BaseModel):
     content: str
 
 
+class SkillInstallRequest(BaseModel):
+    """Install a skill by providing its ClawHub slug or full GitHub URL."""
+    url: str
+
+
 class SkillExportResponse(BaseModel):
     """Exported SKILL.md content."""
     filename: str

@@ -131,6 +131,8 @@ export const api = {
     request<{ status: string }>(`/skills/${id}`, { method: 'DELETE' }),
   importSkill: (content: string) =>
     request<import('../types').Skill>('/skills/import', { method: 'POST', body: JSON.stringify({ content }) }),
+  installSkill: (url: string) =>
+    request<import('../types').Skill>('/skills/install', { method: 'POST', body: JSON.stringify({ url }) }),
   exportSkill: (id: string) =>
     request<{ filename: string; content: string }>(`/skills/${id}/export`),
 
@@ -148,6 +150,49 @@ export const api = {
     request<{ status: string }>(`/channels/${channelId}/agents`, { method: 'POST', body: JSON.stringify({ agent_id: agentId }) }),
   removeAgentFromChannel: (channelId: string, agentId: string) =>
     request<{ status: string }>(`/channels/${channelId}/agents/${agentId}`, { method: 'DELETE' }),
+
+  // Omnichannel Integrations
+  getIntegrations: () => request<import('../types').Integration[]>('/integrations'),
+  createIntegration: (data: import('../types').IntegrationCreate) =>
+    request<import('../types').Integration>('/integrations', { method: 'POST', body: JSON.stringify(data) }),
+  updateIntegration: (id: string, data: Partial<import('../types').IntegrationCreate>) =>
+    request<import('../types').Integration>(`/integrations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteIntegration: (id: string) =>
+    request<{ ok: boolean }>(`/integrations/${id}`, { method: 'DELETE' }),
+
+  // Heartbeat Schedules
+  getSchedules: (agentId?: string) =>
+    request<import('../types').AgentSchedule[]>(`/schedules${agentId ? `?agent_id=${agentId}` : ''}`),
+  createSchedule: (data: { agent_id: string; name: string; description?: string; interval_minutes?: number; task_config?: Record<string, string>; is_active?: boolean }) =>
+    request<import('../types').AgentSchedule>('/schedules', { method: 'POST', body: JSON.stringify(data) }),
+  updateSchedule: (id: string, data: Partial<{ name: string; description: string; interval_minutes: number; is_active: boolean }>) =>
+    request<import('../types').AgentSchedule>(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSchedule: (id: string) =>
+    request<{ ok: boolean }>(`/schedules/${id}`, { method: 'DELETE' }),
+
+  // Marketplace
+  getMarketplaceSkills: () => request<import('../types').MarketplaceSkill[]>('/marketplace'),
+  getMarketplaceSkill: (id: string) => request<import('../types').MarketplaceSkill>(`/marketplace/${id}`),
+  installMarketplaceSkill: (id: string) =>
+    request<{ ok: boolean; message: string; installed: boolean; skill_id?: string }>(`/marketplace/${id}/install`, { method: 'POST' }),
+
+  // Agent Messaging
+  getAgentMessages: (params?: { agent_id?: string; group_id?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.agent_id) qs.set('agent_id', params.agent_id);
+    if (params?.group_id) qs.set('group_id', params.group_id);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    return request<import('../types').AgentMessage[]>(`/messaging/messages?${qs}`);
+  },
+  sendDirectMessage: (data: { from_agent_id: string; to_agent_id: string; content: string }) =>
+    request<import('../types').AgentMessage>('/messaging/messages/direct', { method: 'POST', body: JSON.stringify(data) }),
+  sendGroupMessage: (data: { from_agent_id: string; group_id: string; content: string }) =>
+    request<import('../types').AgentMessage>('/messaging/messages/group', { method: 'POST', body: JSON.stringify(data) }),
+  getAgentGroups: () => request<import('../types').AgentGroupDiscussion[]>('/messaging/groups'),
+  createAgentGroup: (data: { name: string; description?: string; agent_ids?: string[] }) =>
+    request<import('../types').AgentGroupDiscussion>('/messaging/groups', { method: 'POST', body: JSON.stringify(data) }),
+  deleteAgentGroup: (id: string) =>
+    request<{ ok: boolean }>(`/messaging/groups/${id}`, { method: 'DELETE' }),
 
 };
 

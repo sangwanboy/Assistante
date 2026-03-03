@@ -16,7 +16,8 @@ class BrowserManager:
         async with cls._lock:
             if cls._page is None:
                 cls._playwright = await async_playwright().start()
-                cls._browser = await cls._playwright.chromium.launch(headless=True)
+                # Run headless=False so the user can see the browser window
+                cls._browser = await cls._playwright.chromium.launch(headless=False)
                 cls._context = await cls._browser.new_context(
                     viewport={'width': 1280, 'height': 800},
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -33,8 +34,8 @@ class BrowserTool(BaseTool):
     def description(self) -> str:
         return (
             "A built-in web browser that can navigate to URLs, read content, click elements, "
-            "and type text. Use this tool when you need to interact with a specific website or "
-            "read its content. Actions: 'navigate', 'read', 'click', 'type', 'evaluate'."
+            "take screenshots, and type text. Use this tool when you need to interact with a specific website or "
+            "read its content. Actions: 'navigate', 'read', 'click', 'type', 'evaluate', 'screenshot'."
         )
 
     def parameters_schema(self) -> dict:
@@ -43,8 +44,8 @@ class BrowserTool(BaseTool):
             "properties": {
                 "action": {
                     "type": "string",
-                    "description": "The browser action: 'navigate', 'read', 'click', 'type', 'evaluate'",
-                    "enum": ["navigate", "read", "click", "type", "evaluate"]
+                    "description": "The browser action: 'navigate', 'read', 'click', 'type', 'evaluate', 'screenshot'",
+                    "enum": ["navigate", "read", "click", "type", "evaluate", "screenshot"]
                 },
                 "url": {
                     "type": "string",
@@ -109,6 +110,50 @@ class BrowserTool(BaseTool):
                 if not js_code: return "Error: js_code is required for 'evaluate'."
                 result = await page.evaluate(js_code)
                 return f"Evaluation result: {result}"
+
+            elif action == "screenshot":
+                import base64
+                import json
+                
+                # Highlight interactive elements if asked, or just take raw screenshot
+                try:
+                    # Draw subtle bounding boxes over typical interactive elements so the agent can see them easily
+                    await page.evaluate('''() => {
+                        const style = document.createElement("style");
+                        style.innerHTML = `
+                            .ai-interactive-highlight {
+                                outline: 2px solid rgba(255, 0, 0, 0.5) !important;
+                                z-index: 2147483647 !important;
+                            }
+                        `;
+                        document.head.appendChild(style);
+                        const elements = document.querySelectorAll('a, button, input, textarea, select, [role="button"]');
+                        elements.forEach(el => {
+                            if (el.offsetWidth > 0 && el.offsetHeight > 0) {
+                                el.classList.add('ai-interactive-highlight');
+                            }
+                        });
+                    }''')
+                    await asyncio.sleep(0.5)
+                except:
+                    pass
+                
+                screenshot_bytes = await page.screenshot(type="jpeg", quality=60)
+                b64_img = base64.b64encode(screenshot_bytes).decode('utf-8')
+                
+                # Cleanup highlights
+                try:
+                    await page.evaluate('''() => {
+                        document.querySelectorAll('.ai-interactive-highlight').forEach(el => el.classList.remove('ai-interactive-highlight'));
+                    }''')
+                except:
+                    pass
+                
+                return json.dumps({
+                    "image_base64": b64_img,
+                    "message": f"Successfully took a screenshot of {page.url}"
+                })
+
 
             else:
                 return "Error: Unknown action."

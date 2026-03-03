@@ -14,11 +14,20 @@ class ModelInfo:
 
 
 @dataclass
+class TokenUsage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+@dataclass
 class ChatMessage:
     role: str          # "system", "user", "assistant", "tool"
     content: str = ""
     tool_calls: list[dict] | None = None
     tool_call_id: str | None = None
+    images: list[str] | None = None  # List of base64-encoded image strings
+    usage: TokenUsage | None = None
 
 
 @dataclass
@@ -26,6 +35,7 @@ class StreamChunk:
     delta: str = ""
     finish_reason: str | None = None
     tool_calls: list[dict] | None = None
+    usage: TokenUsage | None = None
 
 
 class BaseProvider(ABC):

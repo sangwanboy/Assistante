@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useAgentStore } from './agentStore';
 
 export type AgentState = 'idle' | 'working' | 'offline';
 
@@ -60,6 +61,9 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
                             [data.agent_id]: data.status,
                         }
                     }));
+                } else if (data.type === 'TOKEN_UPDATE') {
+                    // console.log('[AgentStatus WS] Token update:', data.agent_id, data.total_cost);
+                    useAgentStore.getState().updateAgentCost(data.agent_id, data.total_cost);
                 }
             } catch (e) {
                 console.error('[AgentStatus WS] Parse error:', e);

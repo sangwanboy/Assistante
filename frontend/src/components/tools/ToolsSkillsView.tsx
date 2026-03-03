@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import {
   Plus, Trash2, X, Loader2, Wrench, BookOpen, Play, Download, Upload,
-  Power, Edit2, Code, FileText, Shield, Eye
+  Power, Edit2, Code, FileText, Shield, Eye, ShoppingBag, CheckCircle
 } from 'lucide-react';
 import { api } from '../../services/api';
-import type { CustomTool, Skill, ToolInfo } from '../../types';
+import type { CustomTool, Skill, ToolInfo, MarketplaceSkill } from '../../types';
 
-type TabType = 'tools' | 'skills';
+type TabType = 'tools' | 'skills' | 'marketplace';
 
 export function ToolsSkillsView() {
   const [activeTab, setActiveTab] = useState<TabType>('tools');
   const [builtinTools, setBuiltinTools] = useState<ToolInfo[]>([]);
   const [customTools, setCustomTools] = useState<CustomTool[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [marketplaceSkills, setMarketplaceSkills] = useState<MarketplaceSkill[]>([]);
+  const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
+  const [installResults, setInstallResults] = useState<Record<string, string>>({});
+  const [loading, setLoading]= useState(true);
 
   const [showToolPanel, setShowToolPanel] = useState(false);
   const [editingTool, setEditingTool] = useState<CustomTool | null>(null);
@@ -34,19 +37,36 @@ export function ToolsSkillsView() {
   });
   const [importContent, setImportContent] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [installUrl, setInstallUrl] = useState('');
+  const [showInstall, setShowInstall] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [toolsRes, customRes, skillsRes] = await Promise.all([
-        api.getTools(), api.getCustomTools(), api.getSkills(),
+      const [toolsRes, customRes, skillsRes, marketRes] = await Promise.all([
+        api.getTools(), api.getCustomTools(), api.getSkills(), api.getMarketplaceSkills(),
       ]);
       setBuiltinTools(toolsRes.filter(t => t.is_builtin));
       setCustomTools(customRes);
       setSkills(skillsRes);
+      setMarketplaceSkills(marketRes);
     } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  const handleInstallMarketplaceSkill = async (skillId: string) => {
+    setInstallingSkillId(skillId);
+    try {
+      const res = await api.installMarketplaceSkill(skillId);
+      setInstallResults(prev => ({ ...prev, [skillId]: res.message }));
+      if (res.installed) await loadAll();
+    } catch (err) {
+      setInstallResults(prev => ({ ...prev, [skillId]: `Error: ${err instanceof Error ? err.message : String(err)}` }));
+    } finally {
+      setInstallingSkillId(null);
+    }
   };
 
   const handleOpenCreateTool = () => {
@@ -107,6 +127,21 @@ export function ToolsSkillsView() {
   const handleImportSkill = async () => {
     if (!importContent.trim()) return;
     try { await api.importSkill(importContent); setShowImport(false); setImportContent(''); await loadAll(); } catch (err) { console.error(err); }
+  };
+  const handleInstallSkill = async () => {
+    if (!installUrl.trim()) return;
+    setInstalling(true);
+    try {
+      await api.installSkill(installUrl);
+      setShowInstall(false);
+      setInstallUrl('');
+      await loadAll();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInstalling(false);
+    }
   };
   const handleExportSkill = async (id: string) => {
     try {
@@ -196,6 +231,7 @@ export function ToolsSkillsView() {
             {([
               { key: 'tools' as const, icon: Wrench, label: 'Tools' },
               { key: 'skills' as const, icon: BookOpen, label: 'Skills' },
+              { key: 'marketplace' as const, icon: ShoppingBag, label: 'Marketplace' },
             ]).map(tab => (
               <button
                 key={tab.key}
@@ -304,6 +340,62 @@ export function ToolsSkillsView() {
                 )}
               </div>
             </div>
+          ) : activeTab === 'marketplace' ? (
+            /* Marketplace Tab */
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5 text-violet-400" />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: '#e5e7eb', margin: 0 }}>Skill Marketplace</h2>
+                  <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{marketplaceSkills.length} pre-built skills ready to install</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3" style={{ gap: 16 }}>
+                {marketplaceSkills.map(skill => {
+                  const isInstalled = skills.some(s => s.name === skill.name);
+                  const resultMsg = installResults[skill.id];
+                  return (
+                    <div key={skill.id} style={cardStyle} className="flex flex-col">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="rounded-xl flex items-center justify-center flex-shrink-0" style={{ width: 40, height: 40, backgroundColor: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', color: '#a78bfa' }}>
+                          <BookOpen className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#e5e7eb', margin: 0 }}>{skill.name}</h3>
+                          <p className="line-clamp-2 mt-1" style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>{skill.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {skill.tags?.map(tag => (
+                          <span key={tag} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 9999, backgroundColor: 'rgba(99,102,241,0.1)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.2)' }}>{tag}</span>
+                        ))}
+                      </div>
+                      <div className="mt-auto flex items-center justify-between pt-3" style={{ borderTop: '1px solid #1c1c30' }}>
+                        <span style={{ fontSize: 11, color: '#4b5563' }}>v{skill.version} · {skill.author}</span>
+                        {isInstalled ? (
+                          <div className="flex items-center gap-1 text-emerald-400" style={{ fontSize: 12 }}>
+                            <CheckCircle className="w-4 h-4" /> Installed
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleInstallMarketplaceSkill(skill.id)}
+                            disabled={installingSkillId === skill.id}
+                            className="flex items-center gap-1.5 transition-all disabled:opacity-50"
+                            style={{ ...primaryButtonStyle, padding: '8px 16px', fontSize: 12 }}
+                          >
+                            {installingSkillId === skill.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                            Install
+                          </button>
+                        )}
+                      </div>
+                      {resultMsg && <p style={{ fontSize: 11, color: '#a78bfa', marginTop: 8 }}>{resultMsg}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ) : (
             /* Skills Tab */
             <div>
@@ -314,7 +406,14 @@ export function ToolsSkillsView() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setShowImport(true)}
+                    onClick={() => { setShowInstall(!showInstall); setShowImport(false); }}
+                    className="flex items-center gap-2 transition-all hover:bg-white/5"
+                    style={{ padding: '10px 16px', fontSize: 14, fontWeight: 600, color: '#a78bfa', backgroundColor: '#1d1b38', border: '1px solid #3b2a5c', borderRadius: 10, cursor: 'pointer' }}
+                  >
+                    <Download className="w-4 h-4" /> Install from ClawHub
+                  </button>
+                  <button
+                    onClick={() => { setShowImport(!showImport); setShowInstall(false); }}
                     className="flex items-center gap-2 transition-all hover:bg-white/5"
                     style={{ padding: '10px 16px', fontSize: 14, fontWeight: 600, color: '#9ca3af', backgroundColor: '#141426', border: '1px solid #1c1c30', borderRadius: 10, cursor: 'pointer' }}
                   >
@@ -325,6 +424,42 @@ export function ToolsSkillsView() {
                   </button>
                 </div>
               </div>
+
+              {showInstall && (
+                <div style={{ marginBottom: 20, ...cardStyle, borderColor: 'rgba(167, 139, 250, 0.3)' }}>
+                  <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#e5e7eb' }}>
+                      <Download className="w-4 h-4" style={{ color: '#a78bfa' }} /> Install OpenClaw Skill
+                    </h3>
+                    <button onClick={() => setShowInstall(false)} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                      <X className="w-4 h-4" style={{ color: '#6b7280' }} />
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label style={{ fontSize: 12, color: '#9ca3af' }}>Enter a ClawHub slug (e.g. <span style={{ color: '#e5e7eb' }}>academic-research</span>) or a GitHub repository URL:</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={installUrl}
+                        onChange={e => setInstallUrl(e.target.value)}
+                        className={inputClass}
+                        placeholder="e.g. https://github.com/user/awesome-skill or just the slug"
+                        style={{ flex: 1 }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleInstallSkill();
+                        }}
+                      />
+                      <button
+                        onClick={handleInstallSkill}
+                        disabled={!installUrl.trim() || installing}
+                        className="transition-all disabled:opacity-40 flex items-center justify-center min-w-[100px]"
+                        style={{ ...primaryButtonStyle, padding: '10px 20px' }}>
+                        {installing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Install'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {showImport && (
                 <div style={{ marginBottom: 20, ...cardStyle, borderColor: 'rgba(139, 92, 246, 0.2)' }}>

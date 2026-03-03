@@ -15,6 +15,7 @@ class AgentBase(BaseModel):
     communication_style: Optional[str] = None
     # Mind
     enabled_tools: Optional[str] = None             # JSON list
+    enabled_skills: Optional[str] = None            # JSON list
     reasoning_style: Optional[str] = None
     # Memory
     memory_context: Optional[str] = None
@@ -38,6 +39,7 @@ class AgentUpdate(BaseModel):
     communication_style: Optional[str] = None
     # Mind
     enabled_tools: Optional[str] = None
+    enabled_skills: Optional[str] = None
     reasoning_style: Optional[str] = None
     # Memory
     memory_context: Optional[str] = None
@@ -47,6 +49,7 @@ class AgentUpdate(BaseModel):
 class AgentOut(AgentBase):
     id: str
     is_system: bool
+    total_cost: float
     created_at: datetime
     updated_at: datetime
 

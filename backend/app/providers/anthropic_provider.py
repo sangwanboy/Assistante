@@ -3,7 +3,7 @@ from typing import AsyncIterator
 
 from anthropic import AsyncAnthropic
 
-from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo
+from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
 
 
 class AnthropicProvider(BaseProvider):
@@ -112,10 +112,19 @@ class AnthropicProvider(BaseProvider):
                     },
                 })
 
+        usage = None
+        if hasattr(response, "usage") and response.usage:
+            usage = TokenUsage(
+                prompt_tokens=response.usage.input_tokens,
+                completion_tokens=response.usage.output_tokens,
+                total_tokens=response.usage.input_tokens + response.usage.output_tokens
+            )
+
         return ChatMessage(
             role="assistant",
             content=content,
             tool_calls=tool_calls if tool_calls else None,
+            usage=usage
         )
 
     async def stream(
@@ -140,9 +149,16 @@ class AnthropicProvider(BaseProvider):
             kwargs["tools"] = formatted_tools
 
         current_tool_call = None
+        usage = TokenUsage()
 
         async with self.client.messages.stream(**kwargs) as stream:
             async for event in stream:
+                if event.type == "message_start":
+                    if hasattr(event.message, "usage"):
+                        usage.prompt_tokens = event.message.usage.input_tokens
+                        usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
+                    continue
+
                 if event.type == "content_block_start":
                     if hasattr(event.content_block, "type") and event.content_block.type == "tool_use":
                         current_tool_call = {
@@ -173,9 +189,13 @@ class AnthropicProvider(BaseProvider):
                     continue
 
                 if event.type == "message_delta":
+                    if hasattr(event, "usage") and event.usage:
+                        usage.completion_tokens = event.usage.output_tokens
+                        usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
+                        
                     if hasattr(event, "delta") and hasattr(event.delta, "stop_reason"):
                         if event.delta.stop_reason == "end_turn":
-                            yield StreamChunk(finish_reason="stop")
+                            yield StreamChunk(finish_reason="stop", usage=usage)
                     continue
 
     async def list_models(self) -> list[ModelInfo]:

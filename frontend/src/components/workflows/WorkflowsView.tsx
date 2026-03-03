@@ -10,7 +10,7 @@ import ReactFlow, {
     type Edge
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Plus, Play, Save, ArrowLeft, Zap, GitBranch, Filter, Mail, Bell, Workflow, Bot, Users, Brain, X } from 'lucide-react';
+import { Plus, Play, Save, ArrowLeft, Zap, GitBranch, Filter, Mail, Bell, Workflow, Brain, X } from 'lucide-react';
 import { api } from '../../services/api';
 import type { Workflow as WorkflowModel } from '../../types/workflow';
 import { useAgentStore } from '../../stores/agentStore';
@@ -318,36 +318,36 @@ export function WorkflowsView() {
         <div className="h-full flex flex-col overflow-y-auto" style={{ padding: 24, backgroundColor: '#080810' }}>
             <div className="max-w-6xl mx-auto w-full" style={{ display: 'flex', flexDirection: 'column', gap: 32, paddingBottom: 48 }}>
 
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                                <Workflow className="w-5 h-5 text-indigo-400" />
-                                Workflows Engine
-                            </h1>
-                            <p className="text-sm text-gray-500 mt-0.5">Design node-based automation graphs for your agents to execute.</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setShowCreateModal(true)}
-                            style={primaryButtonStyle}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.opacity = '0.95';
-                                e.currentTarget.style.boxShadow = '0 6px 20px rgba(124, 58, 237, 0.5)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.opacity = '1';
-                                e.currentTarget.style.boxShadow = '0 4px 14px rgba(124, 58, 237, 0.4)';
-                            }}
-                        >
-                            <Plus className="w-4 h-4" />
-                            Create Workflow
-                        </button>
-                    </div>
-
-                    {/* Templates Gallery */}
+                {/* Header */}
+                <div className="flex items-center justify-between">
                     <div>
-                        <h2 style={sectionHeaderStyle}>Available Templates</h2>
+                        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                            <Workflow className="w-5 h-5 text-indigo-400" />
+                            Workflows Engine
+                        </h1>
+                        <p className="text-sm text-gray-500 mt-0.5">Design node-based automation graphs for your agents to execute.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowCreateModal(true)}
+                        style={primaryButtonStyle}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.95';
+                            e.currentTarget.style.boxShadow = '0 6px 20px rgba(124, 58, 237, 0.5)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                            e.currentTarget.style.boxShadow = '0 4px 14px rgba(124, 58, 237, 0.4)';
+                        }}
+                    >
+                        <Plus className="w-4 h-4" />
+                        Create Workflow
+                    </button>
+                </div>
+
+                {/* Templates Gallery */}
+                <div>
+                    <h2 style={sectionHeaderStyle}>Available Templates</h2>
                     <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
                         {templates.map((tpl, i) => (
                             <div
@@ -504,10 +504,10 @@ export function WorkflowsView() {
                                         Created {new Date(wf.created_at).toLocaleDateString()}
                                     </div>
                                 </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
             </div>
 
             {/* Create Workflow Modal */}

@@ -82,6 +82,7 @@ export interface Agent {
   communication_style: string | null;
   // Mind
   enabled_tools: string | null;            // JSON list
+  enabled_skills: string | null;           // JSON list
   reasoning_style: string | null;
   // Memory
   memory_context: string | null;
@@ -89,6 +90,7 @@ export interface Agent {
   // Per-agent API key (masked in responses)
   api_key: string | null;
   is_system?: boolean;
+  total_cost?: number;
   created_at: string;
   updated_at: string;
 }
@@ -125,5 +127,66 @@ export interface Skill {
   metadata_json: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ── Omnichannel Integrations ───────────────────────────────────────────────
+export interface Integration {
+  id: string;
+  name: string;
+  platform: 'telegram' | 'discord' | 'slack' | 'whatsapp';
+  agent_id: string | null;
+  is_active: boolean;
+}
+
+export interface IntegrationCreate {
+  name: string;
+  platform: 'telegram' | 'discord' | 'slack' | 'whatsapp';
+  config: Record<string, string>;
+  agent_id?: string | null;
+  is_active?: boolean;
+}
+
+// ── Heartbeat Schedules ────────────────────────────────────────────────────
+export interface AgentSchedule {
+  id: string;
+  agent_id: string;
+  name: string;
+  description: string;
+  interval_minutes: number;
+  is_active: boolean;
+  last_run: string | null;
+  created_at: string;
+}
+
+// ── Marketplace Skills ─────────────────────────────────────────────────────
+export interface MarketplaceSkill {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  tags: string[];
+  instructions: string;
+}
+
+// ── Agent Messaging ────────────────────────────────────────────────────────
+export interface AgentMessage {
+  id: string;
+  from_agent_id: string;
+  to_agent_id: string | null;
+  group_id: string | null;
+  content: string;
+  role: string;
+  created_at: string;
+  is_read: boolean;
+}
+
+export interface AgentGroupDiscussion {
+  id: string;
+  name: string;
+  description: string;
+  agent_ids_json: string;  // JSON list of agent IDs
+  is_active: boolean;
+  created_at: string;
 }
 

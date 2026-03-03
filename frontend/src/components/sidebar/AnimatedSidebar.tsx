@@ -5,7 +5,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   LayoutDashboard, MessageCircle, Database, Zap, Users2,
   Sparkles, Settings as SettingsIcon, PanelLeft, PanelRight, ChevronsUpDown,
-  Home, MessageSquare, LogOut, CheckCircle2,
+  Home, MessageSquare, LogOut, CheckCircle2, Globe, AlarmClock,
 } from 'lucide-react';
 
 interface AnimatedSidebarProps {
@@ -21,6 +21,8 @@ const NAV_ITEMS = [
   { id: 'knowledge', label: 'Knowledge Base', icon: Database },
   { id: 'tools', label: 'Tools & Skills', icon: Zap },
   { id: 'workflows', label: 'Workflows', icon: Sparkles },
+  { id: 'integrations', label: 'Integrations', icon: Globe },
+  { id: 'heartbeat', label: 'Heartbeat', icon: AlarmClock },
 ];
 
 export function AnimatedSidebar({ activeView, onViewChange, statusMessage = 'Ready' }: AnimatedSidebarProps) {

@@ -30,6 +30,7 @@ class Agent(Base):
 
     # ── Mind (Tools & Reasoning) ──
     enabled_tools: Mapped[str | None] = mapped_column(Text, nullable=True)            # JSON list: ["web_search", "code_executor", ...]
+    enabled_skills: Mapped[str | None] = mapped_column(Text, nullable=True)           # JSON list of SKILL.md names
     reasoning_style: Mapped[str | None] = mapped_column(Text, nullable=True)          # "analytical", "creative", "balanced", "step-by-step"
 
     # ── Memory (Persistent Context) ──
@@ -41,6 +42,9 @@ class Agent(Base):
 
     # Core system flag (protects from deletion)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # ── Token Economy ──
+    total_cost: Mapped[float] = mapped_column(default=0.0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

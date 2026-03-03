@@ -11,10 +11,10 @@ class SkillCreatorTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Create, update, list, or delete skills. Skills are instruction sets (OpenClaw SKILL.md compatible) "
+            "Create, update, list, delete, import, or install skills. Skills are instruction sets (OpenClaw SKILL.md compatible) "
             "that guide agent behavior. Active skills are automatically injected into all agent system prompts. "
             "Use action='create' to make a new skill, 'update' to modify, 'list' to see all, 'import' to import "
-            "from SKILL.md content, or 'delete' to remove one."
+            "from SKILL.md content, 'install' to install from an OpenClaw slug or GitHub URL, or 'delete' to remove one."
         )
 
     def parameters_schema(self) -> dict:
@@ -23,7 +23,7 @@ class SkillCreatorTool(BaseTool):
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create", "update", "list", "delete", "import"],
+                    "enum": ["create", "update", "list", "delete", "import", "install"],
                     "description": "The action to perform.",
                 },
                 "name": {
@@ -46,13 +46,17 @@ class SkillCreatorTool(BaseTool):
                     "type": "string",
                     "description": "Raw SKILL.md content for the 'import' action.",
                 },
+                "url": {
+                    "type": "string",
+                    "description": "OpenClaw ClawHub slug or full GitHub URL for the 'install' action.",
+                },
             },
             "required": ["action"],
         }
 
     async def execute(self, action: str, name: str = "", description: str = "",
                       instructions: str = "", is_active: bool = True,
-                      content: str = "", **kwargs) -> str:
+                      content: str = "", url: str = "", **kwargs) -> str:
         from app.db.engine import async_session
         from app.services.skill_service import SkillService
         from sqlalchemy import select
@@ -117,5 +121,14 @@ class SkillCreatorTool(BaseTool):
                 skill = await svc.import_from_content(content)
                 return f"Skill '{skill.name}' imported successfully (id: {skill.id})."
 
+            elif action == "install":
+                if not url:
+                    return "Error: 'url' is required for install. Provide a ClawHub slug or full GitHub URL."
+                try:
+                    skill = await svc.import_from_github_url(url)
+                    return f"Skill '{skill.name}' installed successfully from URL (id: {skill.id})."
+                except Exception as e:
+                    return f"Failed to install skill from {url}: {e}"
+
             else:
-                return f"Error: Unknown action '{action}'. Use create, update, list, delete, or import."
+                return f"Error: Unknown action '{action}'. Use create, update, list, delete, import, or install."
