@@ -1,16 +1,24 @@
 import asyncio
 import json
+import logging
 from enum import Enum
-from typing import Dict, Any, List
+from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
+
 
 class AgentState(str, Enum):
+    OFFLINE = "offline"
+    INITIALIZING = "initializing"
     IDLE = "idle"
     WORKING = "working"
-    OFFLINE = "offline"
+    ERROR = "error"
+
 
 class AgentStatusManager:
     """
     In-memory singleton to track global agent states and broadcast changes via WebSockets.
+    Also emits Redis heartbeats when available.
     """
     _instance = None
     _lock = asyncio.Lock()
@@ -31,9 +39,25 @@ class AgentStatusManager:
 
     def set_status(self, agent_id: str, state: AgentState, task: str = None):
         """Update an agent's status and broadcast to all listeners."""
-        print(f"DEBUG: Setting status for {agent_id} to {state} (task: {task})")
         self.statuses[agent_id] = {"state": state, "task": task}
         self._broadcast(agent_id)
+
+        # Also emit via Redis heartbeat (fire-and-forget)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._emit_redis_heartbeat(agent_id, state, task))
+        except RuntimeError:
+            pass  # No running event loop
+
+    async def _emit_redis_heartbeat(self, agent_id: str, state: AgentState, task: str = None):
+        """Push heartbeat to Redis if available."""
+        try:
+            from app.services.agent_heartbeat import AgentHeartbeatService
+            hb = await AgentHeartbeatService.get_instance()
+            if hb.available:
+                await hb.emit_heartbeat(agent_id, state.value, task)
+        except Exception:
+            pass  # Redis not available, in-memory is sufficient
 
     def get_all_statuses(self) -> Dict[str, Dict[str, Any]]:
         return self.statuses
@@ -44,13 +68,11 @@ class AgentStatusManager:
     def subscribe(self) -> asyncio.Queue:
         queue = asyncio.Queue()
         self.subscribers.append(queue)
-        print(f"DEBUG: New subscriber added. Total subscribers: {len(self.subscribers)}")
         return queue
 
     def unsubscribe(self, queue: asyncio.Queue):
         if queue in self.subscribers:
             self.subscribers.remove(queue)
-            print(f"DEBUG: Subscriber removed. Total subscribers: {len(self.subscribers)}")
 
     def _broadcast(self, agent_id: str):
         message = json.dumps({
@@ -58,14 +80,13 @@ class AgentStatusManager:
             "agent_id": agent_id,
             "status": self.statuses[agent_id]
         })
-        print(f"DEBUG: Broadcasting status update for {agent_id} to {len(self.subscribers)} subscribers")
         for queue in self.subscribers:
             try:
                 queue.put_nowait(message)
             except asyncio.QueueFull:
-                print(f"DEBUG: Queue full for a subscriber!")
+                logger.debug("Queue full for a status subscriber")
             except Exception as e:
-                print(f"DEBUG: Error broadcasting: {e}")
+                logger.debug("Error broadcasting status: %s", e)
 
     async def emit_event(self, event_data: dict):
         """Emit a generic JSON event to all WebSocket subscribers."""
@@ -76,4 +97,4 @@ class AgentStatusManager:
             except asyncio.QueueFull:
                 pass
             except Exception as e:
-                print(f"DEBUG: Error emitting event: {e}")
+                logger.debug("Error emitting event: %s", e)

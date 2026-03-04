@@ -4,6 +4,20 @@ import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { audioApi } from '../../services/audio';
 import type { Message } from '../../types';
 
+function highlightMentions(text: string): React.ReactNode[] {
+  const parts = text.split(/(@[\w][\w ]*?)(?=\s[:,;.!?\n]|\s@|\s*$)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('@') && part.length > 1) {
+      return (
+        <span key={i} className="font-semibold text-indigo-400 bg-indigo-500/10 px-1 rounded">
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
+
 interface Props {
   message: Message;
 }
@@ -48,7 +62,7 @@ export function MessageBubble({ message }: Props) {
       <div className="flex justify-end gap-3 px-4 py-3">
         <div className="max-w-[72%]">
           <div className="bg-indigo-600/25 border border-indigo-500/25 rounded-2xl rounded-tr-sm px-4 py-3">
-            <p className="text-[15px] text-gray-200 whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+            <p className="text-[15px] text-gray-200 whitespace-pre-wrap break-words leading-relaxed">{highlightMentions(message.content)}</p>
           </div>
           <div className="text-[10px] text-gray-600 mt-1 text-right font-medium">You</div>
         </div>

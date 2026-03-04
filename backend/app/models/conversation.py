@@ -43,6 +43,7 @@ class Message(Base):
     agent_name: Mapped[str | None] = mapped_column(String, nullable=True)
     tool_calls_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    mentioned_agents_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of mentioned agent IDs
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")

@@ -18,6 +18,15 @@ interface ChatState {
   isConnected: boolean;
   error: string | null;
 
+  // Orchestration chain state
+  activeChainId: string | null;
+  activeChainState: string | null;
+  activeChainAgents: string[];
+  activeChainDepth: number;
+  orchestrationPlan: { summary: string; steps?: Array<{ agent: string; task: string }> } | null;
+  currentChainAgent: string | null;
+  currentChainTask: string | null;
+
   // WebSocket
   wsClient: WebSocketClient | null;
 
@@ -47,6 +56,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingAgentName: null,
   isConnected: false,
   error: null,
+  activeChainId: null,
+  activeChainState: null,
+  activeChainAgents: [],
+  activeChainDepth: 0,
+  orchestrationPlan: null,
+  currentChainAgent: null,
+  currentChainTask: null,
   wsClient: null,
 
   loadConversations: async () => {
@@ -222,12 +238,60 @@ export const useChatStore = create<ChatState>((set, get) => ({
             });
             break;
 
+          case 'chain_start':
+            set({
+              activeChainId: event.chain_id || null,
+              activeChainState: 'active',
+              activeChainAgents: [],
+              activeChainDepth: 0,
+              orchestrationPlan: null,
+              currentChainAgent: null,
+              currentChainTask: null,
+            });
+            break;
+
+          case 'orchestration_plan':
+            set({
+              orchestrationPlan: {
+                summary: event.plan_summary || '',
+                steps: event.steps,
+              },
+            });
+            break;
+
+          case 'chain_update':
+            set({
+              activeChainState: event.chain_state || 'active',
+              activeChainAgents: event.chain_agents || [],
+              activeChainDepth: event.chain_depth || 0,
+              currentChainAgent: event.current_agent || null,
+              currentChainTask: event.current_task || null,
+            });
+            break;
+
+          case 'chain_complete':
+            set({
+              activeChainId: null,
+              activeChainState: null,
+              activeChainAgents: [],
+              activeChainDepth: 0,
+              orchestrationPlan: null,
+              currentChainAgent: null,
+              currentChainTask: null,
+            });
+            break;
+
           case 'done':
             set(() => ({
               isStreaming: false,
               streamingContent: '',
               streamingToolCalls: [],
               streamingAgentName: null,
+              activeChainId: null,
+              activeChainState: null,
+              orchestrationPlan: null,
+              currentChainAgent: null,
+              currentChainTask: null,
             }));
             // Refresh conversation list to update timestamps
             get().loadConversations();

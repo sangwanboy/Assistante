@@ -23,6 +23,7 @@ dependencies = [
     "sentence-transformers>=5.2.3",
     "playwright>=1.58.0",
     "markdownify>=1.2.2",
+    "redis[hiredis]>=5.0",
 ]
 
 [project.optional-dependencies]

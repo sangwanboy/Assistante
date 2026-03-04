@@ -13,6 +13,7 @@ export interface Channel {
   name: string;
   description: string | null;
   is_announcement: boolean;
+  orchestration_mode: 'autonomous' | 'manual';
   created_at: string;
   updated_at: string;
 }
@@ -47,7 +48,8 @@ export interface ToolInfo {
 }
 
 export interface StreamEvent {
-  type: 'chunk' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'agent_turn_start' | 'agent_turn_end';
+  type: 'chunk' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'agent_turn_start' | 'agent_turn_end'
+    | 'chain_start' | 'chain_update' | 'chain_complete' | 'orchestration_plan' | 'task_progress';
   delta?: string;
   tool_name?: string;
   tool_args?: Record<string, unknown>;
@@ -56,6 +58,18 @@ export interface StreamEvent {
   conversation_id?: string;
   agent_name?: string;
   error?: string;
+  // Chain/orchestration fields
+  chain_id?: string;
+  chain_state?: string;
+  chain_depth?: number;
+  chain_agents?: string[];
+  current_agent?: string;
+  current_task?: string;
+  plan_summary?: string;
+  steps?: Array<{ agent: string; task: string }>;
+  // Task progress fields
+  task_id?: string;
+  progress?: number;
 }
 
 export interface AppSettings {
@@ -169,24 +183,38 @@ export interface MarketplaceSkill {
   instructions: string;
 }
 
-// ── Agent Messaging ────────────────────────────────────────────────────────
-export interface AgentMessage {
+// ── Task & Delegation Chain ───────────────────────────────────────────────
+export interface TaskInfo {
   id: string;
-  from_agent_id: string;
-  to_agent_id: string | null;
-  group_id: string | null;
-  content: string;
-  role: string;
+  chain_id: string | null;
+  assigned_agent_id: string;
+  conversation_id: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  prompt: string;
+  result: string | null;
+  progress: number;
+  checkpoint: string | null;
+  timeout_seconds: number;
+  retry_count: number;
+  max_retries: number;
   created_at: string;
-  is_read: boolean;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
-export interface AgentGroupDiscussion {
+export interface ChainInfo {
   id: string;
-  name: string;
-  description: string;
-  agent_ids_json: string;  // JSON list of agent IDs
-  is_active: boolean;
+  conversation_id: string | null;
+  parent_task_id: string | null;
+  state: 'active' | 'completed' | 'halted' | 'failed';
+  depth: number;
+  max_depth: number;
+  agents_involved_json: string;
+  plan_summary: string | null;
+  total_tokens_used: number;
+  max_token_budget: number;
   created_at: string;
+  updated_at: string;
 }
 

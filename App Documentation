@@ -1,0 +1,174 @@
+# Assitance - Full Application Documentation
+
+## Overview
+**Assitance** is a highly capable, multi-purpose AI assistant platform designed to orchestrate complex tasks via a network of specialized AI agents. Unlike standard chatbots, it functions as an autonomous operating system for LLMs, complete with persistent memory, tool access, human-in-the-loop (HITL) safety checks, dynamic context pruning, multi-agent orchestration with delegation chains, three-layer heartbeat monitoring, and a visual node-based workflow engine.
+
+## Core Features & Functionality
+
+### 1. Multi-Provider AI Support
+Assitance is agnostic to any single LLM provider. The backend seamlessly maps unified schemas to:
+- **OpenAI** (e.g., GPT-4o)
+- **Anthropic** (e.g., Claude 3.5 Sonnet)
+- **Google Gemini** (e.g., Gemini 2.5 Flash, utilized for native audio multimodal tasks)
+- **Ollama** (Local execution for privacy and cost savings)
+
+### 2. Persistent Specialized Agents
+Users can define multiple customized Agents, each with their own isolated context, persona, and enabled tools.
+- **Soul**: Defines the agent's tone, personality traits, and communication style.
+- **Mind**: Determines which tools the agent is permitted to use (e.g., Web Search, File Manager) and its reasoning methodology.
+- **Memory**: Establishes permanent context and standing instructions.
+- *Agent Delegation*: Agents can dynamically route complex sub-tasks to other specialized agents.
+
+### 3. Comprehensive Tool Sandbox
+Agents can autonomously leverage tools to interact with the environment:
+- **Web Search**: DuckDuckGo search integration.
+- **File Manager**: Read/Write/List files directly on the host machine.
+- **Code Executor**: Run Python scripts in a sandboxed subprocess.
+- **Command Executor**: Execute native PowerShell CLI commands.
+- **Docker Sandboxed Executor**: Run code in isolated Docker containers (no network, RAM/CPU capped).
+- **Tool/Skill Creators**: Agents can write, test, and save new tools/skills for themselves or others to use later.
+- **Agent Messenger**: Send direct/group messages between agents via tool calls.
+- **Workflow Manager**: Create and manage workflows programmatically from within conversations.
+- **Memory Tool**: Persistent agent memory read/write.
+
+### 4. Human-In-The-Loop (HITL) Safety
+Potentially destructive actions (like running code or CLI commands) trigger a backend `asyncio.Event` lock. The agent's execution is paused, and a WebSocket alert is sent to the frontend. Execution resumes only when the user explicitly clicks "Allow" or "Deny". An "Always Allow" option persists user preferences to localStorage.
+
+### 5. Document Knowledge Base (RAG)
+Users can upload files (PDFs, Markdown, TXT) which are immediately chunked, embedded via `sentence-transformers`, and stored in a local **ChromaDB** vector database. Agents can query this database to answer questions grounded in the user's private data.
+
+### 6. Voice/Audio I/O
+- **Voice-to-Text**: Captures user microphone audio via the `MediaRecorder` API and transcribes it natively using Gemini 2.0 Flash's audio capabilities.
+- **Text-to-Speech**: Agent responses can be read aloud using `edge-tts`, a high-quality free speech synthesis engine.
+
+### 7. Token Economy & Cost Tracking
+Token usage (`prompt_tokens`, `completion_tokens`) is parsed natively from LLM responses. The backend calculates the fraction-of-a-cent monetary cost and tracks lifetime spend per agent in the SQLite database, streaming updates to the UI in real-time.
+
+### 8. Context Pruning
+To prevent LLM context limit crashes and runaway costs, a `ContextPruner` monitors the token size of active conversations. If thresholds are met, it extracts the middle portion of the chat, summarizes it using a faster/cheaper model, and replaces the massive log with a dense summary block, preserving the original system prompt and the latest 5 turns.
+
+### 9. Self-Correction Auto-Retry
+If an agent writes faulty Python code or misuses a tool API, the framework catches the Python Exception/Traceback. Instead of halting, the backend injects the traceback directly back into the LLM's prompt and instructs it to self-correct and try again.
+
+### 10. Node-Based Workflow Engine
+A visual `ReactFlow` editor allows users to string together automated processes (DAGs). Example: A Webhook Trigger node activates a "Summarize Document" action node, which passes data to an "Email Draft" action node. Workflows can be assigned to specific agents or groups.
+
+### 11. Multi-Agent Orchestration Engine
+
+The orchestration system provides a unified chat experience where multiple agents collaborate under a System Agent coordinator.
+
+#### Unified Channel Chat
+- All group communication flows through unified channels (merged P2P and LLM modes).
+- Channels display orchestration mode badges (AUTO/MANUAL) instead of the old LLM/P2P distinction.
+- Agent status dots (green=idle, amber=working, blue=initializing, red=error, gray=offline) are shown in channel headers and @mention dropdowns.
+
+#### @mention-Selective Routing
+- Only agents explicitly tagged with `@AgentName` respond to a message.
+- An autocomplete dropdown appears when typing `@`, showing channel members with real-time status dots.
+- `@AgentName` mentions in user messages are highlighted with indigo styling.
+- Mentions are validated against channel membership -- agents not in the channel are rejected.
+
+#### Orchestration Modes
+- **Autonomous**: When no @mentions are present, the System Agent automatically:
+  1. Analyzes the task and available agents
+  2. Produces a structured JSON delegation plan
+  3. Creates delegation chain and task records in the database
+  4. Executes each step, passing outputs as context to the next agent
+  5. Synthesizes a final aggregated response from all agent outputs
+- **Manual**: Only the System Agent responds directly. Users must use explicit @mentions to involve other agents.
+- Mode is toggleable per channel via a button in the channel header.
+
+#### Delegation Chain Graph
+- A ReactFlow-based node graph renders inline when a delegation chain is active.
+- Shows the execution flow: User -> System Agent -> Agent A -> Agent B.
+- Edges animate during active execution, colored by status (indigo=active, green=completed, red=failed, gray=pending).
+- Custom `ChainNode` components display agent names, status dots, and progress bars.
+
+#### Safety Limits
+- **Max Delegation Depth**: 5 levels (configurable per chain).
+- **Circular Invocation Detection**: Prevents an agent from being delegated to if already in the chain.
+- **Token Budget**: 100k tokens per chain (configurable). Chain halts if budget exceeded, System Agent summarizes partial results.
+- **Task Timeouts**: Configurable per task (default 60s). Auto-retry up to 3 times on failure.
+
+### 12. Three-Layer Heartbeat Architecture
+
+#### Layer 1: Agent Process Heartbeat (Redis Pub/Sub)
+- `AgentHeartbeatService` singleton emits heartbeats to Redis key `assitance:agent_state:{agent_id}` with 60s TTL.
+- Background monitor checks stale agents every 5 seconds:
+  - 10s since last heartbeat: mark unresponsive.
+  - 30s since last heartbeat: mark offline.
+- Agent state machine: `offline -> initializing -> idle -> busy -> error`.
+
+#### Layer 2: Task Execution Heartbeat
+- Per-task progress tracking stored in Redis key `assitance:task:{task_id}`.
+- Progress percentage (0-100) with checkpoint text.
+- Timeout detection with auto-retry: increment retry_count, requeue if < max_retries, else mark failed.
+
+#### Layer 3: Delegation Chain Heartbeat
+- Chain state changes tracked on every event (not interval-based).
+- Broadcasts `chain_start`, `chain_update`, `chain_complete` events via WebSocket.
+- Recovery protocol: on agent failure, mark task as interrupted, increment failure_count, escalate after 3 consecutive failures.
+
+### 13. Omnichannel Integration
+External platform adapters for Telegram, Discord, Slack, and WhatsApp route incoming messages to assigned agents and send responses back on the originating platform.
+
+### 14. Proactive Heartbeat Schedules
+Background tasks fire at configurable intervals (15m to 24h), triggering agents to execute predefined tasks autonomously.
+
+### 15. Skill Marketplace
+A catalog of 7 pre-built skills (web researcher, code reviewer, daily briefing, smart summarizer, email drafter, data analyst, task automator) installable with one click.
+
+## Technical Architecture
+
+### Backend Stack
+- **Python 3.12** managed via `uv`.
+- **FastAPI** + **Uvicorn** for HTTP REST and WebSocket server capabilities.
+- **SQLAlchemy (Async)** + **SQLite** for relational structured data (Conversations, Agents, Workflows, Tasks, Chains).
+- **Redis** (`redis.asyncio`) for real-time heartbeat pub/sub, task queue state, and ephemeral agent state.
+- **ChromaDB** for vector embeddings.
+- **Pydantic** for strict typing, API schemas, and environment configuration.
+
+### Frontend Stack
+- **React 19** + **TypeScript** + **Vite**.
+- **Tailwind CSS v4** for utility-first, highly customized glassmorphism styling.
+- **Zustand** for lightweight, scalable state management (Stores for Chat, Agents, Channels, Settings, AgentStatus, AgentControl).
+- **ReactFlow** for the drag-and-drop Workflow builder and the Delegation Chain Graph.
+- **Framer Motion** for UI animations.
+- **Lucide React** for consistent, clean iconography.
+
+### Data Flow Overview
+1. **Frontend Request**: User types a message in the React UI. `api.ts` sends a `POST /api/chat` or opens a WebSocket connection to the FastAPI backend.
+2. **Mention Parser**: `mention_parser.py` extracts @mentions from the message and resolves them against channel membership.
+3. **Routing Decision**:
+   - If @mentions found: route only to mentioned agents.
+   - If no mentions + autonomous mode: route to OrchestrationEngine for auto-delegation.
+   - If no mentions + manual mode: route to System Agent only.
+4. **Orchestration Engine** (autonomous mode): System Agent produces a JSON plan, creates a DelegationChain, and delegates tasks sequentially to agents.
+5. **Agent Turn**: `ChatService._run_agent_turn()` builds the agent's prompt (personality + tools), streams the response, handles tool calls, and yields events.
+6. **Heartbeat**: `AgentHeartbeatService` emits Redis heartbeats, monitors agent health, manages the recovery protocol.
+7. **Tool Loop**: If the LLM returns a Tool Call, `ChatService` checks if the tool is sensitive.
+   - If sensitive, the `HITLManager` pauses and pings the Frontend WebSocket.
+   - Once approved, the tool runs. Errors are fed back for self-correction.
+8. **Streaming Response**: Output is streamed chunk-by-chunk over WebSocket back to the UI, alongside live token-cost updates, agent-status updates, chain state events, and orchestration plan broadcasts.
+
+### New API Endpoints (Orchestration)
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/tasks/active` | List pending/running tasks |
+| `GET /api/tasks/{task_id}` | Task detail with progress |
+| `GET /api/chains/active` | List active delegation chains |
+| `GET /api/chains/{chain_id}` | Chain detail with agents/depth/state |
+| `GET /api/health` | Enhanced: includes agent statuses, active task/chain counts |
+
+### Database Models (New)
+| Model | Purpose |
+|-------|---------|
+| `Task` | Individual delegated task (chain_id, agent_id, status, progress, timeout, retries) |
+| `DelegationChain` | Orchestration chain (state, depth, max_depth, agents_involved, plan_summary, token_budget) |
+
+### Database Columns (Extended)
+| Model | New Columns |
+|-------|-------------|
+| `Agent` | `failure_count`, `last_heartbeat` |
+| `Channel` | `orchestration_mode` (autonomous/manual) |
+| `Message` | `mentioned_agents_json` |

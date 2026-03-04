@@ -46,5 +46,9 @@ class Agent(Base):
     # ── Token Economy ──
     total_cost: Mapped[float] = mapped_column(default=0.0)
 
+    # ── Heartbeat & Reliability ──
+    failure_count: Mapped[int] = mapped_column(default=0)
+    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

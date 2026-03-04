@@ -140,7 +140,7 @@ export const api = {
   getChannels: () => request<import('../types').Channel[]>('/channels'),
   createChannel: (data: { name: string; description?: string; is_announcement?: boolean }) =>
     request<import('../types').Channel>('/channels', { method: 'POST', body: JSON.stringify(data) }),
-  updateChannel: (id: string, data: { name?: string; description?: string }) =>
+  updateChannel: (id: string, data: { name?: string; description?: string; orchestration_mode?: 'autonomous' | 'manual' }) =>
     request<import('../types').Channel>(`/channels/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteChannel: (id: string) =>
     request<{ status: string }>(`/channels/${id}`, { method: 'DELETE' }),
@@ -176,23 +176,11 @@ export const api = {
   installMarketplaceSkill: (id: string) =>
     request<{ ok: boolean; message: string; installed: boolean; skill_id?: string }>(`/marketplace/${id}/install`, { method: 'POST' }),
 
-  // Agent Messaging
-  getAgentMessages: (params?: { agent_id?: string; group_id?: string; limit?: number }) => {
-    const qs = new URLSearchParams();
-    if (params?.agent_id) qs.set('agent_id', params.agent_id);
-    if (params?.group_id) qs.set('group_id', params.group_id);
-    if (params?.limit) qs.set('limit', String(params.limit));
-    return request<import('../types').AgentMessage[]>(`/messaging/messages?${qs}`);
-  },
-  sendDirectMessage: (data: { from_agent_id: string; to_agent_id: string; content: string }) =>
-    request<import('../types').AgentMessage>('/messaging/messages/direct', { method: 'POST', body: JSON.stringify(data) }),
-  sendGroupMessage: (data: { from_agent_id: string; group_id: string; content: string }) =>
-    request<import('../types').AgentMessage>('/messaging/messages/group', { method: 'POST', body: JSON.stringify(data) }),
-  getAgentGroups: () => request<import('../types').AgentGroupDiscussion[]>('/messaging/groups'),
-  createAgentGroup: (data: { name: string; description?: string; agent_ids?: string[] }) =>
-    request<import('../types').AgentGroupDiscussion>('/messaging/groups', { method: 'POST', body: JSON.stringify(data) }),
-  deleteAgentGroup: (id: string) =>
-    request<{ ok: boolean }>(`/messaging/groups/${id}`, { method: 'DELETE' }),
+  // Tasks & Delegation Chains
+  getActiveTasks: () => request<import('../types').TaskInfo[]>('/tasks/active'),
+  getTask: (id: string) => request<import('../types').TaskInfo>(`/tasks/${id}`),
+  getActiveChains: () => request<import('../types').ChainInfo[]>('/chains/active'),
+  getChain: (id: string) => request<import('../types').ChainInfo>(`/chains/${id}`),
 
 };
 

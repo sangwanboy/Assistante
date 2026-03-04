@@ -5,6 +5,7 @@ class ChannelBase(BaseModel):
     name: str = Field(..., min_length=1)
     description: str | None = None
     is_announcement: bool = False
+    orchestration_mode: str = "autonomous"  # "autonomous" | "manual"
 
 class ChannelCreate(ChannelBase):
     pass
@@ -12,6 +13,7 @@ class ChannelCreate(ChannelBase):
 class ChannelUpdate(BaseModel):
     name: str | None = Field(None, min_length=1)
     description: str | None = None
+    orchestration_mode: str | None = None
 
 class ChannelOut(ChannelBase):
     id: str

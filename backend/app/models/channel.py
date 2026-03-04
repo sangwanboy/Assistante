@@ -20,5 +20,8 @@ class Channel(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_announcement: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Orchestration mode: "autonomous" (System auto-delegates) or "manual" (explicit @mentions only)
+    orchestration_mode: Mapped[str] = mapped_column(String, default="autonomous")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

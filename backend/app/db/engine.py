@@ -16,6 +16,8 @@ async def init_database():
     import app.models.integration  # noqa: F401
     import app.models.agent_schedule  # noqa: F401
     import app.models.agent_message  # noqa: F401
+    import app.models.task  # noqa: F401
+    import app.models.chain  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         new_agent_cols = [
@@ -57,6 +59,25 @@ async def init_database():
                 await conn.execute(sqlalchemy.text(f"ALTER TABLE workflows ADD COLUMN {col_name} VARCHAR"))
             except Exception:
                 pass
+
+        # Migrate: add heartbeat & reliability columns to agents
+        for col_name, col_type in [("failure_count", "INTEGER DEFAULT 0"), ("last_heartbeat", "DATETIME")]:
+            try:
+                await conn.execute(sqlalchemy.text(f"ALTER TABLE agents ADD COLUMN {col_name} {col_type}"))
+            except Exception:
+                pass
+
+        # Migrate: add orchestration_mode to channels
+        try:
+            await conn.execute(sqlalchemy.text("ALTER TABLE channels ADD COLUMN orchestration_mode VARCHAR DEFAULT 'autonomous'"))
+        except Exception:
+            pass
+
+        # Migrate: add mentioned_agents_json to messages
+        try:
+            await conn.execute(sqlalchemy.text("ALTER TABLE messages ADD COLUMN mentioned_agents_json TEXT"))
+        except Exception:
+            pass
             
     # Import models to ensure they are created by Base.metadata.create_all
     from app.models.model_config import ModelConfig

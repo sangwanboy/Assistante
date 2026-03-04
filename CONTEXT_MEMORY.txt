@@ -125,17 +125,27 @@ HOW TO RUN:
 - app/api/integrations.py -> CRUD + webhook endpoints for omnichannel integrations (/api/integrations)
 - app/api/schedules.py -> CRUD REST endpoints for heartbeat schedules (/api/schedules)
 - app/api/marketplace.py -> GET /marketplace list/detail, POST /{id}/install (skill marketplace)
-- app/api/agent_messaging.py -> REST (groups CRUD, messages) + WebSocket /api/messaging/ws (P2P agent messaging); auto-delegates @AgentName: task via _auto_delegate background task calling ChatService.delegate_to_agent()
+- app/api/agent_messaging.py -> REST (groups CRUD, messages) + WebSocket /api/messaging/ws (P2P agent messaging); auto-delegates @AgentName: task via _auto_delegate background task calling ChatService.delegate_to_agent(). Direct message endpoint deprecated — only system agents allowed.
+- app/api/tasks.py -> NEW: GET /api/tasks/active (pending/running tasks), GET /api/tasks/{id} (task detail with progress)
+- app/api/chains.py -> NEW: GET /api/chains/active (active delegation chains), GET /api/chains/{id} (chain detail)
 - app/models/integration.py -> ExternalIntegration ORM (platform, config_json, agent_id)
 - app/models/agent_schedule.py -> AgentSchedule ORM (agent_id, interval_minutes, task_config_json, last_run)
 - app/models/agent_message.py -> AgentMessage ORM + AgentGroupDiscussion ORM (P2P messaging)
+- app/models/task.py -> NEW: Task ORM (id, chain_id, assigned_agent_id, conversation_id, status, prompt, result, progress, checkpoint, timeout_seconds, retry_count, max_retries, timestamps)
+- app/models/chain.py -> NEW: DelegationChain ORM (id, conversation_id, parent_task_id, state, depth, max_depth, agents_involved_json, plan_summary, total_tokens_used, max_token_budget, timestamps)
 - app/schemas/integration.py -> IntegrationCreate/Update/Out schemas
 - app/schemas/schedule.py -> ScheduleCreate/Update/Out schemas
 - app/schemas/agent_message.py -> message + group schemas
+- app/schemas/task.py -> NEW: TaskOut, ChainOut pydantic response schemas for tasks and delegation chains
 - app/services/heartbeat.py -> HeartbeatService singleton: asyncio 60s tick, interval-based schedule firing
 - app/services/agent_messaging.py -> AgentMessagingService: per-agent asyncio.Queue inboxes, send_direct/send_group
 - app/services/marketplace_service.py -> reads/parses .md skill files from marketplace catalog directory
 - app/services/context_pruner.py -> ContextPruner: estimates token usage, summarizes old context when limits reached
+- app/services/redis_client.py -> NEW: Async Redis client singleton (redis.asyncio), get_instance(), close(), optional fallback if Redis unavailable
+- app/services/mention_parser.py -> NEW: parse_mentions(text) + resolve_mentions(session, mentions, channel_id) with regex @mention extraction and channel membership validation
+- app/services/orchestration.py -> NEW: OrchestrationEngine class with plan_and_execute(), _ask_system_agent(), detect_circular_invocation(), check_depth(). System Agent produces JSON plan, delegates to agents sequentially, synthesizes final response. Logs all chain lifecycle events.
+- app/services/task_queue.py -> NEW: TaskQueue(redis_client) with enqueue(), update_progress(), get_state(), check_task_timeouts(). Timeout strategy per task type.
+- app/services/agent_heartbeat.py -> NEW: Three-layer heartbeat with emit_heartbeat(), update_task_progress(), update_chain_state(), start_monitor(), recovery protocol with failure escalation
 - app/tools/agent_messenger.py -> AgentMessengerTool: send_direct/send_group/list_groups/create_group/get_inbox
 - app/tools/command_executor.py -> CommandExecutorTool: runs PowerShell/shell commands with HITL approval
 - app/tools/docker_executor.py -> DockerCodeExecutorTool: runs code in Docker container (no network, RAM/CPU capped)
@@ -150,16 +160,16 @@ HOW TO RUN:
 - src/App.tsx -> Root component with view routing: Sidebar + HomeView/ChatView/Others + top bar with notifications and user menu
 - src/index.css -> Tailwind import + base styles + scrollbar + code highlighting
 
-- src/types/index.ts -> TypeScript interfaces: Message, Conversation, ModelInfo, StreamEvent, Document, etc.
+- src/types/index.ts -> TypeScript interfaces: Message, Conversation, ModelInfo, StreamEvent, Document, TaskInfo, ChainInfo, etc. (P2P types AgentMessage/AgentGroupDiscussion removed)
 - src/types/workflow.ts -> TypeScript interfaces: Workflow, WorkflowGraph, Node, Edge
-- src/services/api.ts -> REST API client (fetch wrapper) for all backend endpoints (incl. knowledge + workflows)
+- src/services/api.ts -> REST API client (fetch wrapper) for all backend endpoints. P2P messaging API calls removed. Added tasks/chains API calls.
 - src/services/websocket.ts -> WebSocketClient class for real-time streaming
 
-- src/stores/chatStore.ts -> Zustand store: conversations, messages, streaming state, WS management
-- src/stores/channelStore.ts -> Zustand store: channels CRUD, channel agent assignments
+- src/stores/chatStore.ts -> Zustand store: conversations, messages, streaming state, WS management, chain state (activeChainId, activeChainState, activeChainAgents, orchestrationPlan, currentChainAgent, currentChainTask), chain WS event handlers
+- src/stores/channelStore.ts -> Zustand store: channels CRUD, channel agent assignments, setOrchestrationMode action
 - src/stores/settingsStore.ts -> Zustand store: selected model, temperature, show settings
 - src/stores/agentStore.ts -> Zustand store: agents CRUD and loading
-- src/stores/agentStatusStore.ts -> Zustand store: WebSocket connection to backend /api-ws/agents/status, real-time agent state tracking (idle/working/offline), cost updates, and HITL pending approvals
+- src/stores/agentStatusStore.ts -> Zustand store: WebSocket connection to backend /api-ws/agents/status, real-time agent state tracking (idle/working/offline/initializing/error), cost updates, HITL pending approvals, progress/heartbeat fields, chain_update and task_progress handlers
 - src/services/audio.ts -> Audio Service: client-side handling for MediaRecorder transcription and TTS playback
 
 - src/components/home/HomeView.tsx -> Hub layout: large dialogue canvas left, collapsible cards right, activity feed bottom
@@ -167,11 +177,13 @@ HOW TO RUN:
 - src/components/home/WorkspaceView.tsx -> Workflow visualization with trigger and action nodes
 - src/components/home/ActiveTasks.tsx -> Collapsible card showing live active agents from agentStore + real-time status badges (ONLINE/WORKING/OFFLINE) from agentStatusStore
 - src/components/home/QuickActions.tsx -> Collapsible card with icon-labeled action buttons
-- src/components/chat/ChatView.tsx -> Unified chat: sidebar with Announcements/Team Channels/Agent Groups/System Agents/DMs; dual center pane (P2P group view OR LLM agent chat); @AgentName: task auto-delegation UI
-- src/components/chat/MessageBubble.tsx -> Single message bubble (user/assistant/tool)
-- src/components/chat/MessageInput.tsx -> Text input with send button, Shift+Enter support, and Integrated Microphone for STT
+- src/components/chat/ChatView.tsx -> Unified chat: sidebar with Announcements/Channels (AUTO/MANUAL badges)/System Agents/DMs; orchestration mode toggle; agent status dots in header; orchestration plan banner; delegation chain graph (ReactFlow); active chain indicator. All P2P code removed.
+- src/components/chat/MessageBubble.tsx -> Single message bubble (user/assistant/tool) with @mention highlighting (indigo styled spans)
+- src/components/chat/MessageInput.tsx -> Text input with send button, Shift+Enter support, Integrated Microphone for STT, @mention autocomplete dropdown with agent status dots (idle/working/offline/initializing/error)
 - src/components/chat/ApprovalModal.tsx -> Glassmorphism modal for Human-in-the-Loop tool approval/denial
 - src/components/chat/StreamingMessage.tsx -> In-progress streaming message with cursor + tool calls
+- src/components/chat/DelegationChainGraph.tsx -> NEW: ReactFlow-based inline graph showing User -> Agent chain with animated edges, status-colored, compact height (100px)
+- src/components/chat/ChainNode.tsx -> NEW: Custom ReactFlow node component with status dot (color-coded), agent name, optional progress bar
 - src/components/common/MarkdownRenderer.tsx -> ReactMarkdown with GFM + syntax highlighting
 - src/components/common/ModelSelector.tsx -> Model picker dropdown
 - src/components/knowledge/KnowledgeView.tsx -> File explorer table with filter tabs, search, preview drawer
@@ -181,7 +193,8 @@ HOW TO RUN:
 - src/components/settings/SettingsPanel.tsx -> Tabbed modal (API Keys, Local Models, Defaults) with connectivity indicators
 - src/components/integrations/IntegrationsView.tsx -> Omnichannel integrations UI: platform cards, add/toggle/delete modals
 - src/components/heartbeat/HeartbeatView.tsx -> Heartbeat Schedules UI: list schedules, create modal, pause/resume/delete
-- src/components/messaging/AgentMessagingView.tsx -> P2P agent messaging: group discussions + direct messages, WS real-time feed
+- src/components/messaging/AgentMessagingView.tsx -> P2P agent messaging: group discussions + direct messages, WS real-time feed (DEAD CODE — not imported anywhere, superseded by unified ChatView)
+- src/components/common/AgentStatusPanel.tsx -> Collapsible agent status panel with real-time status dots, progress bars for working agents, heartbeat timestamps, enhanced state icons (error=AlertTriangle, initializing=Loader2 spin)
 - src/components/ErrorBoundary.tsx -> React class-based error boundary: shows error stack trace + "Try Again" button
 - src/stores/agentControlStore.ts -> Zustand: HITL WebSocket control (ws://localhost:8321/api-ws/agents/control),
     pendingApprovals list, alwaysAllowedTools, resolveApproval. Fixed: uses event.target not module-level ws.
@@ -416,6 +429,16 @@ HOW TO RUN:
 - ReactFlow library used for visual node graph editor in the frontend.
 - Agent status uses in-memory singleton + WebSocket broadcast pattern (no DB overhead).
   Frontend connects directly to backend port 8321 for agent status WS (bypasses Vite proxy).
+- Redis used for real-time agent heartbeats, task queue state, delegation chain tracking.
+  If Redis unavailable, system falls back to in-memory operation gracefully.
+- Multi-Agent Orchestration: System Agent as master coordinator, @mention-selective routing,
+  hybrid auto/manual delegation modes, delegation chains with depth limits and circular
+  invocation detection, token budget per chain (100k default).
+- Unified Channel Chat: P2P and LLM modes merged into single channel system. All communication
+  goes through unified channels with orchestration mode (autonomous/manual) per channel.
+- Three-Layer Heartbeat: Agent process heartbeat via Redis pub/sub, task execution heartbeat
+  with progress tracking, delegation chain heartbeat (event-based). Recovery protocol with
+  failure escalation after 3 consecutive failures.
 - Human-in-the-Loop: Sensitive tools (code_executor, file_manager) are blocked by default until user approval.
 - Context Pruning uses a small/cheap model (e.g., gemini-1.5-flash) for summarizing old context to save money.
 - Audio implementation uses Gemini for STT and edge-tts for TTS to avoid proprietary OpenAI audio costs/keys.
@@ -443,6 +466,305 @@ HOW TO RUN:
        so only the LAST tool call survived for multi-tool responses.
      - Fixed: changed to `if final_tool_calls is None: final_tool_calls = []` then
        `final_tool_calls.extend(chunk.tool_calls)` in both stream functions.
+
+[2026-03-03] Session 7 — Multi-Agent Orchestration & Heartbeat Architecture (7 Phases):
+
+  0. INFRASTRUCTURE (Redis + DB Schema + Config):
+     Backend:
+     - Updated `backend/pyproject.toml` — added `redis[hiredis]>=5.0` dependency
+     - Updated `backend/app/config.py` — added `redis_url: str = "redis://localhost:6379/0"` to Settings
+     - Created `backend/app/services/redis_client.py` — async Redis client singleton using
+       `redis.asyncio`.  Methods: `get_instance()`, `close()`, property `redis`.  If Redis is
+       unavailable on startup, logs warning and continues (graceful fallback to in-memory).
+     - Created `backend/app/models/task.py` — `Task` ORM: id (str PK), chain_id (FK nullable),
+       assigned_agent_id (FK agents), conversation_id (FK nullable), status (pending|running|
+       completed|failed|cancelled), prompt (Text), result (Text nullable), progress (int 0-100),
+       checkpoint (Text nullable), timeout_seconds (int default=60), retry_count (int default=0),
+       max_retries (int default=3), created_at, updated_at, started_at, completed_at
+     - Created `backend/app/models/chain.py` — `DelegationChain` ORM: id (str PK),
+       conversation_id (FK nullable), parent_task_id (str nullable), state (active|completed|
+       halted|failed), depth (int), max_depth (int default=5), agents_involved_json (Text, JSON
+       list), plan_summary (Text nullable), total_tokens_used (int default=0),
+       max_token_budget (int default=100000), created_at, updated_at
+     - Updated `backend/app/models/agent.py` — added `failure_count: int = 0`,
+       `last_heartbeat: datetime | None` columns
+     - Updated `backend/app/models/channel.py` — added `orchestration_mode: str = "autonomous"`
+       (autonomous|manual) column
+     - Updated `backend/app/models/conversation.py` (Message class) — added
+       `mentioned_agents_json: Text | None` column
+     - Updated `backend/app/db/engine.py` (`init_database`) — imported Task + DelegationChain
+       models so `create_all` picks them up.  Added idempotent `ALTER TABLE` statements for
+       new columns on agents (failure_count, last_heartbeat), channels (orchestration_mode),
+       and messages (mentioned_agents_json).
+     - Created `backend/app/schemas/task.py` — `TaskOut` and `ChainOut` Pydantic response schemas
+     - Updated `backend/app/schemas/channel.py` — added `orchestration_mode` to
+       ChannelBase/ChannelUpdate/ChannelOut
+     - Updated `backend/app/schemas/conversation.py` — added `mentioned_agents_json` to MessageOut
+
+  1. UNIFIED CHAT BACKEND — @mention-Selective Routing:
+     Backend:
+     - Created `backend/app/services/mention_parser.py`:
+       * `parse_mentions(text) -> list[ParsedMention]` — regex
+         `@([\w][\w ]*?)(?=\s*[:,;.!?\n]|\s*@|\s*$)` extracts @mentions with start/end positions
+       * `resolve_mentions(session, mentions, channel_id) -> list[dict]` — validates each mention
+         against channel membership (joins Agent + ChannelAgent, case-insensitive name match)
+       * Returns resolved agent objects with validation errors for non-members
+     - Updated `backend/app/services/chat_service.py`:
+       * Extracted lines ~544-700 (per-agent streaming + tool loop) into reusable
+         `_run_agent_turn(conversation_id, agent, temperature, max_tool_iters=5, is_group=True)`
+         → `AsyncIterator[dict]`. Handles: build prompt, filter tools, construct message history,
+         stream response, handle tool calls, yield events.
+       * `is_group` parameter controls tool filtering — blocks delegation tools for non-system
+         agents when is_group=True
+       * Rewrote `stream_group_chat()` with @mention routing:
+         1. Parse @mentions from user_message using mention_parser
+         2. Resolve mentions against channel membership
+         3. Save user message with mentioned_agents_json metadata
+         4. If mentions found → only route to mentioned agents via `_run_agent_turn()`
+         5. If no mentions + orchestration_mode="autonomous" → route to
+            `_run_orchestrated_turn()` (Phase 2)
+         6. If no mentions + orchestration_mode="manual" → route to System Agent only
+       * Added `_get_system_agent()` helper to find `is_system=True` agent
+       * Added `_get_channel_agents(channel_id)` helper to fetch channel members
+       * For non-system agents in group context, injected into system prompt:
+         "You MUST NOT mention or tag other agents using @. You CANNOT delegate work."
+       * In `_filter_tools_for_agent()` added `is_group_context` parameter — when True for
+         non-system agents, removes `AgentDelegationTool` and `agent_messenger` from tool list
+       * Announcement channel enforcement: if `channel.is_announcement=True`, only System Agent
+         or explicitly authorized agents can respond
+     - Updated `backend/app/services/conversation_service.py` — added `mentioned_agents_json`
+       parameter to `add_message()`
+     - Updated `backend/app/api/agent_messaging.py` — added permission check to
+       `send_direct_message`: only system agents can send DMs (403 for standard agents)
+
+  2. ORCHESTRATION ENGINE:
+     Backend:
+     - Created `backend/app/services/orchestration.py`:
+       * Class `OrchestrationEngine(session, provider_registry, tool_registry)`
+       * Primary method: `plan_and_execute(conversation_id, system_agent, user_message,
+         channel_agents, temperature) -> AsyncIterator[dict]`
+       * Flow:
+         1. Creates `DelegationChain` record in DB → yields `chain_start` event
+         2. Asks System Agent to analyze task and produce JSON plan. Prompt includes list of
+            available agents with descriptions. Expected JSON structure:
+            `{needs_delegation, reasoning, steps: [{agent_name, task}], aggregation_needed}`
+         3. Yields `orchestration_plan` event with plan summary (for UI display)
+         4. Parses plan — robust JSON extraction with regex fallback
+            (`_extract_json_from_text()`). If parsing fails, System Agent responds directly.
+         5. For each step: creates `Task` record, delegates via `_run_agent_turn()`, collects result.
+            Feeds previous agent outputs as context to next agent (chaining).
+         6. After all steps: yields `chain_update` events, has System Agent synthesize final
+            aggregated response from all agent outputs
+         7. Marks chain as completed → yields `chain_complete` event
+       * `detect_circular_invocation(chain_agents_list, new_agent_id) -> bool` — prevents cycles
+       * `check_depth(current_depth, max_depth) -> bool` — halts chain at limit
+       * `_ask_system_agent(prompt, system_agent, temperature)` — helper for LLM calls to SA
+       * Token budget tracking: cumulative across all tasks in a chain, configurable limit
+         (default 100k tokens per chain), halts if exceeded
+       * Structured logging at chain start, plan creation, step completion, chain completion
+     - Created `backend/app/services/task_queue.py`:
+       * Class `TaskQueue(redis_client)`
+       * `enqueue(task_id, agent_id, prompt, chain_id)` — push to Redis list + set ephemeral state
+       * `update_progress(task_id, progress, checkpoint)` — update Redis key with TTL
+       * `get_state(task_id)` — read ephemeral state
+       * `check_task_timeouts(session)` — scan running tasks, auto-kill/retry on timeout
+       * Timeout strategy: quick_query=15s, code_gen=60s, analysis=120s, research=180s, default=60s
+     - Updated `backend/app/services/chat_service.py` — added
+       `_run_orchestrated_turn(conversation_id, system_agent, user_message, temperature)`:
+       gets channel agents, creates OrchestrationEngine, calls `plan_and_execute()`
+
+  3. THREE-LAYER HEARTBEAT ARCHITECTURE:
+     Backend:
+     - Created `backend/app/services/agent_heartbeat.py`:
+       * Class `AgentHeartbeatService` (singleton)
+       * `emit_heartbeat(agent_id, status, task_id)` — writes to Redis key
+         `assitance:agent_state:{agent_id}` with 60s TTL + publishes to
+         `assitance:agent_heartbeat` channel
+       * `start_monitor()` — background asyncio task checking stale agents every 5 seconds:
+         - Scans all `assitance:agent_state:*` keys
+         - 10s since last heartbeat → mark unresponsive
+         - 30s → mark offline via `AgentStatusManager.set_status(OFFLINE)`
+         - Updates `agent.last_heartbeat` in DB periodically
+       * `update_task_progress(task_id, progress, checkpoint)` — updates Redis task state
+       * `update_chain_state(chain_id, depth, agents, state)` — updates Redis + emits via
+         `AgentStatusManager.emit_event()`
+       * Recovery protocol: on agent failure:
+         1. Mark task as "interrupted"
+         2. Increment `agent.failure_count`
+         3. If failure_count < 3: requeue task
+         4. If failure_count >= 3: escalate — set agent to ERROR state, log
+            `[ALERT] {AgentName} failed 3 times. Human review required.`
+       * `reset_failure_count(agent_id)` — called on successful task completion
+     - Updated `backend/app/services/agent_status.py`:
+       * Added to `AgentState` enum: `INITIALIZING = "initializing"`, `ERROR = "error"`
+       * In `set_status()`: also emits Redis heartbeat when available (fire-and-forget via
+         `asyncio.create_task`)
+       * State machine transitions: idle↔busy, busy→error, error→initializing, any→offline
+     - Updated `backend/app/main.py` (lifespan):
+       * Startup: `await AgentHeartbeatService.get_instance()` +
+         `await agent_hb.start_monitor()` after Redis init
+       * Shutdown: stop heartbeat monitor before Redis close
+       * Redis init with graceful fallback (try/except, log warning on failure)
+       * Enhanced `/api/health` endpoint: returns `{status, version, agents: {all statuses},
+         active_tasks: count, active_chains: count}`
+
+  4. NEW API ROUTES:
+     Backend:
+     - Created `backend/app/api/tasks.py`:
+       * `GET /api/tasks/active` — list pending/running tasks (ordered by created_at desc)
+       * `GET /api/tasks/{task_id}` — task detail with progress (404 if not found)
+     - Created `backend/app/api/chains.py`:
+       * `GET /api/chains/active` — list active delegation chains (ordered by created_at desc)
+       * `GET /api/chains/{chain_id}` — chain detail (404 if not found)
+     - Updated `backend/app/api/router.py` — added imports and route registrations:
+       `api_router.include_router(tasks_router, prefix="/tasks", tags=["Tasks"])`
+       `api_router.include_router(chains_router, prefix="/chains", tags=["Delegation Chains"])`
+     - Verified: existing `PATCH /api/channels` already handles `orchestration_mode` via
+       `model_dump(exclude_unset=True)` pattern
+
+  5. FRONTEND UNIFICATION (11 sub-steps):
+     Frontend:
+     - Updated `frontend/src/types/index.ts`:
+       * Added `orchestration_mode: 'autonomous' | 'manual'` to Channel interface
+       * Extended `StreamEvent` type union with: `'chain_start' | 'chain_update' |
+         'chain_complete' | 'orchestration_plan' | 'task_progress'`
+       * Added chain/orchestration fields to StreamEvent: `chain_id`, `chain_state`,
+         `chain_depth`, `chain_agents`, `current_agent`, `current_task`, `plan_summary`,
+         `steps`, `task_id`, `progress`
+       * Added `TaskInfo` interface (id, chain_id, assigned_agent_id, status, prompt, result,
+         progress, checkpoint, timeout_seconds, retry_count, max_retries, timestamps)
+       * Added `ChainInfo` interface (id, conversation_id, state, depth, max_depth,
+         agents_involved_json, plan_summary, total_tokens_used, max_token_budget, timestamps)
+       * REMOVED dead types: `AgentMessage`, `AgentGroupDiscussion`
+     - Updated `frontend/src/services/api.ts`:
+       * Updated `updateChannel()` signature to accept
+         `orchestration_mode?: 'autonomous' | 'manual'`
+       * Added tasks/chains API calls:
+         `getActiveTasks()`, `getTask(id)`, `getActiveChains()`, `getChain(id)`
+       * REMOVED dead P2P API calls: `getAgentMessages`, `sendDirectMessage`,
+         `sendGroupMessage`, `getAgentGroups`, `createAgentGroup`, `deleteAgentGroup`
+     - Updated `frontend/src/stores/chatStore.ts`:
+       * Added to interface and initial state: `activeChainId`, `activeChainState`,
+         `activeChainAgents`, `activeChainDepth`, `orchestrationPlan`, `currentChainAgent`,
+         `currentChainTask`
+       * Added WebSocket event handlers for `chain_start` (set chain ID + agents),
+         `orchestration_plan` (set plan summary + steps), `chain_update` (update
+         agents/depth/state/current agent), `chain_complete` (clear all chain state)
+       * Extended `done` event to clear chain state
+     - Updated `frontend/src/stores/channelStore.ts`:
+       * Added `setOrchestrationMode(channelId, mode)` action — calls
+         `api.updateChannel(channelId, { orchestration_mode: mode })` + updates local state
+     - Updated `frontend/src/stores/agentStatusStore.ts`:
+       * Extended `AgentState` type: added `'initializing' | 'error'`
+       * Extended `AgentStatus` interface: added `current_task_id?`, `progress?`,
+         `last_heartbeat?`
+       * Added `chain_update` and `task_progress` WS message handlers
+     - COMPLETE REWRITE of `frontend/src/components/chat/ChatView.tsx` (894 → 575 lines):
+       * REMOVED ALL P2P CODE: messagingGroups, activeMessagingGroup, messagingMessages,
+         sendAsAgentId, P2P WebSocket (`ws://localhost:8321/api/messaging/ws`), P2P functions
+         (openMessagingGroup, handleSendGroupMessage, handleCreateAgentGroup, etc.), P2P message
+         rendering section, P2P sidebar section with "P2P" badges, agent group creation modal,
+         isP2PView / isLLMView distinction
+       * UNIFIED SIDEBAR: Announcements channel, Channels section with AUTO/MANUAL badges
+         (green/amber), System Agents section, Direct Messages section
+       * ADDED: Orchestration mode toggle (Zap/Hand icon) in channel header
+       * ADDED: Agent status dots in channel header (colored per member) with tooltips
+       * ADDED: Orchestration plan banner above messages (summary + steps with active step
+         highlighting in indigo)
+       * ADDED: Active chain indicator strip (current agent name + task)
+       * ADDED: DelegationChainGraph (ReactFlow) between chain indicator and messages
+       * Smart @mention agents: passes only channel-specific agents for mention dropdown
+       * Right context pane: shows orchestration mode info
+     - Updated `frontend/src/components/chat/MessageInput.tsx`:
+       * Added `useAgentStatusStore` import
+       * Enhanced @mention dropdown: each candidate now shows a status dot (green=idle,
+         amber=working, gray=offline, blue=initializing, red=error) via absolute-positioned
+         circle, plus status text label on the right side
+       * Avatar circle now has relative positioning to anchor the status dot
+     - Updated `frontend/src/components/chat/MessageBubble.tsx`:
+       * Added `highlightMentions(text)` function: splits on `@AgentName` regex, wraps matches
+         in `<span className="font-semibold text-indigo-400 bg-indigo-500/10 px-1 rounded">`
+       * Applied `highlightMentions()` to user message content rendering
+     - Updated `frontend/src/components/common/AgentStatusPanel.tsx`:
+       * Added `AlertTriangle`, `Loader2` icon imports
+       * Added `relativeTime(iso)` helper for human-friendly heartbeat timestamps
+       * Collapsed view: added error (red) and initializing (blue pulse) dot colors,
+         tooltip now includes task name if working
+       * Expanded view: added `stateIcon` variable (AlertTriangle for error, Loader2 spin
+         for initializing), progress bar (h-1 indigo bar) shown when working + progress > 0,
+         heartbeat timestamp shown as relative time ("just now", "5s ago", "2m ago"),
+         state-specific subtitle text ("Error" / "Starting..." / model name)
+
+  6. DELEGATION CHAIN GRAPH (ReactFlow):
+     Frontend:
+     - Created `frontend/src/components/chat/ChainNode.tsx`:
+       * Custom ReactFlow node with Handle components (target left, source right)
+       * Status dot color-coded: pending=gray, active=indigo pulse, completed=emerald, failed=red
+       * Agent name label with status-specific text color
+       * Optional progress bar (h-0.5 indigo) when node is active with progress > 0
+       * Dark theme: `bg-[#0e0e1c]`, `border-[#1c1c30]`, min-width 80px / max-width 120px
+     - Created `frontend/src/components/chat/DelegationChainGraph.tsx`:
+       * Props: `chainId`, `agents` (with name/status/progress), `currentAgent`, `state`
+       * Builds node graph: User node at (0,40) → Agent nodes at (140+i*140, 40)
+       * Edges: animated when chain is active AND node is active, colors:
+         completed=emerald (#10b981), active=indigo (#6366f1), failed=red (#ef4444),
+         pending=gray (#374151), strokeWidth=2
+       * ReactFlow config: `fitView`, `proOptions={{ hideAttribution: true }}`,
+         all interactions disabled (no drag/connect/zoom/pan), compact height (100px),
+         dark background `bg-[#0a0a14]` with border
+       * Custom `nodeTypes = { chain: ChainNode }` registration
+     - Updated `frontend/src/components/chat/ChatView.tsx`:
+       * Added `DelegationChainGraph` import
+       * Added `activeChainState` and `activeChainAgents` from chatStore destructure
+       * Rendered DelegationChainGraph between active chain indicator and messages area
+         when `activeChainId` is set and `activeChainAgents.length > 0`
+       * Maps agent names to status objects, resolves progress from agentStatusStore
+
+  7. CLEANUP & POLISH:
+     Backend:
+     - Updated `backend/app/api/agent_messaging.py`:
+       * Marked `send_direct_message` as deprecated: `@router.post(..., deprecated=True)`
+       * Added docstring: "DEPRECATED: Use unified channel chat with @mentions instead."
+       * Added permission check: queries sender agent, if `not sender.is_system` returns
+         403 "Only system agents can send direct messages. Use channel @mentions instead."
+     - Updated `backend/app/services/orchestration.py` — added structured logging:
+       * `logger.info("Chain %s started for conversation %s", ...)` after chain_start
+       * `logger.info("Chain %s plan: %d steps, agents: %s", ...)` after plan creation
+       * `logger.info("Chain %s step %d completed: agent=%s, task=%s", ...)` per step
+       * `logger.info("Chain %s completed: depth=%d, agents=%s", ...)` on chain finish
+       * `logger.error("Orchestration chain %s failed: %s", ..., exc_info=True)` on exception
+     Frontend:
+     - Cleaned `frontend/src/services/api.ts` — removed 6 dead P2P API calls:
+       `getAgentMessages`, `sendDirectMessage`, `sendGroupMessage`, `getAgentGroups`,
+       `createAgentGroup`, `deleteAgentGroup`
+     - Cleaned `frontend/src/types/index.ts` — removed 2 dead interfaces:
+       `AgentMessage` (10 lines), `AgentGroupDiscussion` (8 lines)
+     - Note: `AgentMessagingView.tsx` is now dead code (not imported anywhere), superseded
+       by unified ChatView. Left in place for reference but can be deleted.
+     Verified:
+     - TypeScript: `npx tsc --noEmit` → 0 errors after all changes
+
+  DOCUMENTATION UPDATES:
+  - Updated `README.md`:
+    * Rewrote features section with organized subsections (Core, Multi-Agent Orchestration,
+      Three-Layer Heartbeat, Safety & Intelligence, Integrations & Automation)
+    * Updated tech stack to include Redis, Framer Motion
+    * Added Redis as optional prerequisite with Docker instructions
+    * Added `ASSITANCE_REDIS_URL` to configuration section
+    * Updated architecture notes for orchestration and unified chat
+    * Added API endpoints summary table
+  - Updated `App Documentation`:
+    * Added sections 11 (Multi-Agent Orchestration Engine), 12 (Three-Layer Heartbeat
+      Architecture) with full subsections for Unified Chat, @mention routing, Orchestration
+      Modes, Delegation Chain Graph, Safety Limits, Heartbeat Layers
+    * Updated Data Flow overview with mention parser and routing decision steps
+    * Added new API endpoints table, new DB models table, extended columns table
+  - Updated `CONTEXT_MEMORY.txt`:
+    * Updated file inventory with 10+ new backend files and 2 new frontend components
+    * Updated descriptions for all modified files
+    * Added Session 7 changes log (this entry)
+    * Updated architecture decisions section
+    * Added comprehensive manual feature testing checklist (~130 test items)
 
 ================================================================================
                               KNOWN ISSUES
@@ -732,13 +1054,141 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
   [ ] Custom tool test endpoint (`POST /api/custom-tools/{id}/test`) needs testing
   [ ] Skills import/export (`POST /api/skills/import`, `GET /api/skills/{id}/export`)
   [ ] Knowledge upload flow (`POST /api/knowledge` with file) needs file-based testing
-  [ ] Workflow graph save/load (`POST /api/workflows/{id}/graph`) needs testing
+  [x] Workflow graph save/load (`POST /api/workflows/{id}/graph`) needs testing -- [2026-03-04 VERIFIED] Canvas loads and adds nodes; BUG: Use Template buttons non-functional
 
   --- TESTING ---
-  [ ] End-to-end WebSocket streaming test (manual, needs browser interaction)
-  [ ] Agent-to-agent delegation: Test with complex multi-step tasks
-  [ ] Group chat (Announcements channel) end-to-end test with multiple agents
+  [ ] End-to-end WebSocket streaming test (manual, needs browser interaction) -- [2026-03-04 VERIFIED] WS streaming works end-to-end in chat
+  [ ] Agent-to-agent delegation: Test with complex multi-step tasks -- [2026-03-04 AUDIT] Not tested in depth, requires multi-agent channel
+  [x] Group chat (Announcements channel) end-to-end test with multiple agents -- [2026-03-04 VERIFIED] Channels render, agent responds
   [ ] Cleanup: Remove 47 orphaned conversations from test runs
+
+  ==========================================================================
+  MANUAL FEATURE TESTING CHECKLIST — Multi-Agent Orchestration & Heartbeat
+  ==========================================================================
+
+  PRE-REQUISITES:
+  [ ] Redis running on localhost:6379 (docker run -d -p 6379:6379 redis:alpine)
+  [ ] Backend started: cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8321
+  [ ] Frontend started: cd frontend && npm run dev
+  [ ] At least 2-3 agents created and active
+  [ ] At least 1 channel created with 2+ agents assigned
+
+  --- BACKEND HEALTH & API ---
+  [ ] GET /api/health returns {status, version, agents (all statuses), active_tasks count, active_chains count}
+  [ ] GET /api/tasks/active returns empty list (no tasks running)
+  [ ] GET /api/chains/active returns empty list (no chains running)
+  [ ] GET /api/tasks/{bad-id} returns 404
+  [ ] GET /api/chains/{bad-id} returns 404
+  [ ] POST /api/messaging/messages/direct with non-system agent returns 403
+  [ ] POST /api/messaging/messages/direct with system agent succeeds (deprecated endpoint)
+
+  --- UNIFIED CHAT UI ---
+  [ ] Open Chat view — Sidebar shows unified "Channels" section (no separate LLM/P2P sections)
+  [ ] Channels show AUTO (green) or MANUAL (amber) badges
+  [ ] No "P2P" or "LLM" badges visible anywhere
+  [ ] Select a channel — channel header shows agent status dots (colored circles per member)
+  [ ] Agent status dots have tooltips showing "{AgentName}: {state}"
+  [ ] System Agents section shows individual system agents
+  [ ] Direct Messages section shows non-system agents
+  [ ] Right context pane shows orchestration mode info
+
+  --- ORCHESTRATION MODE TOGGLE ---
+  [ ] Channel header has orchestration mode toggle button (Zap icon for auto, Hand icon for manual)
+  [ ] Clicking toggle switches between Autonomous and Manual
+  [ ] Badge color changes (green=AUTO, amber=MANUAL)
+  [ ] Toggle persists after page refresh (saved to backend via PATCH /api/channels)
+
+  --- @MENTION AUTOCOMPLETE ---
+  [ ] Type "@" in message input — dropdown appears above textarea
+  [ ] Dropdown shows only agents assigned to the current channel
+  [ ] Each agent in dropdown has a status dot (green=idle, amber=working, gray=offline, blue=initializing, red=error)
+  [ ] Each agent shows status text label (e.g., "idle", "working")
+  [ ] Typing after "@" filters candidates (e.g., "@Ana" shows only matching agents)
+  [ ] Arrow keys (Up/Down) navigate the dropdown selection
+  [ ] Enter/Tab selects the highlighted agent, inserts "@AgentName " into input
+  [ ] Esc dismisses the dropdown
+  [ ] Mouse click on a candidate selects it
+  [ ] Agent description shown as subtitle in dropdown if available
+
+  --- @MENTION ROUTING ---
+  [ ] Send "@AgentName do something" — ONLY that agent responds (no other agents)
+  [ ] Send "@Agent1 task1 @Agent2 task2" — both agents respond in sequence
+  [ ] Send "@NonExistentAgent task" — handled gracefully (error or silent skip)
+  [ ] Send "@AgentNotInChannel task" — rejected (agent not a channel member)
+  [ ] Send message without any @mention in MANUAL mode — System Agent responds alone
+  [ ] Send message without any @mention in AUTONOMOUS mode — orchestration engine activates
+
+  --- @MENTION HIGHLIGHTING ---
+  [ ] User messages containing @AgentName show mentions in indigo/purple styled text
+  [ ] Mentions have a subtle background highlight (indigo tint)
+  [ ] Multiple mentions in one message are all highlighted
+
+  --- AUTONOMOUS ORCHESTRATION ---
+  [ ] In autonomous mode with no @mentions, System Agent produces a delegation plan
+  [ ] Orchestration Plan banner appears above messages showing:
+      [ ] Plan summary text
+      [ ] Steps list with agent names and tasks
+      [ ] Active step highlighted differently
+  [ ] Delegation Chain Graph (ReactFlow) appears inline:
+      [ ] Shows User node on the left
+      [ ] Shows agent nodes in sequence (left to right)
+      [ ] Edges animate with indigo color for active connections
+      [ ] Completed edges turn green
+      [ ] Failed edges turn red
+      [ ] Agent status dots on each node match current state
+  [ ] Active chain indicator strip shows current agent name + task description
+  [ ] Each delegated agent streams its response individually
+  [ ] After all steps, System Agent produces aggregated final response (if aggregation_needed)
+  [ ] Chain completes — chain graph and plan banner clear after response finishes
+  [ ] GET /api/tasks/active shows tasks during execution
+  [ ] GET /api/chains/active shows active chain during execution
+  [ ] After completion, tasks show status=completed, chains show state=completed
+
+  --- SAFETY LIMITS ---
+  [ ] Delegation depth cannot exceed 5 (chain halts at max depth)
+  [ ] Circular invocation is detected (agent already in chain cannot be re-delegated)
+  [ ] Task timeout triggers auto-retry (check backend logs for retry messages)
+  [ ] After 3 consecutive agent failures, agent enters ERROR state (check backend logs for ALERT)
+
+  --- AGENT STATUS PANEL (right side) ---
+  [ ] Panel shows all active agents with status dots
+  [ ] Idle agents: green dot, model name shown
+  [ ] Working agents: amber pulsing dot, task name shown
+  [ ] Error agents: red dot, AlertTriangle icon, "Error" text
+  [ ] Initializing agents: blue pulsing dot, Loader2 spinning icon, "Starting..." text
+  [ ] Offline agents: gray dot
+  [ ] Progress bar appears for working agents when progress > 0
+  [ ] Last heartbeat timestamp shown as relative time ("just now", "5s ago", "2m ago")
+  [ ] Collapsed view shows dot-only summary for first 6 agents
+  [ ] Collapse/expand toggle works correctly
+
+  --- REDIS HEARTBEAT (if Redis running) ---
+  [ ] Backend logs show "Redis connected" on startup
+  [ ] AgentHeartbeatService monitor starts (check backend logs)
+  [ ] Agent status transitions reflect in frontend within a few seconds
+  [ ] If Redis is stopped: backend continues working (fallback to in-memory)
+  [ ] Health endpoint still reports agent statuses without Redis
+
+  --- WEBSOCKET EVENTS ---
+  [ ] chain_start event received when orchestration begins (check browser DevTools Network > WS)
+  [ ] orchestration_plan event received with plan summary and steps
+  [ ] chain_update events received as agents execute
+  [ ] chain_complete event received when chain finishes
+  [ ] task_progress events update agent progress in UI
+  [ ] done event clears all chain state from UI
+
+  --- EDGE CASES ---
+  [ ] Empty channel (no agents assigned): send message — graceful error
+  [ ] Channel with only 1 agent: send message — that agent responds
+  [ ] Very long message with many @mentions: all fire in sequence
+  [ ] Rapid message spam: no duplicate agents responding
+  [ ] Page refresh during active chain: chain state resets cleanly
+  [ ] Switch channels while chain is active: previous chain state clears
+
+  --- DEPRECATED P2P (should still work but superseded) ---
+  [ ] Agent groups from old system still accessible if any exist
+  [ ] /api/messaging/groups endpoint still returns groups
+  [ ] /api/messaging/messages/direct marked as deprecated in Swagger docs
 
   --- UI GLITCHES (from visual audit) ---
   [x] Home: Chat input and Recent Events pushed below fold on smaller viewports

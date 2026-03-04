@@ -127,6 +127,15 @@ async def lifespan(app: FastAPI):
     )
     await heartbeat.start()
 
+    # Initialize Redis client (optional — falls back to in-memory if unavailable)
+    from app.services.redis_client import RedisClient
+    app.state.redis_client = await RedisClient.get_instance()
+
+    # Start Agent Heartbeat Monitor (uses Redis if available)
+    from app.services.agent_heartbeat import AgentHeartbeatService
+    agent_hb = await AgentHeartbeatService.get_instance()
+    await agent_hb.start_monitor()
+
     # Start Omnichannel adapters
     await _setup_omnichannel_handler(app.state.tool_registry, app.state.provider_registry)
     await _load_active_integrations()
@@ -134,6 +143,14 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    from app.services.agent_heartbeat import AgentHeartbeatService
+    agent_hb = await AgentHeartbeatService.get_instance()
+    agent_hb.stop()
+
+    from app.services.redis_client import RedisClient
+    redis_client = await RedisClient.get_instance()
+    await redis_client.close()
+
     await heartbeat.stop()
     await OmnichannelManager.get_instance().stop_all()
 
@@ -197,4 +214,35 @@ async def websocket_agents_control(websocket: WebSocket):
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "version": "0.1.0"}
+    from app.services.agent_status import AgentStatusManager
+    status_mgr = await AgentStatusManager.get_instance()
+    all_statuses = status_mgr.get_all_statuses()
+
+    from app.models.task import Task
+    from app.models.chain import DelegationChain
+    from sqlalchemy import select, func
+
+    active_tasks = 0
+    active_chains = 0
+    try:
+        async with async_session() as session:
+            active_tasks = await session.scalar(
+                select(func.count(Task.id)).where(Task.status.in_(["pending", "running"]))
+            ) or 0
+            active_chains = await session.scalar(
+                select(func.count(DelegationChain.id)).where(DelegationChain.state == "active")
+            ) or 0
+    except Exception:
+        pass
+
+    from app.services.redis_client import RedisClient
+    rc = await RedisClient.get_instance()
+
+    return {
+        "status": "ok",
+        "version": "0.2.0",
+        "redis_available": rc.available,
+        "agents": all_statuses,
+        "active_tasks": active_tasks,
+        "active_chains": active_chains,
+    }

@@ -69,6 +69,7 @@ class ConversationService:
         agent_name: str | None = None,
         tool_calls_json: str | None = None,
         tool_call_id: str | None = None,
+        mentioned_agents_json: str | None = None,
     ) -> Message:
         msg = Message(
             conversation_id=conversation_id,
@@ -77,6 +78,7 @@ class ConversationService:
             agent_name=agent_name,
             tool_calls_json=tool_calls_json,
             tool_call_id=tool_call_id,
+            mentioned_agents_json=mentioned_agents_json,
         )
         self.session.add(msg)
         await self.session.commit()

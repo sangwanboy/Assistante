@@ -97,13 +97,23 @@ async def get_messages(
     return msgs
 
 
-@router.post("/messages/direct", response_model=AgentMessageOut)
+@router.post("/messages/direct", response_model=AgentMessageOut, deprecated=True)
 async def send_direct_message(
     body: AgentMessageCreate,
     session: AsyncSession = Depends(get_session),
 ):
+    """Send a direct message between agents. DEPRECATED: Use unified channel chat with @mentions instead."""
     if not body.to_agent_id:
         raise HTTPException(status_code=400, detail="to_agent_id is required for direct messages")
+
+    # Permission check: only system agents can send direct messages
+    sender_result = await session.execute(
+        select(Agent).where(Agent.id == body.from_agent_id)
+    )
+    sender = sender_result.scalar_one_or_none()
+    if not sender or not sender.is_system:
+        raise HTTPException(status_code=403, detail="Only system agents can send direct messages. Use channel @mentions instead.")
+
     messaging = AgentMessagingService.get_instance()
     msg = await messaging.send_direct(
         body.from_agent_id, body.to_agent_id, body.content, session

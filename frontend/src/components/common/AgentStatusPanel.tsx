@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, ChevronLeft, Bot } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Bot, AlertTriangle, Loader2 } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useAgentStatusStore } from '../../stores/agentStatusStore';
 import { useThemeStore } from '../../stores/themeStore';
+
+function relativeTime(iso: string | undefined): string {
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso).getTime();
+    if (diff < 5000) return 'just now';
+    if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    return `${Math.floor(diff / 3600000)}h ago`;
+}
 
 interface AgentStatusPanelProps {
     onNavigateAgents: () => void;
@@ -36,8 +45,10 @@ export function AgentStatusPanel({ onNavigateAgents }: AgentStatusPanelProps) {
                         let dotColor = 'bg-gray-400';
                         if (status.state === 'working') dotColor = 'bg-amber-500 animate-pulse';
                         else if (status.state === 'idle') dotColor = 'bg-green-500';
+                        else if (status.state === 'error') dotColor = 'bg-red-500';
+                        else if (status.state === 'initializing') dotColor = 'bg-blue-500 animate-pulse';
                         return (
-                            <div key={agent.id} className="flex justify-center" title={`${agent.name}: ${status.state}`}>
+                            <div key={agent.id} className="flex justify-center" title={`${agent.name}: ${status.state}${status.task ? ` — ${status.task}` : ''}`}>
                                 <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
                             </div>
                         );
@@ -73,12 +84,21 @@ export function AgentStatusPanel({ onNavigateAgents }: AgentStatusPanelProps) {
                     allAgents.map((agent) => {
                         const status = statuses[agent.id] || { state: 'offline' };
                         let dotColor = 'bg-gray-400';
+                        let stateIcon = null;
 
                         if (status.state === 'working') {
                             dotColor = 'bg-amber-500 animate-pulse';
                         } else if (status.state === 'idle') {
                             dotColor = 'bg-green-500';
+                        } else if (status.state === 'error') {
+                            dotColor = 'bg-red-500';
+                            stateIcon = <AlertTriangle className="w-3 h-3 text-red-400" />;
+                        } else if (status.state === 'initializing') {
+                            dotColor = 'bg-blue-500 animate-pulse';
+                            stateIcon = <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />;
                         }
+
+                        const heartbeat = relativeTime(status.last_heartbeat);
 
                         return (
                             <div
@@ -86,15 +106,36 @@ export function AgentStatusPanel({ onNavigateAgents }: AgentStatusPanelProps) {
                                 className={`flex items-center gap-2 px-2 py-2 rounded-lg transition-colors ${isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`}
                             >
                                 <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-500'}`}>
-                                    <Bot className="w-3 h-3" />
+                                    {stateIcon || <Bot className="w-3 h-3" />}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className={`text-[11px] font-semibold truncate ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
                                         {agent.name}
                                     </div>
                                     <div className={`text-[9px] truncate ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                        {status.state === 'working' ? (status.task || 'Busy...') : agent.model.split('/').pop()}
+                                        {status.state === 'working'
+                                            ? (status.task || 'Busy...')
+                                            : status.state === 'error'
+                                                ? 'Error'
+                                                : status.state === 'initializing'
+                                                    ? 'Starting...'
+                                                    : agent.model.split('/').pop()}
                                     </div>
+                                    {/* Progress bar when working */}
+                                    {status.state === 'working' && status.progress != null && status.progress > 0 && (
+                                        <div className="mt-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                                                style={{ width: `${Math.min(status.progress, 100)}%` }}
+                                            />
+                                        </div>
+                                    )}
+                                    {/* Last heartbeat */}
+                                    {heartbeat && (
+                                        <div className={`text-[8px] mt-0.5 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                                            {heartbeat}
+                                        </div>
+                                    )}
                                 </div>
                                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
                             </div>

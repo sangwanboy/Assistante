@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { useAgentStore } from './agentStore';
 
-export type AgentState = 'idle' | 'working' | 'offline';
+export type AgentState = 'idle' | 'working' | 'offline' | 'initializing' | 'error';
 
 export interface AgentStatus {
     state: AgentState;
     task?: string;
+    current_task_id?: string;
+    progress?: number;
+    last_heartbeat?: string;
 }
 
 interface AgentStatusStore {
@@ -64,6 +67,23 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
                 } else if (data.type === 'TOKEN_UPDATE') {
                     // console.log('[AgentStatus WS] Token update:', data.agent_id, data.total_cost);
                     useAgentStore.getState().updateAgentCost(data.agent_id, data.total_cost);
+                } else if (data.type === 'chain_update') {
+                    // Chain updates are also broadcast via status WS; chatStore handles them via chat WS
+                } else if (data.type === 'task_progress') {
+                    // Update agent status with task progress
+                    if (data.agent_id) {
+                        set((state) => ({
+                            statuses: {
+                                ...state.statuses,
+                                [data.agent_id]: {
+                                    ...state.statuses[data.agent_id],
+                                    state: 'working' as AgentState,
+                                    progress: data.progress,
+                                    current_task_id: data.task_id,
+                                }
+                            }
+                        }));
+                    }
                 }
             } catch (e) {
                 console.error('[AgentStatus WS] Parse error:', e);

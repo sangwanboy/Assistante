@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     ollama_base_url: str = "http://localhost:11434"
 
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+
     # Defaults
     default_model: str = "gemini/gemini-2.5-flash"
     default_temperature: float = 0.7

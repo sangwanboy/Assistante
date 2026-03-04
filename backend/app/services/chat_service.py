@@ -80,20 +80,32 @@ class ChatService:
 
         return prompt
 
-    def _filter_tools_for_agent(self, agent: Agent) -> list[dict] | None:
-        """Return only the tools enabled for this agent."""
+    def _filter_tools_for_agent(self, agent: Agent, is_group_context: bool = False) -> list[dict] | None:
+        """Return only the tools enabled for this agent.
+
+        In group context, non-system agents are blocked from using delegation/messenger tools.
+        """
         if not self.tools:
             return None
         all_tools = self.tools.as_provider_format()
         if not agent.enabled_tools:
-            return all_tools
-        try:
-            enabled = json.loads(agent.enabled_tools)
-            if not enabled:
-                return all_tools
-            return [t for t in all_tools if t["name"] in enabled]
-        except (json.JSONDecodeError, TypeError):
-            return all_tools
+            filtered = all_tools
+        else:
+            try:
+                enabled = json.loads(agent.enabled_tools)
+                if not enabled:
+                    filtered = all_tools
+                else:
+                    filtered = [t for t in all_tools if t["name"] in enabled]
+            except (json.JSONDecodeError, TypeError):
+                filtered = all_tools
+
+        # In group context, block delegation/messaging tools for non-system agents
+        if is_group_context and not agent.is_system:
+            blocked = {"AgentDelegationTool", "agent_messenger", "AgentMessengerTool"}
+            filtered = [t for t in filtered if t["name"] not in blocked]
+
+        return filtered
 
     async def _get_skill_instructions(self, agent: Agent | None = None) -> str:
         """Get combined instructions from enabled skills. 
@@ -491,213 +503,311 @@ class ChatService:
         conversation_id: str,
         user_message: str,
         temperature: float = 0.7,
-        max_turns: int = 10,  # Keeping param for API compat, but unused
+        max_turns: int = 10,  # Keeping param for API compat
     ) -> AsyncIterator[dict]:
-        """Streaming group chat orchestrating active agents."""
+        """Unified group chat with @mention-selective routing.
+
+        Routing rules:
+        1. If @mentions found → only mentioned agents respond (explicit routing)
+        2. If no @mentions + autonomous mode → System Agent orchestrates (auto-delegation)
+        3. If no @mentions + manual mode → System Agent responds directly
+        """
+        from app.services.mention_parser import parse_mentions, resolve_mentions
+
         # Ensure conversation exists and is marked as group
         conv = await self.conv_service.get(conversation_id)
         if not conv:
             conv = await self.conv_service.create(title="Group Chat", is_group=True)
             conversation_id = conv.id
 
-        # Save user message
-        await self.conv_service.add_message(conversation_id, "user", user_message)
-
-        # Determine which agents to include
-        active_agents = []
-        if conv.channel_id:
-            channel = await self.session.get(Channel, conv.channel_id)
-            if channel:
-                if channel.is_announcement:
-                    # Announcements get everyone
-                    result = await self.session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.id))
-                    active_agents = list(result.scalars().all())
-                else:
-                    # Custom groups get only assigned agents
-                    stmt = (
-                        select(Agent)
-                        .join(ChannelAgent, Agent.id == ChannelAgent.agent_id)
-                        .where(ChannelAgent.channel_id == conv.channel_id, Agent.is_active == True)
-                        .order_by(Agent.id)
-                    )
-                    result = await self.session.execute(stmt)
-                    active_agents = list(result.scalars().all())
-        else:
-            # No channel_id — do not fall through to all agents.
-            # This prevents unintended broadcast to every active agent.
+        if not conv.channel_id:
             yield {
                 "type": "error",
                 "content": "Group conversation has no channel assigned. Cannot determine participants.",
-                "conversation_id": conversation_id
+                "conversation_id": conversation_id,
             }
             return
 
-        if not active_agents:
+        # Load channel and determine orchestration mode
+        channel = await self.session.get(Channel, conv.channel_id)
+        if not channel:
+            yield {"type": "error", "content": "Channel not found.", "conversation_id": conversation_id}
+            return
+
+        orchestration_mode = getattr(channel, "orchestration_mode", "autonomous") or "autonomous"
+
+        # Parse @mentions
+        mentions = parse_mentions(user_message)
+        mention_result = await resolve_mentions(self.session, mentions, conv.channel_id)
+
+        # Save user message with mention metadata
+        mentioned_ids = [r.agent_id for r in mention_result.resolved]
+        await self.conv_service.add_message(
+            conversation_id, "user", user_message,
+            mentioned_agents_json=json.dumps(mentioned_ids) if mentioned_ids else None,
+        )
+
+        # Warn about unresolved mentions
+        if mention_result.unresolved:
+            names = ", ".join(mention_result.unresolved)
             yield {
                 "type": "error",
-                "content": "No active agents found for group chat.",
-                "conversation_id": conversation_id
+                "content": f"Agent(s) not found in this channel: {names}",
+                "conversation_id": conversation_id,
             }
+
+        if mention_result.resolved:
+            # ── EXPLICIT ROUTING: Only mentioned agents respond ──
+            for resolved in mention_result.resolved:
+                agent = await self.session.get(Agent, resolved.agent_id)
+                if agent:
+                    async for event in self._run_agent_turn(conversation_id, agent, temperature, is_group=True):
+                        yield event
+        elif orchestration_mode == "autonomous":
+            # ── AUTO-ORCHESTRATION: System Agent plans and delegates ──
+            system_agent = await self._get_system_agent()
+            if system_agent:
+                async for event in self._run_orchestrated_turn(
+                    conversation_id, system_agent, user_message, temperature
+                ):
+                    yield event
+            else:
+                yield {"type": "error", "content": "No system agent found for orchestration."}
+        else:
+            # ── MANUAL MODE: System Agent responds directly ──
+            system_agent = await self._get_system_agent()
+            if system_agent:
+                async for event in self._run_agent_turn(conversation_id, system_agent, temperature, is_group=True):
+                    yield event
+            else:
+                yield {"type": "error", "content": "No system agent found."}
+
+        yield {"type": "done", "conversation_id": conversation_id}
+
+    # ──────────────────────────────────────────────────────────────────
+    # Reusable Agent Turn (extracted from old stream_group_chat)
+    # ──────────────────────────────────────────────────────────────────
+
+    async def _run_agent_turn(
+        self,
+        conversation_id: str,
+        agent: Agent,
+        temperature: float = 0.7,
+        max_tool_iters: int = 5,
+        is_group: bool = False,
+    ) -> AsyncIterator[dict]:
+        """Run a single agent's streaming turn with tool loop.
+
+        Builds the agent's prompt, constructs message history from their viewpoint,
+        streams the response, and handles tool calls.
+        """
+        provider_name, model_id = self._parse_model_string(agent.model)
+        provider = self.providers.get(provider_name)
+        if not provider:
             return
 
-        # Each agent gets exactly ONE top-level turn to reply to the user's message
-        for agent in active_agents:
-            provider_name, model_id = self._parse_model_string(agent.model)
-            provider = self.providers.get(provider_name)
-            if not provider:
-                continue
+        # Use agent's own API key if set
+        if agent.api_key:
+            provider = self.providers.create_ephemeral(agent.provider, agent.api_key)
 
-            # Fetch fresh history (includes whatever previous agents just said!)
-            db_messages = await self.conv_service.get_messages(conversation_id)
-            
-            agent_msgs = []
-            
-            # 1. System Prompt (Personality + Strict anti-hallucination instruction)
-            agent_prompt = self._build_agent_prompt(agent)
+        # Fetch fresh history
+        db_messages = await self.conv_service.get_messages(conversation_id)
+
+        agent_msgs = []
+
+        # 1. System Prompt
+        agent_prompt = self._build_agent_prompt(agent)
+        if is_group:
             multi_agent_instruction = (
                 f"\n\nIMPORTANT: You are in a multi-agent chat room. Your name is {agent.name}. "
                 "Respond ONLY as yourself. Do NOT simulate conversations. "
                 "Do NOT prefix your response with your name like 'Name: '. Just output your response directly."
             )
-            final_prompt = (agent_prompt or "") + multi_agent_instruction
-            # Inject active skill instructions
-            skill_instructions = await self._get_skill_instructions(agent)
-            if skill_instructions:
-                final_prompt += "\n\n# Available Skills\n" + skill_instructions
-            agent_msgs.append(ChatMessage(role="system", content=final_prompt))
-                
-            # 2. Reconstruct history specifically for this agent's viewpoint
-            for msg in db_messages:
-                tool_calls = None
-                if msg.tool_calls_json:
-                    try:
-                        tool_calls = json.loads(msg.tool_calls_json)
-                    except json.JSONDecodeError:
-                        pass
-                
-                if msg.role == "assistant":
-                    if msg.agent_name == agent.name:
-                        # This agent's own past message
-                        agent_msgs.append(ChatMessage(
-                            role="assistant", content=msg.content,
-                            tool_calls=tool_calls, tool_call_id=msg.tool_call_id
-                        ))
-                    else:
-                        # Another agent's message -> treat as user input so it doesn't try to continue the text
-                        sender = msg.agent_name or "Another Agent"
-                        agent_msgs.append(ChatMessage(
-                            role="user", content=f"[{sender}]: {msg.content}"
-                        ))
-                else:
-                    agent_msgs.append(ChatMessage(
-                        role=msg.role, content=msg.content,
-                        tool_calls=tool_calls, tool_call_id=msg.tool_call_id
-                    ))
-                    
-            agent_id = agent.id if agent else "assistant"
-            agent_msgs = await self.pruner.prune_context_if_needed(agent_msgs, 100000, agent_id)
+            if not agent.is_system:
+                multi_agent_instruction += (
+                    "\nYou MUST NOT mention or tag other agents using @. "
+                    "You CANNOT delegate work to other agents. Only complete your own assigned task."
+                )
+            agent_prompt = (agent_prompt or "") + multi_agent_instruction
 
-            # Filter tools for this agent
-            agent_tools = self._filter_tools_for_agent(agent)
+        # Inject active skill instructions
+        skill_instructions = await self._get_skill_instructions(agent)
+        if skill_instructions:
+            agent_prompt = (agent_prompt or "") + "\n\n# Available Skills\n" + skill_instructions
+        agent_msgs.append(ChatMessage(role="system", content=agent_prompt))
 
-            yield {
-                "type": "agent_turn_start",
-                "agent_name": agent.name,
-                "model": agent.model
-            }
-
-            msg_record = None
-            
-            status_manager = await AgentStatusManager.get_instance()
-            agent_id = agent.id if agent else "assistant"
-            
-            # Agentic tool loop (allow the agent to use tools and observe results during its turn)
-            for _ in range(5):  # Max 5 tool iterations per agent turn
-                full_response = ""
-                final_tool_calls = None
-                
-                status_manager.set_status(agent_id, AgentState.WORKING, "Generating response...")
-
-
+        # 2. Reconstruct history for this agent's viewpoint
+        for msg in db_messages:
+            tool_calls = None
+            if msg.tool_calls_json:
                 try:
-                    final_usage = None
-                    async for chunk in provider.stream(agent_msgs, model_id, tools=agent_tools, temperature=temperature):
-                        if hasattr(chunk, "usage") and chunk.usage:
-                            final_usage = chunk.usage
-                            
-                        if chunk.delta:
-                            full_response += str(chunk.delta)
-                            yield {
-                                "type": "chunk", 
-                                "delta": chunk.delta,
-                                "agent_name": agent.name
-                            }
-                        
-                        if chunk.tool_calls:
-                            if final_tool_calls is None:
-                                final_tool_calls = []
-                            final_tool_calls.extend(chunk.tool_calls)
+                    tool_calls = json.loads(msg.tool_calls_json)
+                except json.JSONDecodeError:
+                    pass
 
-                    if final_usage and getattr(agent, "id", None):
-                        cost = self._calculate_cost(provider.name, model_id, final_usage)
-                        if cost > 0:
-                            agent.total_cost = getattr(agent, 'total_cost', 0) + cost
-                            await self.session.commit()
-                            await status_manager.emit_event({"type": "TOKEN_UPDATE", "agent_id": agent.id, "cost_added": cost, "total_cost": agent.total_cost})
+            if is_group and msg.role == "assistant":
+                if msg.agent_name == agent.name:
+                    agent_msgs.append(ChatMessage(
+                        role="assistant", content=msg.content,
+                        tool_calls=tool_calls, tool_call_id=msg.tool_call_id,
+                    ))
+                else:
+                    sender = msg.agent_name or "Another Agent"
+                    agent_msgs.append(ChatMessage(
+                        role="user", content=f"[{sender}]: {msg.content}"
+                    ))
+            else:
+                agent_msgs.append(ChatMessage(
+                    role=msg.role, content=msg.content,
+                    tool_calls=tool_calls, tool_call_id=msg.tool_call_id,
+                ))
 
-                    if final_tool_calls:
-                        msg_record = await self.conv_service.add_message(
-                            conversation_id, "assistant", full_response,
-                            agent_name=agent.name,
-                            tool_calls_json=json.dumps(final_tool_calls),
+        agent_id = agent.id
+        agent_msgs = await self.pruner.prune_context_if_needed(agent_msgs, 100000, agent_id)
+
+        # Filter tools
+        agent_tools = self._filter_tools_for_agent(agent, is_group_context=is_group)
+
+        yield {"type": "agent_turn_start", "agent_name": agent.name, "model": agent.model}
+
+        msg_record = None
+        status_manager = await AgentStatusManager.get_instance()
+
+        # Agentic tool loop
+        for _ in range(max_tool_iters):
+            full_response = ""
+            final_tool_calls = None
+
+            status_manager.set_status(agent_id, AgentState.WORKING, "Generating response...")
+
+            try:
+                final_usage = None
+                async for chunk in provider.stream(agent_msgs, model_id, tools=agent_tools, temperature=temperature):
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        final_usage = chunk.usage
+                    if chunk.delta:
+                        full_response += str(chunk.delta)
+                        yield {"type": "chunk", "delta": chunk.delta, "agent_name": agent.name}
+                    if chunk.tool_calls:
+                        if final_tool_calls is None:
+                            final_tool_calls = []
+                        final_tool_calls.extend(chunk.tool_calls)
+
+                if final_usage and agent.id:
+                    cost = self._calculate_cost(provider.name, model_id, final_usage)
+                    if cost > 0:
+                        agent.total_cost = getattr(agent, "total_cost", 0) + cost
+                        await self.session.commit()
+                        await status_manager.emit_event({
+                            "type": "TOKEN_UPDATE",
+                            "agent_id": agent.id,
+                            "cost_added": cost,
+                            "total_cost": agent.total_cost,
+                        })
+
+                if final_tool_calls:
+                    msg_record = await self.conv_service.add_message(
+                        conversation_id, "assistant", full_response,
+                        agent_name=agent.name,
+                        tool_calls_json=json.dumps(final_tool_calls),
+                    )
+                    agent_msgs.append(ChatMessage(
+                        role="assistant", content=full_response, tool_calls=final_tool_calls,
+                    ))
+
+                    for tc in final_tool_calls:
+                        func = tc.get("function", {})
+                        tool_name = func.get("name", "")
+                        args_raw = func.get("arguments", "{}")
+                        status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
+                        yield {
+                            "type": "tool_call",
+                            "tool_name": tool_name,
+                            "tool_args": json.loads(args_raw) if isinstance(args_raw, str) else args_raw,
+                        }
+
+                    tool_results = await self._execute_tool_calls(final_tool_calls)
+                    status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
+                    for tr in tool_results:
+                        await self.conv_service.add_message(
+                            conversation_id, "tool", tr.content, tool_call_id=tr.tool_call_id,
                         )
-                        agent_msgs.append(ChatMessage(
-                            role="assistant", content=full_response, tool_calls=final_tool_calls
-                        ))
-                        
-                        # Execute tools and stream results
-                        for tc in final_tool_calls:
-                            func = tc.get("function", {})
-                            tool_name = func.get("name", "")
-                            args_raw = func.get("arguments", "{}")
-                            status_manager.set_status(agent.id, AgentState.WORKING, f"Using tool: {tool_name}...")
-                            yield {
-                                "type": "tool_call",
-                                "tool_name": tool_name,
-                                "tool_args": json.loads(args_raw) if isinstance(args_raw, str) else args_raw,
-                            }
-
-                        tool_results = await self._execute_tool_calls(final_tool_calls)
-                        status_manager.set_status(agent.id, AgentState.WORKING, "Evaluating tool results...")
-                        for tr in tool_results:
-                            await self.conv_service.add_message(
-                                conversation_id, "tool", tr.content, tool_call_id=tr.tool_call_id
-                            )
-                            agent_msgs.append(tr)
-                            yield {
-                                "type": "tool_result",
-                                "tool_name": "",
-                                "tool_result": tr.content,
-                            }
-                    else:
-                        msg_record = await self.conv_service.add_message(
-                            conversation_id, "assistant", full_response, agent_name=agent.name
-                        )
-                        status_manager.set_status(agent_id, AgentState.IDLE)
-                        break # Finished turn
-                except Exception as e:
+                        agent_msgs.append(tr)
+                        yield {"type": "tool_result", "tool_name": "", "tool_result": tr.content}
+                else:
+                    msg_record = await self.conv_service.add_message(
+                        conversation_id, "assistant", full_response, agent_name=agent.name,
+                    )
                     status_manager.set_status(agent_id, AgentState.IDLE)
-                    raise e
-            
-            status_manager.set_status(agent_id, AgentState.IDLE)
+                    break  # Finished turn
+            except Exception as e:
+                status_manager.set_status(agent_id, AgentState.IDLE)
+                raise e
 
-            yield {
-                "type": "agent_turn_end",
-                "agent_name": agent.name,
-                "message_id": msg_record.id if msg_record else None
-            }
+        status_manager.set_status(agent_id, AgentState.IDLE)
 
-        yield {"type": "done", "conversation_id": conversation_id}
+        yield {
+            "type": "agent_turn_end",
+            "agent_name": agent.name,
+            "message_id": msg_record.id if msg_record else None,
+        }
+
+    # ──────────────────────────────────────────────────────────────────
+    # Helpers
+    # ──────────────────────────────────────────────────────────────────
+
+    async def _get_system_agent(self) -> Agent | None:
+        """Find the system orchestrator agent (is_system=True)."""
+        stmt = select(Agent).where(Agent.is_system == True, Agent.is_active == True)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _get_channel_agents(self, channel_id: str) -> list[Agent]:
+        """Get all active agents assigned to a channel."""
+        channel = await self.session.get(Channel, channel_id)
+        if not channel:
+            return []
+        if channel.is_announcement:
+            result = await self.session.execute(
+                select(Agent).where(Agent.is_active == True).order_by(Agent.name)
+            )
+            return list(result.scalars().all())
+        stmt = (
+            select(Agent)
+            .join(ChannelAgent, Agent.id == ChannelAgent.agent_id)
+            .where(ChannelAgent.channel_id == channel_id, Agent.is_active == True)
+            .order_by(Agent.name)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def _run_orchestrated_turn(
+        self,
+        conversation_id: str,
+        system_agent: Agent,
+        user_message: str,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[dict]:
+        """System Agent analyzes task and orchestrates delegation to sub-agents."""
+        from app.services.orchestration import OrchestrationEngine
+
+        conv = await self.conv_service.get(conversation_id)
+        channel_agents = await self._get_channel_agents(conv.channel_id) if conv and conv.channel_id else []
+
+        engine = OrchestrationEngine(
+            session=self.session,
+            provider_registry=self.providers,
+            tool_registry=self.tools,
+            chat_service=self,
+        )
+        async for event in engine.plan_and_execute(
+            conversation_id=conversation_id,
+            system_agent=system_agent,
+            user_message=user_message,
+            channel_agents=channel_agents,
+            temperature=temperature,
+        ):
+            yield event
 
     # ──────────────────────────────────────────────────────────────────
     # Agent Delegation

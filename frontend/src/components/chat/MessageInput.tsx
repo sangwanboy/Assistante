@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { SendHorizonal, Mic, MicOff, Loader2, ShieldAlert, Check, X, ShieldCheck } from 'lucide-react';
 import { audioApi } from '../../services/audio';
 import { useAgentControlStore } from '../../stores/agentControlStore';
+import { useAgentStatusStore } from '../../stores/agentStatusStore';
 
 interface MentionAgent {
   id: string;
@@ -27,6 +28,7 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
   const [mentionStart, setMentionStart] = useState(-1);
 
   const { pendingApprovals, resolveApproval } = useAgentControlStore();
+  const { statuses } = useAgentStatusStore();
   const currentApproval = pendingApprovals.length > 0 ? pendingApprovals[0] : null;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -220,25 +222,44 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
           {/* @mention dropdown */}
           {showMentionPicker && mentionCandidates.length > 0 && (
             <div className="absolute bottom-full left-0 right-0 mb-1 bg-[#0e0e1c] border border-[#1c1c30] rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto">
-              {mentionCandidates.map((c, idx) => (
-                <button
-                  key={c.id}
-                  onMouseDown={e => { e.preventDefault(); selectMention(c); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                    idx === mentionIndex
-                      ? 'bg-indigo-600/30 text-indigo-200'
-                      : 'hover:bg-white/5 text-gray-300'
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">
-                    {c.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">@{c.name}</div>
-                    {c.description && <div className="text-[11px] text-gray-500 truncate">{c.description}</div>}
-                  </div>
-                </button>
-              ))}
+              {mentionCandidates.map((c, idx) => {
+                const agentStatus = statuses[c.id];
+                const statusState = agentStatus?.state || 'offline';
+                let dotColor = 'bg-gray-500';
+                if (statusState === 'idle') dotColor = 'bg-emerald-500';
+                else if (statusState === 'working') dotColor = 'bg-amber-500 animate-pulse';
+                else if (statusState === 'initializing') dotColor = 'bg-blue-500 animate-pulse';
+                else if (statusState === 'error') dotColor = 'bg-red-500';
+                return (
+                  <button
+                    key={c.id}
+                    onMouseDown={e => { e.preventDefault(); selectMention(c); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                      idx === mentionIndex
+                        ? 'bg-indigo-600/30 text-indigo-200'
+                        : 'hover:bg-white/5 text-gray-300'
+                    }`}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[11px] font-bold text-white">
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0e0e1c] ${dotColor}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium">@{c.name}</div>
+                      {c.description && <div className="text-[11px] text-gray-500 truncate">{c.description}</div>}
+                    </div>
+                    <span className={`text-[9px] font-medium capitalize ${
+                      statusState === 'idle' ? 'text-emerald-500' :
+                      statusState === 'working' ? 'text-amber-500' :
+                      statusState === 'error' ? 'text-red-500' :
+                      statusState === 'initializing' ? 'text-blue-400' :
+                      'text-gray-600'
+                    }`}>{statusState}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
           <textarea

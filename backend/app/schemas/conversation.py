@@ -27,6 +27,7 @@ class MessageOut(BaseModel):
     agent_name: str | None = None
     tool_calls_json: str | None = None
     tool_call_id: str | None = None
+    mentioned_agents_json: str | None = None
     created_at: datetime
 
     class Config:

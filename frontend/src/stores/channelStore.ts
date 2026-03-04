@@ -16,6 +16,7 @@ interface ChannelState {
     loadChannelAgents: (channelId: string) => Promise<void>;
     addAgentToChannel: (channelId: string, agentId: string) => Promise<void>;
     removeAgentFromChannel: (channelId: string, agentId: string) => Promise<void>;
+    setOrchestrationMode: (channelId: string, mode: 'autonomous' | 'manual') => Promise<void>;
 }
 
 export const useChannelStore = create<ChannelState>((set, get) => ({
@@ -76,5 +77,12 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
     removeAgentFromChannel: async (channelId, agentId) => {
         await api.removeAgentFromChannel(channelId, agentId);
         await get().loadChannelAgents(channelId); // Re-fetch
+    },
+
+    setOrchestrationMode: async (channelId, mode) => {
+        const updated = await api.updateChannel(channelId, { orchestration_mode: mode });
+        set(state => ({
+            channels: state.channels.map(c => c.id === channelId ? updated : c)
+        }));
     }
 }));
