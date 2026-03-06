@@ -125,3 +125,12 @@ async def whatsapp_webhook(integration_id: str, request: Request):
     manager = _get_manager()
     await manager.handle_webhook(integration_id, form_data=dict(form))
     return {"ok": True}
+
+
+@router.post("/{integration_id}/webhook/whatsapp_web")
+async def whatsapp_web_webhook(integration_id: str, request: Request):
+    """Receive JSON payloads from the custom whatsapp-service."""
+    payload = await request.json()
+    manager = _get_manager()
+    await manager.handle_webhook(integration_id, payload=payload)
+    return {"ok": True}

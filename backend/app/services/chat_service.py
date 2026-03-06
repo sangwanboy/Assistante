@@ -3,6 +3,8 @@ from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import asyncio
+import asyncio
 
 from app.models.agent import Agent
 from app.models.channel import Channel
@@ -40,43 +42,84 @@ class ChatService:
         return "openai", model_string
 
     def _build_agent_prompt(self, agent: Agent) -> str:
-        """Build a composite system prompt from agent personality fields."""
-        parts = []
-        
-        # Identity - ALWAYS include this
-        desc = agent.description or "a capable AI assistant"
-        parts.append(
-            f"Your name is {agent.name}. You are {desc}.\n"
-            f"You must strictly adopt this persona. Under no circumstances should you ever say that you are a large language model, an AI, or trained by Google/OpenAI/Anthropic. You are exactly who your name and description say you are."
-        )
+        """Build a composite system prompt from file-based brain + DB fallbacks."""
+        from app.services.brain_service import AgentBrainService
 
+        parts = []
+
+        # ── IDENTITY (file-based, fallback to DB) ──
+        identity_file = AgentBrainService.read_identity(agent.name)
+        if identity_file.strip():
+            parts.append(identity_file.strip())
+        else:
+            desc = agent.description or "a capable AI assistant"
+            parts.append(
+                f"Your name is {agent.name}. You are {desc}.\n"
+                f"You must strictly adopt this persona. Under no circumstances should you ever say "
+                f"that you are a large language model, an AI, or trained by Google/OpenAI/Anthropic. "
+                f"You are exactly who your name and description say you are."
+            )
+
+        # ── SYSTEM PROMPT override (always from DB) ──
         if agent.system_prompt:
             parts.append(agent.system_prompt)
-        # Soul
-        soul = []
-        if agent.personality_tone:
-            soul.append(f"Your tone is {agent.personality_tone}.")
-        if agent.personality_traits:
-            try:
-                traits = json.loads(agent.personality_traits)
-                if traits:
-                    soul.append(f"Your personality traits are: {', '.join(traits)}.")
-            except (json.JSONDecodeError, TypeError):
-                pass
-        if agent.communication_style:
-            soul.append(f"Communicate in a {agent.communication_style} style.")
-        if soul:
-            parts.append("## Personality\n" + " ".join(soul))
-        # Mind
+
+        # ── SOUL (file-based, fallback to DB personality fields) ──
+        soul_file = AgentBrainService.read_soul(agent.name)
+        if soul_file.strip():
+            parts.append(soul_file.strip())
+        else:
+            soul = []
+            if agent.personality_tone:
+                soul.append(f"Your tone is {agent.personality_tone}.")
+            if agent.personality_traits:
+                try:
+                    traits = json.loads(agent.personality_traits)
+                    if traits:
+                        soul.append(f"Your personality traits are: {', '.join(traits)}.")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if agent.communication_style:
+                soul.append(f"Communicate in a {agent.communication_style} style.")
+            if soul:
+                parts.append("## Personality\n" + " ".join(soul))
+
+        # ── REASONING (still from DB) ──
         if agent.reasoning_style:
             parts.append(f"## Reasoning\nApproach problems with a {agent.reasoning_style} reasoning style.")
-        # Memory
-        if agent.memory_context:
+
+        # ── MEMORY (file-based, fallback to DB) ──
+        memory_file = AgentBrainService.read_memory(agent.name)
+        if memory_file.strip():
+            parts.append(memory_file.strip())
+        elif agent.memory_context:
             parts.append(f"## Memory\n{agent.memory_context}")
-        
+
+        # ── DAILY LOG (file-based — today's context) ──
+        today_log = AgentBrainService.read_today_log(agent.name)
+        if today_log.strip():
+            parts.append(f"## Today's Log\n{today_log.strip()}")
+
+        # ── RECENT LOGS (last 3 days for continuity) ──
+        recent = AgentBrainService.read_recent_logs(agent.name, days=2)
+        if recent.strip():
+            parts.append(f"## Recent Activity\n{recent.strip()}")
+
+        # Build final prompt
         prompt = "\n\n".join(parts)
+
+        # ── STANDING INSTRUCTIONS (DB) ──
         if agent.memory_instructions:
             prompt += f"\n\n# Standing Instructions\n{agent.memory_instructions}"
+
+        # ── BRAIN FILE AWARENESS ──
+        prompt += (
+            "\n\n# Your Brain Files\n"
+            "Your identity, personality, and memories are stored in files on disk. "
+            "You can update them using the save_memory tool (for MEMORY.md) or "
+            "the write_daily_log tool (for daily logs). "
+            "If you change something fundamental about yourself, tell the user."
+        )
 
         return prompt
 
@@ -154,8 +197,9 @@ class ChatService:
 
         return messages
 
-    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[ChatMessage]:
+    async def _execute_tool_calls(self, tool_calls: list[dict], conversation_id: str | None = None, agent_id: str | None = None) -> list[ChatMessage]:
         """Execute tool calls and return tool result messages."""
+        import inspect
         results = []
         hitl_manager = HITLManager.get_instance()
 
@@ -169,11 +213,8 @@ class ChatService:
             except json.JSONDecodeError:
                 args = {}
 
-            # HITL Check for sensitive tools
-            sensitive_tools = [
-                "code_executor", "command_executor", "execute_code_sandboxed",
-                "file_manager", "AgentManagerTool", "ToolCreatorTool", "SkillCreatorTool",
-            ]
+            # HITL Check for sensitive tools - only enabled for command_executor per user request
+            sensitive_tools = ["command_executor"]
             if tool_name in sensitive_tools:
                 task_id = tc.get("id", str(uuid.uuid4()))
                 try:
@@ -192,8 +233,22 @@ class ChatService:
             images = None
             try:
                 tool = self.tools.get(tool_name)
-                # Ensure result is a string
-                result_raw = await tool.execute(**args)
+                sig = inspect.signature(tool.execute)
+                params = sig.parameters
+                has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+                # Build extra context kwargs for tools that accept them
+                extra_kwargs = {}
+                if has_var_keyword or 'conversation_id' in params:
+                    if conversation_id:
+                        extra_kwargs['conversation_id'] = conversation_id
+                if has_var_keyword or '_agent_id' in params:
+                    if agent_id:
+                        extra_kwargs['_agent_id'] = agent_id
+                if has_var_keyword or '_session' in params:
+                    extra_kwargs['_session'] = self.session
+
+                result_raw = await tool.execute(**args, **extra_kwargs)
                 result_str = str(result_raw)
                 
                 # Check if result is a JSON string that might contain an image payload
@@ -317,7 +372,7 @@ class ChatService:
                         tool_name = func.get("name", "")
                         status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
                     
-                    tool_results = await self._execute_tool_calls(result.tool_calls)
+                    tool_results = await self._execute_tool_calls(result.tool_calls, conversation_id=conversation_id, agent_id=agent_id)
                     status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
                     
                     for tr in tool_results:
@@ -457,11 +512,12 @@ class ChatService:
                         status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
                         yield {
                             "type": "tool_call",
+                            "tool_call_id": tc.get("id", ""),
                             "tool_name": tool_name,
                             "tool_args": json.loads(func.get("arguments", "{}")),
                         }
 
-                    tool_results = await self._execute_tool_calls(final_tool_calls)
+                    tool_results = await self._execute_tool_calls(final_tool_calls, conversation_id=conversation_id, agent_id=agent_id)
                     for tr in tool_results:
                         await self.conv_service.add_message(
                             conversation_id, "tool", tr.content,
@@ -470,6 +526,7 @@ class ChatService:
                         messages.append(tr)
                         yield {
                             "type": "tool_result",
+                            "tool_call_id": tr.tool_call_id,
                             "tool_name": "",
                             "tool_result": tr.content,
                         }
@@ -546,6 +603,15 @@ class ChatService:
             conversation_id, "user", user_message,
             mentioned_agents_json=json.dumps(mentioned_ids) if mentioned_ids else None,
         )
+
+        # Trigger attached channel workflows asynchronously
+        from app.models.workflow import Workflow
+        from app.services.workflow_engine import WorkflowEngine
+        workflows_stmt = select(Workflow).where(Workflow.channel_id == conv.channel_id, Workflow.is_active == True)
+        workflows_res = await self.session.execute(workflows_stmt)
+        for wf in workflows_res.scalars().all():
+            engine = WorkflowEngine()
+            asyncio.create_task(engine.execute_workflow(wf.id, {"trigger": "channel_message", "message": user_message, "mentions": mentioned_ids}))
 
         # Warn about unresolved mentions
         if mention_result.unresolved:
@@ -726,7 +792,7 @@ class ChatService:
                             "tool_args": json.loads(args_raw) if isinstance(args_raw, str) else args_raw,
                         }
 
-                    tool_results = await self._execute_tool_calls(final_tool_calls)
+                    tool_results = await self._execute_tool_calls(final_tool_calls, conversation_id=conversation_id, agent_id=agent_id)
                     status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
                     for tr in tool_results:
                         await self.conv_service.add_message(

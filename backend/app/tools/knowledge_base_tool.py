@@ -32,7 +32,11 @@ class KnowledgeBaseTool(BaseTool):
     async def execute(self, query: str, n_results: int = 3, **kwargs) -> str:
         # We can pass session=None since search_documents only uses ChromaDB
         doc_service = DocumentService(session=None)
-        results = doc_service.search_documents(query, n_results=n_results)
+        
+        # Get conversation_id from kwargs if available
+        conversation_id = kwargs.get("conversation_id")
+        
+        results = doc_service.search_documents(query, n_results=n_results, conversation_id=conversation_id)
         
         if not results:
             return "No relevant information found in the knowledge base."

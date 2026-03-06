@@ -39,7 +39,7 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
         // Connect directly to backend port to bypass unstable Vite WS proxy
         const backendPort = '8321';
         const wsUrl = `${protocol}//${host}:${backendPort}/api-ws/agents/status`;
-        console.log('[AgentStatus WS] Connecting to:', wsUrl);
+        console.debug('[AgentStatus WS] Connecting to:', wsUrl);
 
         ws = new WebSocket(wsUrl);
 
@@ -50,14 +50,14 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
         };
 
         ws.onmessage = (event) => {
-            console.log('[AgentStatus WS] Message received:', event.data);
+            console.debug('[AgentStatus WS] Message received');
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'initial_status') {
-                    console.log('[AgentStatus WS] Initial statuses:', data.statuses);
+                    console.debug('[AgentStatus WS] Initial statuses loaded');
                     set({ statuses: data.statuses });
                 } else if (data.type === 'agent_status_update') {
-                    console.log('[AgentStatus WS] Status update:', data.agent_id, data.status);
+                    console.debug('[AgentStatus WS] Status update:', data.agent_id, data.status?.state);
                     set((state) => ({
                         statuses: {
                             ...state.statuses,
@@ -91,21 +91,21 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
         };
 
         ws.onclose = (event) => {
-            console.log(`[AgentStatus WS] Closed (code=${event.code}, reason=${event.reason}, intentional=${intentionalClose})`);
+            console.debug(`[AgentStatus WS] Closed (code=${event.code})`);
             set({ isConnected: false });
             ws = null;
             // auto reconnect unless intentionally closed
             if (!intentionalClose) {
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = setTimeout(() => {
-                    console.log('[AgentStatus WS] Auto-reconnecting...');
+                    console.debug('[AgentStatus WS] Auto-reconnecting...');
                     get().connect();
                 }, 2000);
             }
         };
 
-        ws.onerror = (error) => {
-            console.error('[AgentStatus WS] Error:', error);
+        ws.onerror = () => {
+            console.debug('[AgentStatus WS] Connection error (will retry)');
         };
     },
 

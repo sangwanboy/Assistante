@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { StreamingMessage } from './StreamingMessage';
+import { InlineHITLApproval } from './InlineHITLApproval';
 import { MessageInput } from './MessageInput';
 import { CreateChannelModal } from './CreateChannelModal';
 import { ChannelAgentManagerModal } from './ChannelAgentManagerModal';
@@ -142,28 +143,24 @@ export function ChatView() {
             <div className="p-2 border-b border-[#1a1a2e]">
               <button
                 onClick={() => openChannelChat(announcementsChannel)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                  activeConv?.channel_id === announcementsChannel.id
-                    ? 'bg-indigo-600 text-indigo-100 border border-indigo-500/30 shadow-lg shadow-indigo-500/20'
-                    : 'text-gray-500 hover:bg-white/5 border border-transparent hover:text-gray-300'
-                }`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${activeConv?.channel_id === announcementsChannel.id
+                  ? 'bg-indigo-600 text-indigo-100 border border-indigo-500/30 shadow-lg shadow-indigo-500/20'
+                  : 'text-gray-500 hover:bg-white/5 border border-transparent hover:text-gray-300'
+                  }`}
               >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  activeConv?.channel_id === announcementsChannel.id
-                    ? 'bg-white/20 text-white' : 'bg-[#141426] text-gray-500'
-                }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${activeConv?.channel_id === announcementsChannel.id
+                  ? 'bg-white/20 text-white' : 'bg-[#141426] text-gray-500'
+                  }`}>
                   <MessageSquare className="w-4 h-4" />
                 </div>
                 <div className="text-left flex-1 min-w-0">
-                  <div className={`text-sm font-semibold truncate flex items-center gap-2 ${
-                    activeConv?.channel_id === announcementsChannel.id ? 'text-white' : ''
-                  }`}>
+                  <div className={`text-sm font-semibold truncate flex items-center gap-2 ${activeConv?.channel_id === announcementsChannel.id ? 'text-white' : ''
+                    }`}>
                     {announcementsChannel.name}
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200">ALL</span>
                   </div>
-                  <div className={`text-[11px] truncate mt-0.5 ${
-                    activeConv?.channel_id === announcementsChannel.id ? 'text-indigo-200' : 'text-gray-600'
-                  }`}>{announcementsChannel.description || 'Broadcast to all agents'}</div>
+                  <div className={`text-[11px] truncate mt-0.5 ${activeConv?.channel_id === announcementsChannel.id ? 'text-indigo-200' : 'text-gray-600'
+                    }`}>{announcementsChannel.description || 'Broadcast to all agents'}</div>
                 </div>
               </button>
             </div>
@@ -189,23 +186,20 @@ export function ChatView() {
                 <button
                   key={channel.id}
                   onClick={() => openChannelChat(channel)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all mb-1 last:mb-0 ${
-                    isChActive
-                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                      : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all mb-1 last:mb-0 ${isChActive
+                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                    : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                    }`}
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    isChActive ? 'bg-indigo-500/20 text-indigo-300' : 'bg-[#141426] text-gray-500'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isChActive ? 'bg-indigo-500/20 text-indigo-300' : 'bg-[#141426] text-gray-500'
+                    }`}>
                     <Users className="w-4 h-4" />
                   </div>
                   <div className="text-left flex-1 min-w-0">
                     <div className="text-sm font-medium truncate flex items-center gap-1.5">
                       {channel.name}
-                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${
-                        modeIsAuto ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'
-                      }`}>
+                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${modeIsAuto ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'
+                        }`}>
                         {modeIsAuto ? 'AUTO' : 'MANUAL'}
                       </span>
                     </div>
@@ -236,11 +230,10 @@ export function ChatView() {
                     <button
                       key={agent.id}
                       onClick={() => openAgentChat(agent)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                        isAgActive
-                          ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                          : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
-                      }`}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isAgActive
+                        ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                        : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                        }`}
                     >
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 text-xs font-bold">
@@ -274,11 +267,10 @@ export function ChatView() {
                 <button
                   key={agent.id}
                   onClick={() => openAgentChat(agent)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    isAgActive
-                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                      : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isAgActive
+                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                    : 'text-gray-400 hover:bg-white/5 border border-transparent hover:text-gray-200'
+                    }`}
                 >
                   <div className="relative flex-shrink-0">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
@@ -359,11 +351,10 @@ export function ChatView() {
                       activeChannel.id,
                       activeChannel.orchestration_mode === 'autonomous' ? 'manual' : 'autonomous'
                     )}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                      activeChannel.orchestration_mode === 'autonomous'
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
-                        : 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
-                    }`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${activeChannel.orchestration_mode === 'autonomous'
+                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                      : 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
+                      }`}
                     title={activeChannel.orchestration_mode === 'autonomous'
                       ? 'Autonomous: System Agent auto-orchestrates when no @mentions'
                       : 'Manual: Only responds to @mentions or System Agent directly'}
@@ -400,14 +391,12 @@ export function ChatView() {
                 {orchestrationPlan.steps && orchestrationPlan.steps.length > 0 && (
                   <div className="mt-2 space-y-1">
                     {orchestrationPlan.steps.map((step, i) => (
-                      <div key={i} className={`flex items-center gap-2 text-[11px] px-2 py-1 rounded-lg ${
-                        currentChainAgent === step.agent
-                          ? 'bg-indigo-500/20 text-indigo-200'
-                          : 'text-gray-500'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                          currentChainAgent === step.agent ? 'bg-indigo-400 animate-pulse' : 'bg-gray-600'
-                        }`} />
+                      <div key={i} className={`flex items-center gap-2 text-[11px] px-2 py-1 rounded-lg ${currentChainAgent === step.agent
+                        ? 'bg-indigo-500/20 text-indigo-200'
+                        : 'text-gray-500'
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${currentChainAgent === step.agent ? 'bg-indigo-400 animate-pulse' : 'bg-gray-600'
+                          }`} />
                         <span className="font-medium">{step.agent}</span>
                         <span className="text-gray-600">-</span>
                         <span className="truncate">{step.task}</span>
@@ -445,7 +434,7 @@ export function ChatView() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto py-2">
-              <div className="max-w-3xl mx-auto">
+              <div className="w-full px-4 md:px-8">
                 {messages.length === 0 && !isStreaming && (
                   <div className="flex flex-col items-center justify-center py-20 text-gray-500">
                     <Bot className="w-10 h-10 text-gray-600 mb-3" />
@@ -463,6 +452,7 @@ export function ChatView() {
                 {isStreaming && (
                   <StreamingMessage content={streamingContent} toolCalls={streamingToolCalls} agentName={streamingAgentName} />
                 )}
+                <InlineHITLApproval />
                 <div ref={bottomRef} />
               </div>
             </div>
@@ -470,6 +460,7 @@ export function ChatView() {
             <MessageInput
               onSend={(content) => sendMessage(content, selectedModel)}
               disabled={isStreaming}
+              conversationId={activeConversationId || undefined}
               agents={activeConv?.is_group || activeConv?.channel_id
                 ? channelMentionAgents.length > 0
                   ? channelMentionAgents
@@ -531,11 +522,10 @@ export function ChatView() {
                   <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Orchestration</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-[#0e0e1c] rounded-xl border border-[#1c1c30]">
-                  <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
-                    activeChannel.orchestration_mode === 'autonomous'
-                      ? 'bg-emerald-500/10 text-emerald-400'
-                      : 'bg-amber-500/10 text-amber-400'
-                  }`}>mode</span>
+                  <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${activeChannel.orchestration_mode === 'autonomous'
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : 'bg-amber-500/10 text-amber-400'
+                    }`}>mode</span>
                   <span className="text-[11px] text-gray-500">{activeChannel.orchestration_mode}</span>
                 </div>
               </div>

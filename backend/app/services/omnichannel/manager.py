@@ -11,6 +11,7 @@ from app.services.omnichannel.telegram_adapter import TelegramAdapter
 from app.services.omnichannel.discord_adapter import DiscordAdapter
 from app.services.omnichannel.slack_adapter import SlackAdapter
 from app.services.omnichannel.whatsapp_adapter import WhatsAppAdapter
+from app.services.omnichannel.whatsapp_web_adapter import WhatsAppWebAdapter
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ ADAPTER_MAP: dict[str, type[BaseChannelAdapter]] = {
     "discord": DiscordAdapter,
     "slack": SlackAdapter,
     "whatsapp": WhatsAppAdapter,
+    "whatsapp_web": WhatsAppWebAdapter,
 }
 
 

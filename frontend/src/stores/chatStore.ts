@@ -13,7 +13,7 @@ interface ChatState {
   // UI state
   isStreaming: boolean;
   streamingContent: string;
-  streamingToolCalls: { name: string; args?: Record<string, unknown>; result?: string }[];
+  streamingToolCalls: { id?: string; name: string; args?: Record<string, unknown>; result?: string }[];
   streamingAgentName: string | null;
   isConnected: boolean;
   error: string | null;
@@ -210,8 +210,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 content: state.streamingContent,
                 agent_name: state.streamingAgentName,
               };
+
+              const toolMessages: Message[] = state.streamingToolCalls.map(tc => ({
+                id: tc.id || (Date.now() + Math.floor(Math.random() * 1000000)),
+                role: 'tool',
+                content: `${tc.name}\n${JSON.stringify(tc.args || {}, null, 2)}\n\nResult:\n${tc.result || 'No result'}`,
+                agent_name: state.streamingAgentName,
+              }));
+
               return {
-                messages: [...state.messages, agentMsg],
+                messages: [...state.messages, ...toolMessages, agentMsg],
                 streamingContent: '',
                 streamingToolCalls: [],
                 streamingAgentName: null,
@@ -223,18 +231,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
             set((state) => ({
               streamingToolCalls: [
                 ...state.streamingToolCalls,
-                { name: event.tool_name || '', args: event.tool_args },
+                { id: event.tool_call_id, name: event.tool_name || '', args: event.tool_args },
               ],
             }));
             break;
 
           case 'tool_result':
             set((state) => {
-              const calls = [...state.streamingToolCalls];
-              if (calls.length > 0) {
-                calls[calls.length - 1].result = event.tool_result;
-              }
-              return { streamingToolCalls: calls };
+              const updatedToolCalls = state.streamingToolCalls.map(tc =>
+                (tc.id && (tc.id === event.tool_call_id)) || (!tc.id && !event.tool_call_id)
+                  ? { ...tc, result: event.tool_result }
+                  : tc
+              );
+              return { streamingToolCalls: updatedToolCalls };
             });
             break;
 

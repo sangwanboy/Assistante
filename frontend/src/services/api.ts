@@ -107,6 +107,12 @@ export const api = {
     request<import('../types/workflow').WorkflowGraph>(`/workflows/${id}`),
   saveWorkflowGraph: (id: string, graph: { nodes: import('../types/workflow').Node[], edges: import('../types/workflow').Edge[] }) =>
     request<import('../types/workflow').WorkflowGraph>(`/workflows/${id}/graph`, { method: 'POST', body: JSON.stringify(graph) }),
+  executeWorkflow: (id: string, payload: Record<string, unknown> = {}) =>
+    request<{ status: string; run_id: string; final_payload?: Record<string, unknown> }>(`/workflows/${id}/execute`, { method: 'POST', body: JSON.stringify(payload) }),
+  getWorkflowRuns: (id: string) =>
+    request<import('../types/workflow').WorkflowRun[]>(`/workflows/${id}/runs`),
+  getWorkflowRunDetail: (runId: string) =>
+    request<import('../types/workflow').WorkflowRunDetail>(`/workflows/runs/${runId}`),
 
   // Custom Tools
   getCustomTools: () => request<import('../types').CustomTool[]>('/custom-tools'),

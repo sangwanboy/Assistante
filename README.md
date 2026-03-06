@@ -9,7 +9,7 @@ Assitance is a multi-purpose AI assistant platform offering flexible support for
 - **Agent System**: Create and manage specialized AI agents with distinct personalities (Soul/Mind/Memory), instructions, and enabled tools.
 - **Tool Sandbox**: Agents have access to built-in tools like Web Search, File Management, Python Code Execution, Command Execution, and Date/Time utilities.
 - **Knowledge Base (RAG)**: Upload documents (PDF, TXT, MD) which are automatically chunked, embedded, and stored in ChromaDB for AI reference.
-- **Workflow Engine**: A node-based visual workflow editor (ReactFlow) supporting triggers (webhooks, etc.) and AI actions (summarize, email draft, notify).
+- **Workflow Engine**: A robust DAG-based visual workflow editor (ReactFlow) supporting 20+ dynamic node types (Agent Calls, Logic Branching, HTTP Requests). Includes real-time execution observability via WebSockets and agent-integrated workflow actions (agents can natively generate and execute workflows).
 - **Modern UI**: A responsive, dark-themed React frontend featuring real-time streaming, interactive agents dashboard, and glassmorphism styling.
 
 ### Multi-Agent Orchestration
@@ -30,7 +30,8 @@ Assitance is a multi-purpose AI assistant platform offering flexible support for
 - **Recovery Protocol**: Automatic task requeue on agent failure, escalation after 3 consecutive failures, failure count reset on success.
 
 ### Safety & Intelligence
-- **Human-in-the-Loop (HITL)**: Sensitive tool executions (code, commands) pause and wait for user approval via inline chat UI.
+- **Human-in-the-Loop (HITL)**: Sensitive tool executions (code, commands) pause and wait for user approval via a contextual inline chat UI widget.
+- **Execution Observability**: Transient loading states ("Waiting for tool...") and persistent colored log cards render directly within the chat for all autonomous and user-approved tool executions.
 - **Token Economy & Cost Tracking**: Real-time token usage parsing and cost calculation per agent, streamed to the UI.
 - **Context Window Pruning**: Automatic summarization of old conversation history to prevent context overflow.
 - **Self-Correction**: Tool errors are fed back to agents for automatic retry and self-correction.

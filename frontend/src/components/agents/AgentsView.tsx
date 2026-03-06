@@ -345,26 +345,13 @@ export function AgentsView() {
                     <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
                       {/* Basic info */}
                       <div className="px-6 py-6 space-y-5 border-b border-[#1a1a2e]">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2.5">
-                            <label className="text-xs font-semibold text-gray-400">Name</label>
-                            <input
-                              required type="text" value={formData.name}
-                              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                              className={inputClass} placeholder="e.g. Code Helper"
-                            />
-                          </div>
-                          <div className="space-y-2.5">
-                            <label className="text-xs font-semibold text-gray-400">Model</label>
-                            <select
-                              required value={formData.model}
-                              onChange={(e) => handleModelChange(e.target.value)}
-                              className={`${inputClass} appearance-none cursor-pointer`}
-                            >
-                              <option value="" disabled>Select Model</option>
-                              {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                            </select>
-                          </div>
+                        <div className="space-y-2.5">
+                          <label className="text-xs font-semibold text-gray-400">Name</label>
+                          <input
+                            required type="text" value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            className={inputClass} placeholder="e.g. Code Helper"
+                          />
                         </div>
                         <div className="space-y-2.5">
                           <label className="text-xs font-semibold text-gray-400">Description</label>
@@ -373,6 +360,35 @@ export function AgentsView() {
                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                             className={inputClass} placeholder="What does this agent do?"
                           />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2.5">
+                            <label className="text-xs font-semibold text-gray-400">Provider</label>
+                            <select
+                              required value={formData.provider}
+                              onChange={(e) => setFormData({ ...formData, provider: e.target.value, model: '' })}
+                              className={`${inputClass} appearance-none cursor-pointer`}
+                            >
+                              <option value="" disabled>Select Provider</option>
+                              {Array.from(new Set(models.map(m => m.provider))).map(p => (
+                                <option key={p} value={p}>{p}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-2.5">
+                            <label className="text-xs font-semibold text-gray-400">Model</label>
+                            <select
+                              required value={formData.model}
+                              onChange={(e) => handleModelChange(e.target.value)}
+                              className={`${inputClass} appearance-none cursor-pointer disabled:opacity-50`}
+                              disabled={!formData.provider}
+                            >
+                              <option value="" disabled>Select Model</option>
+                              {models.filter(m => m.provider === formData.provider).map(m => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       </div>
 

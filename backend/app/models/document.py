@@ -10,4 +10,5 @@ class Document(Base):
     file_type = Column(String, nullable=False)
     size = Column(Integer, nullable=False)
     content_hash = Column(String, index=True, nullable=False)
+    conversation_id = Column(String, index=True, nullable=True) # Optional link to a specific chat
     created_at = Column(DateTime(timezone=True), server_default=func.now())

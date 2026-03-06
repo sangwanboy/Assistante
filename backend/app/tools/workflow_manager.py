@@ -3,7 +3,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.tools.base import BaseTool
-from app.db.engine import async_session
+
 from app.models.workflow import Workflow, Node, Edge
 import uuid
 
@@ -16,12 +16,13 @@ class WorkflowManagerTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Creates, lists, deletes, and customizes automation Workflows. "
             "Use this tool to build node-based workflow graphs that agents can execute. "
-            "Actions: 'create' (new workflow), 'list' (all workflows, optionally filtered by agent_id), "
+            "Actions: 'create' (new workflow empty), 'list' (all workflows), "
             "'get' (full graph of a workflow), 'delete' (remove a workflow), "
             "'add_node' (add a trigger or action node), 'remove_node' (remove a node), "
-            "'connect' (add an edge between two nodes)."
+            "'connect' (add an edge between two nodes), "
+            "'execute' (run a workflow by its ID), "
+            "'create_from_json' (create a full workflow with nodes and edges at once)."
         )
 
     def parameters_schema(self) -> dict:
@@ -30,12 +31,12 @@ class WorkflowManagerTool(BaseTool):
             "properties": {
                 "action": {
                     "type": "string",
-                    "description": "What to do: 'create', 'list', 'get', 'delete', 'add_node', 'remove_node', 'connect'",
-                    "enum": ["create", "list", "get", "delete", "add_node", "remove_node", "connect"]
+                    "description": "What to do: 'create', 'list', 'get', 'delete', 'add_node', 'remove_node', 'connect', 'execute', 'create_from_json'",
+                    "enum": ["create", "list", "get", "delete", "add_node", "remove_node", "connect", "execute", "create_from_json"]
                 },
                 "workflow_id": {
                     "type": "string",
-                    "description": "ID of the workflow (required for get, delete, add_node, remove_node, connect)"
+                    "description": "ID of the workflow (required for get, delete, add_node, remove_node, connect, execute)"
                 },
                 "name": {
                     "type": "string",
@@ -52,6 +53,14 @@ class WorkflowManagerTool(BaseTool):
                 "channel_id": {
                     "type": "string",
                     "description": "Optional channel/group ID to assign the workflow to (for create)"
+                },
+                "nodes_json": {
+                    "type": "string",
+                    "description": "JSON string of nodes array for create_from_json. Each node must have type, sub_type, config_json, position_x, position_y, label."
+                },
+                "edges_json": {
+                    "type": "string",
+                    "description": "JSON string of edges array for create_from_json. Each edge must have source_node_id, target_node_id, and optionally source_handle."
                 },
                 "node_type": {
                     "type": "string",
@@ -91,9 +100,10 @@ class WorkflowManagerTool(BaseTool):
         }
 
     async def execute(self, **params: Any) -> str:
+        from app.db.engine import async_session as workflow_session_factory
         action = params.get("action")
 
-        async with async_session() as session:
+        async with workflow_session_factory() as session:
             # ── LIST ──
             if action == "list":
                 stmt = select(Workflow)
@@ -233,5 +243,84 @@ class WorkflowManagerTool(BaseTool):
                 session.add(edge)
                 await session.commit()
                 return f"Edge connected: {source} → {target}"
+
+            # ── EXECUTE ──
+            if action == "execute":
+                wf_id = params.get("workflow_id")
+                if not wf_id:
+                    return "Error: workflow_id is required for 'execute'."
+
+                # We need to get the engine to execute it.
+                # To avoid circular imports, we import it here.
+                from app.services.workflow_engine import WorkflowEngine
+                from app.providers.registry import provider_registry
+                
+                try:
+                    # Use the existing session from the outer 'async with' block
+                    engine = WorkflowEngine(session=session, provider_registry=provider_registry)
+                    result = await engine.execute_workflow(wf_id, {"trigger": "agent_call"})
+                    return json.dumps({
+                        "status": result.status,
+                        "run_id": str(result.run_id) if result.run_id else None,
+                        "payload": result.payload
+                    }, indent=2)
+                except Exception as e:
+                    return f"Error executing workflow: {str(e)}"
+
+            # ── CREATE FROM JSON ──
+            if action == "create_from_json":
+                try:
+                    name = params.get("name", "Generated Workflow")
+                    desc = params.get("description", "")
+                    agent_id = params.get("agent_id")
+                    
+                    nodes_data = json.loads(params.get("nodes_json", "[]"))
+                    edges_data = json.loads(params.get("edges_json", "[]"))
+                    
+                    wf = Workflow(
+                        name=name,
+                        description=desc,
+                        agent_id=agent_id
+                    )
+                    session.add(wf)
+                    await session.commit()
+                    await session.refresh(wf)
+                    
+                    # Create mapping to link temp IDs from JSON to real UUIDs
+                    id_map = {}
+                    
+                    for nd in nodes_data:
+                        temp_id = nd.get("id") or str(uuid.uuid4())[:8]
+                        real_id = str(uuid.uuid4())[:8]
+                        id_map[temp_id] = real_id
+                        
+                        node = Node(
+                            id=real_id,
+                            workflow_id=wf.id,
+                            type=nd.get("type", "action"),
+                            sub_type=nd.get("sub_type", "llm"),
+                            label=nd.get("label"),
+                            config_json=nd.get("config_json", "{}"),
+                            position_x=nd.get("position_x", "250"),
+                            position_y=nd.get("position_y", "200")
+                        )
+                        session.add(node)
+                    
+                    for ed in edges_data:
+                        source = id_map.get(ed.get("source_node_id"), ed.get("source_node_id"))
+                        target = id_map.get(ed.get("target_node_id"), ed.get("target_node_id"))
+                        edge = Edge(
+                            id=f"e-{source}-{target}-{str(uuid.uuid4())[:4]}",
+                            workflow_id=wf.id,
+                            source_node_id=source,
+                            target_node_id=target,
+                            source_handle=ed.get("source_handle")
+                        )
+                        session.add(edge)
+                        
+                    await session.commit()
+                    return f"Workflow '{wf.name}' created successfully with {len(nodes_data)} nodes and {len(edges_data)} edges. ID: {wf.id}"
+                except Exception as e:
+                    return f"Error creating workflow from JSON: {str(e)}"
 
         return "Error: Unknown action."

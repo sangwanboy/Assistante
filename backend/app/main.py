@@ -140,6 +140,25 @@ async def lifespan(app: FastAPI):
     await _setup_omnichannel_handler(app.state.tool_registry, app.state.provider_registry)
     await _load_active_integrations()
 
+    # Wire registries into workflow execution engine
+    from app.api.workflows import set_registries as set_workflow_registries
+    set_workflow_registries(app.state.provider_registry, app.state.tool_registry)
+
+    # Initialize all active agents to 'idle' status so they don't appear OFFLINE
+    from app.services.agent_status import AgentStatusManager
+    status_mgr = AgentStatusManager()
+    async with async_session() as session:
+        await status_mgr.initialize_agents(session)
+
+    # Scaffold file-based brain directories for all agents
+    from app.services.brain_service import AgentBrainService
+    from app.models.agent import Agent
+    from sqlalchemy import select
+    async with async_session() as session:
+        result = await session.execute(select(Agent))
+        agents = result.scalars().all()
+        AgentBrainService.scaffold_all_agents(agents)
+
     yield
 
     # Shutdown
@@ -164,6 +183,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Workflow WebSocket ---
+@app.websocket("/api-ws/workflows")
+async def websocket_workflows(websocket: WebSocket, workflow_id: str = None):
+    from app.services.workflow_status import manager as workflow_ws_manager
+    await workflow_ws_manager.connect(websocket, workflow_id)
+    try:
+        while True:
+            # Keep connection alive; clients primarily listen
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        workflow_ws_manager.disconnect(websocket, workflow_id)
 
 app.include_router(api_router, prefix="/api")
 

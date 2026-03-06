@@ -21,10 +21,11 @@ async def list_documents(service: DocumentService = Depends(get_doc_service)):
 @router.post("", response_model=DocumentOut)
 async def upload_document(
     file: UploadFile = File(...),
+    conversation_id: str | None = None,
     service: DocumentService = Depends(get_doc_service)
 ):
     try:
-        doc = await service.upload_document(file, UPLOAD_DIR)
+        doc = await service.upload_document(file, UPLOAD_DIR, conversation_id=conversation_id)
         return doc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

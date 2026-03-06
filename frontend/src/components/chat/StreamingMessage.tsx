@@ -62,6 +62,11 @@ export function StreamingMessage({ content, toolCalls, agentName }: Props) {
               <MarkdownRenderer content={content} />
               <span className="inline-block w-1.5 h-4 bg-indigo-500 animate-pulse ml-0.5 align-middle rounded-sm" />
             </>
+          ) : toolCalls.length > 0 && !toolCalls[toolCalls.length - 1].result ? (
+            <div className="flex items-center gap-2 mt-1 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full w-fit">
+              <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+              <span className="text-[11px] font-medium text-indigo-300">Waiting for {toolCalls[toolCalls.length - 1].name}...</span>
+            </div>
           ) : (
             !toolCalls.length && (
               <div className="flex items-center gap-1.5 mt-1">

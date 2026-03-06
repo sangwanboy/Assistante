@@ -82,7 +82,7 @@ class DocumentService:
             start += chunk_size - overlap
         return chunks
 
-    async def upload_document(self, file: UploadFile, upload_dir: str) -> Document:
+    async def upload_document(self, file: UploadFile, upload_dir: str, conversation_id: Optional[str] = None) -> Document:
         content = await file.read()
         content_hash = hashlib.sha256(content).hexdigest()
         
@@ -109,6 +109,7 @@ class DocumentService:
             file_type=file.content_type or "application/octet-stream",
             size=len(content),
             content_hash=content_hash,
+            conversation_id=conversation_id,
         )
         self.session.add(doc)
         await self.session.commit()
@@ -120,7 +121,7 @@ class DocumentService:
             chunks = self._chunk_text(text)
             if chunks:
                 ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
-                metadatas = [{"doc_id": doc_id, "filename": file.filename, "chunk_index": i} for i in range(len(chunks))]
+                metadatas = [{"doc_id": doc_id, "filename": file.filename, "chunk_index": i, "conversation_id": conversation_id or ""} for i in range(len(chunks))]
                 
                 # Add to ChromaDB
                 self.collection.add(
@@ -131,12 +132,17 @@ class DocumentService:
         
         return doc
 
-    def search_documents(self, query: str, n_results: int = 3) -> List[Dict[str, Any]]:
+    def search_documents(self, query: str, n_results: int = 3, conversation_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Search the vector database for relevant chunks."""
         try:
+            where_filter = None
+            if conversation_id:
+                where_filter = {"conversation_id": conversation_id}
+
             results = self.collection.query(
                 query_texts=[query],
-                n_results=n_results
+                n_results=n_results,
+                where=where_filter
             )
             
             structured_results = []

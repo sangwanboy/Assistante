@@ -59,6 +59,7 @@ class ToolRegistry:
         from app.tools.browser_tool import BrowserTool
         from app.tools.docker_executor import DockerCodeExecutorTool
         from app.tools.agent_messenger import AgentMessengerTool
+        from app.tools.memory_tool import SaveMemoryTool, RecallMemoriesTool, WriteDailyLogTool
 
         for tool in [
             WebSearchTool(), FileManagerTool(), CodeExecutorTool(), CommandExecutorTool(),
@@ -74,6 +75,9 @@ class ToolRegistry:
             BrowserTool(),
             DockerCodeExecutorTool(),
             AgentMessengerTool(session_factory=session_factory),
+            SaveMemoryTool(),
+            RecallMemoriesTool(),
+            WriteDailyLogTool(),
         ]:
             self.register(tool)
             self._builtin_names.add(tool.name)

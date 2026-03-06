@@ -10,43 +10,46 @@ interface AgentControlStore {
     pendingApprovals: PendingApproval[];
     alwaysAllowedTools: string[];
     isConnected: boolean;
+    _ws: WebSocket | null;
+    _reconnectTimeout: ReturnType<typeof setTimeout> | null;
+    _intentionalClose: boolean;
     connect: () => void;
     disconnect: () => void;
     resolveApproval: (taskId: string, action: 'APPROVE' | 'DENY' | 'ALWAYS_ALLOW', toolName?: string) => void;
 }
 
-let ws: WebSocket | null = null;
-let reconnectTimeout: ReturnType<typeof setTimeout>;
-let intentionalClose = false;
-
 export const useAgentControlStore = create<AgentControlStore>((set, get) => ({
     pendingApprovals: [],
     alwaysAllowedTools: JSON.parse(localStorage.getItem('alwaysAllowedTools') || '[]'),
     isConnected: false,
+    _ws: null,
+    _reconnectTimeout: null,
+    _intentionalClose: false,
 
     connect: () => {
-        if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        const state = get();
+        if (state._ws && (state._ws.readyState === WebSocket.CONNECTING || state._ws.readyState === WebSocket.OPEN)) {
             return;
         }
 
-        intentionalClose = false;
+        set({ _intentionalClose: false });
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
         const backendPort = '8321';
         const wsUrl = `${protocol}//${host}:${backendPort}/api-ws/agents/control`;
 
-        ws = new WebSocket(wsUrl);
+        const newWs = new WebSocket(wsUrl);
+        set({ _ws: newWs });
 
-        ws.onopen = () => {
+        newWs.onopen = () => {
             console.log('[AgentControl WS] Connected!');
             set({ isConnected: true });
-            clearTimeout(reconnectTimeout);
+            const currentTimeout = get()._reconnectTimeout;
+            if (currentTimeout) clearTimeout(currentTimeout);
         };
 
-        ws.onmessage = (event) => {
+        newWs.onmessage = (event) => {
             console.log('[AgentControl WS] Message received', event.data);
-            // Use the socket that received the message (not the module-level ws
-            // which may be null due to React Strict Mode double-mount cleanup)
             const sourceSocket = event.target as WebSocket;
             try {
                 const data = JSON.parse(event.data);
@@ -77,32 +80,39 @@ export const useAgentControlStore = create<AgentControlStore>((set, get) => ({
             }
         };
 
-        ws.onclose = (event) => {
-            console.log(`[AgentControl WS] Closed (code=${event.code}, reason=${event.reason}, intentional=${intentionalClose})`);
-            set({ isConnected: false });
-            ws = null;
-            if (!intentionalClose) {
-                clearTimeout(reconnectTimeout);
-                reconnectTimeout = setTimeout(() => {
+        newWs.onclose = (event) => {
+            const intentional = get()._intentionalClose;
+            console.log(`[AgentControl WS] Closed (code=${event.code}, reason=${event.reason}, intentional=${intentional})`);
+            set({ isConnected: false, _ws: null });
+            
+            if (!intentional) {
+                const currentTimeout = get()._reconnectTimeout;
+                if (currentTimeout) clearTimeout(currentTimeout);
+                
+                const timeoutId = setTimeout(() => {
                     console.log('[AgentControl WS] Auto-reconnecting...');
                     get().connect();
                 }, 2000);
+                set({ _reconnectTimeout: timeoutId });
             }
         };
     },
 
     disconnect: () => {
-        intentionalClose = true;
-        clearTimeout(reconnectTimeout);
-        if (ws) {
-            ws.close();
-            ws = null;
+        set({ _intentionalClose: true });
+        const currentTimeout = get()._reconnectTimeout;
+        if (currentTimeout) clearTimeout(currentTimeout);
+        
+        const currentWs = get()._ws;
+        if (currentWs) {
+            currentWs.close();
         }
-        set({ isConnected: false, pendingApprovals: [] });
+        set({ _ws: null, isConnected: false, pendingApprovals: [] });
     },
 
     resolveApproval: (taskId: string, action: 'APPROVE' | 'DENY' | 'ALWAYS_ALLOW', toolName?: string) => {
-        console.log(`[AgentControl WS] Resolving approval for ${taskId} with ${action}. ReadyState: ${ws?.readyState}`);
+        const currentWs = get()._ws;
+        console.log(`[AgentControl WS] Resolving approval for ${taskId} with ${action}. ReadyState: ${currentWs?.readyState}`);
 
         if (action === 'ALWAYS_ALLOW' && toolName) {
             set((state) => {
@@ -114,11 +124,11 @@ export const useAgentControlStore = create<AgentControlStore>((set, get) => ({
 
         const backendAction = action === 'ALWAYS_ALLOW' ? 'APPROVE' : action;
 
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ action: backendAction, task_id: taskId }));
+        if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+            currentWs.send(JSON.stringify({ action: backendAction, task_id: taskId }));
         } else {
-            console.warn('[AgentControl WS] Cannot send approval, websocket is not OPEN', ws?.readyState);
-            alert("Connection lost. The modal will close to let you continue, but the agent will remain paused on the backend until the server restarts.");
+            console.warn('[AgentControl WS] Cannot send approval, websocket is not OPEN', currentWs?.readyState);
+            alert("Connection lost. The inline UI will close to let you continue, but the agent will remain paused on the backend until the server restarts.");
         }
 
         // Remove from local state always so the UI isn't locked permanently

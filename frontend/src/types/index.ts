@@ -1,5 +1,5 @@
 export interface Message {
-  id?: number;
+  id?: number | string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   tool_calls_json?: string | null;
@@ -49,9 +49,10 @@ export interface ToolInfo {
 
 export interface StreamEvent {
   type: 'chunk' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'agent_turn_start' | 'agent_turn_end'
-    | 'chain_start' | 'chain_update' | 'chain_complete' | 'orchestration_plan' | 'task_progress';
+  | 'chain_start' | 'chain_update' | 'chain_complete' | 'orchestration_plan' | 'task_progress';
   delta?: string;
   tool_name?: string;
+  tool_call_id?: string;
   tool_args?: Record<string, unknown>;
   tool_result?: string;
   message_id?: number;
@@ -147,14 +148,14 @@ export interface Skill {
 export interface Integration {
   id: string;
   name: string;
-  platform: 'telegram' | 'discord' | 'slack' | 'whatsapp';
+  platform: 'telegram' | 'discord' | 'slack' | 'whatsapp' | 'whatsapp_web';
   agent_id: string | null;
   is_active: boolean;
 }
 
 export interface IntegrationCreate {
   name: string;
-  platform: 'telegram' | 'discord' | 'slack' | 'whatsapp';
+  platform: 'telegram' | 'discord' | 'slack' | 'whatsapp' | 'whatsapp_web';
   config: Record<string, string>;
   agent_id?: string | null;
   is_active?: boolean;

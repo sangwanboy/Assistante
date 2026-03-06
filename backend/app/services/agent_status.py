@@ -59,6 +59,19 @@ class AgentStatusManager:
         except Exception:
             pass  # Redis not available, in-memory is sufficient
 
+    async def initialize_agents(self, session):
+        """Set all active agents to idle on startup so they don't appear OFFLINE."""
+        from sqlalchemy import select
+        from app.models.agent import Agent
+        result = await session.execute(
+            select(Agent).where(Agent.is_active == True)
+        )
+        agents = result.scalars().all()
+        for agent in agents:
+            if agent.id not in self.statuses:
+                self.statuses[agent.id] = {"state": AgentState.IDLE, "task": None}
+        logger.info("Initialized %d active agents to idle status", len(agents))
+
     def get_all_statuses(self) -> Dict[str, Dict[str, Any]]:
         return self.statuses
 

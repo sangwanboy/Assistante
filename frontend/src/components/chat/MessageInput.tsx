@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { SendHorizonal, Mic, MicOff, Loader2, ShieldAlert, Check, X, ShieldCheck } from 'lucide-react';
+import { SendHorizonal, Mic, MicOff, Loader2, ShieldAlert, Check, X, ShieldCheck, Paperclip } from 'lucide-react';
 import { audioApi } from '../../services/audio';
 import { useAgentControlStore } from '../../stores/agentControlStore';
 import { useAgentStatusStore } from '../../stores/agentStatusStore';
+import axios from 'axios';
 
 interface MentionAgent {
   id: string;
@@ -14,12 +15,14 @@ interface Props {
   onSend: (message: string) => void;
   disabled?: boolean;
   agents?: MentionAgent[];
+  conversationId?: string;
 }
 
-export function MessageInput({ onSend, disabled, agents = [] }: Props) {
+export function MessageInput({ onSend, disabled, agents = [], conversationId }: Props) {
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   // @mention state
   const [showMentionPicker, setShowMentionPicker] = useState(false);
@@ -32,6 +35,7 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
   const currentApproval = pendingApprovals.length > 0 ? pendingApprovals[0] : null;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -58,6 +62,41 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
     setShowMentionPicker(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+    }
+  };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      let url = '/api/knowledge';
+      if (conversationId) {
+        url += `?conversation_id=${conversationId}`;
+      }
+
+      await axios.post(url, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      alert(`File "${file.name}" uploaded successfully! The agent can now see its content.`);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      alert('Failed to upload file. Please try again.');
+    } finally {
+      setIsUploading(false);
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -170,7 +209,7 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
   if (currentApproval) {
     return (
       <div className="border-t border-[#1c1c30] bg-[#0a0a14] px-4 py-3">
-        <div className="max-w-4xl mx-auto">
+        <div className="w-full px-2 md:px-6">
           <div className="bg-[#12121f] border border-amber-500/30 rounded-2xl p-4 shadow-[0_0_15px_rgba(245,158,11,0.05)]">
             <div className="flex items-center gap-3 mb-3 text-amber-500">
               <ShieldAlert className="w-5 h-5 animate-pulse" />
@@ -217,7 +256,7 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
 
   return (
     <div className="border-t border-[#1c1c30] bg-[#0a0a14] px-4 py-3">
-      <div className="max-w-4xl mx-auto flex items-end gap-2.5">
+      <div className="w-full px-2 md:px-6 flex items-end gap-2.5">
         <div className="flex-1 relative">
           {/* @mention dropdown */}
           {showMentionPicker && mentionCandidates.length > 0 && (
@@ -234,11 +273,10 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
                   <button
                     key={c.id}
                     onMouseDown={e => { e.preventDefault(); selectMention(c); }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                      idx === mentionIndex
-                        ? 'bg-indigo-600/30 text-indigo-200'
-                        : 'hover:bg-white/5 text-gray-300'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${idx === mentionIndex
+                      ? 'bg-indigo-600/30 text-indigo-200'
+                      : 'hover:bg-white/5 text-gray-300'
+                      }`}
                   >
                     <div className="relative flex-shrink-0">
                       <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[11px] font-bold text-white">
@@ -250,13 +288,12 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
                       <div className="text-sm font-medium">@{c.name}</div>
                       {c.description && <div className="text-[11px] text-gray-500 truncate">{c.description}</div>}
                     </div>
-                    <span className={`text-[9px] font-medium capitalize ${
-                      statusState === 'idle' ? 'text-emerald-500' :
+                    <span className={`text-[9px] font-medium capitalize ${statusState === 'idle' ? 'text-emerald-500' :
                       statusState === 'working' ? 'text-amber-500' :
-                      statusState === 'error' ? 'text-red-500' :
-                      statusState === 'initializing' ? 'text-blue-400' :
-                      'text-gray-600'
-                    }`}>{statusState}</span>
+                        statusState === 'error' ? 'text-red-500' :
+                          statusState === 'initializing' ? 'text-blue-400' :
+                            'text-gray-600'
+                      }`}>{statusState}</span>
                   </button>
                 );
               })}
@@ -274,6 +311,21 @@ export function MessageInput({ onSend, disabled, agents = [] }: Props) {
           />
         </div>
         <div className="flex gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={handleFileClick}
+            disabled={disabled || isUploading}
+            title="Attach File"
+            className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#1c1c30] text-gray-400 hover:text-white hover:bg-[#252538] flex items-center justify-center transition-all disabled:opacity-40"
+          >
+            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </button>
+
           {isTranscribing ? (
             <button disabled className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#1c1c30] text-gray-400 flex items-center justify-center">
               <Loader2 className="w-4 h-4 animate-spin" />

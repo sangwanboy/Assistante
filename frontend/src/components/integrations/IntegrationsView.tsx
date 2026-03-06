@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { Integration, Agent } from '../../types';
+import { QrCode } from 'lucide-react';
 
 const PLATFORM_ICONS: Record<string, string> = {
   telegram: '✈',
   discord: '🎮',
   slack: '💬',
   whatsapp: '📱',
+  whatsapp_web: '📱',
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -14,6 +16,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   discord: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   slack: 'bg-green-500/20 text-green-400 border-green-500/30',
   whatsapp: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  whatsapp_web: 'bg-[#25D366]/20 text-[#25D366] border-[#25D366]/30',
 };
 
 const CONFIG_FIELDS: Record<string, { label: string; key: string; placeholder: string; secret?: boolean }[]> = {
@@ -33,6 +36,7 @@ const CONFIG_FIELDS: Record<string, { label: string; key: string; placeholder: s
     { label: 'Twilio Auth Token', key: 'auth_token', placeholder: 'Your auth token', secret: true },
     { label: 'WhatsApp Number', key: 'from_number', placeholder: '+14155238886' },
   ],
+  whatsapp_web: [],
 };
 
 export function IntegrationsView() {
@@ -41,6 +45,10 @@ export function IntegrationsView() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
+
+  // WhatsApp QR State
+  const [waStatus, setWaStatus] = useState<'idle' | 'initializing' | 'qr_ready' | 'connected' | 'error'>('idle');
+  const [waQr, setWaQr] = useState<string>('');
 
   // New integration form state
   const [form, setForm] = useState({
@@ -53,7 +61,7 @@ export function IntegrationsView() {
 
   useEffect(() => {
     load();
-    api.getAgents().then(setAgents).catch(() => {});
+    api.getAgents().then(setAgents).catch(() => { });
   }, []);
 
   async function load() {
@@ -71,6 +79,8 @@ export function IntegrationsView() {
   }
 
   async function handleCreate() {
+    // If it's WhatsApp Web, only create if connected or if we decide to just save it.
+    // For now, we save it directly, and the backend handles routing.
     try {
       await api.createIntegration({
         name: form.name,
@@ -87,6 +97,48 @@ export function IntegrationsView() {
       showToast(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  // --- WhatsApp Polling ---
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (showAddModal && form.platform === 'whatsapp_web' && form.config.profile) {
+      // Polling function
+      const checkQr = async () => {
+        try {
+          const res = await fetch(`http://localhost:3001/api/whatsapp/qr/${encodeURIComponent(form.config.profile)}`);
+          if (res.ok) {
+            const data = await res.json();
+            setWaStatus(data.status);
+            if (data.status === 'qr_ready') {
+              setWaQr(data.qr);
+            } else if (data.status === 'not_running') {
+              // Ask it to start
+              await fetch('http://localhost:3001/api/whatsapp/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile: form.config.profile })
+              });
+              setWaStatus('initializing');
+            }
+          }
+        } catch (e) {
+          setWaStatus('error');
+        }
+      };
+
+      // Initial check then poll every 3 seconds
+      checkQr();
+      intervalId = setInterval(checkQr, 3000);
+    } else {
+      setWaStatus('idle');
+      setWaQr('');
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [showAddModal, form.platform, form.config.profile]);
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete integration "${name}"?`)) return;
@@ -128,8 +180,8 @@ export function IntegrationsView() {
       </div>
 
       {/* Platform info cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        {(['telegram', 'discord', 'slack', 'whatsapp'] as const).map(p => (
+      <div className="grid grid-cols-5 gap-4 mb-8">
+        {(['telegram', 'discord', 'slack', 'whatsapp', 'whatsapp_web'] as const).map(p => (
           <div key={p} className={`rounded-xl border p-4 ${PLATFORM_COLORS[p]}`}>
             <div className="text-2xl mb-2">{PLATFORM_ICONS[p]}</div>
             <div className="font-semibold capitalize">{p}</div>
@@ -212,22 +264,88 @@ export function IntegrationsView() {
                   <option value="discord">Discord</option>
                   <option value="slack">Slack</option>
                   <option value="whatsapp">WhatsApp (Twilio)</option>
+                  <option value="whatsapp_web">WhatsApp (Web/QR)</option>
                 </select>
               </div>
 
               {/* Dynamic config fields */}
-              {CONFIG_FIELDS[form.platform].map(field => (
-                <div key={field.key}>
-                  <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
-                  <input
-                    type={field.secret ? 'password' : 'text'}
-                    value={form.config[field.key] || ''}
-                    onChange={e => setForm(f => ({ ...f, config: { ...f.config, [field.key]: e.target.value } }))}
-                    placeholder={field.placeholder}
-                    className="w-full bg-[#0a0a1a] border border-[#1e1e3f] rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-500 font-mono"
-                  />
+              {form.platform === 'whatsapp_web' ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-2 block">Profile Selection</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="profile"
+                          value="Crossclaw Personal"
+                          checked={form.config.profile === 'Crossclaw Personal'}
+                          onChange={(e) => setForm(f => ({ ...f, config: { ...f.config, profile: e.target.value } }))}
+                          className="text-violet-500 focus:ring-violet-500 bg-[#0a0a1a] border-[#1e1e3f]"
+                        />
+                        Crossclaw Personal
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="profile"
+                          value="Humane Personal"
+                          checked={form.config.profile === 'Humane Personal'}
+                          onChange={(e) => setForm(f => ({ ...f, config: { ...f.config, profile: e.target.value } }))}
+                          className="text-violet-500 focus:ring-violet-500 bg-[#0a0a1a] border-[#1e1e3f]"
+                        />
+                        Humane Personal
+                      </label>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-[#1e1e3f] rounded-xl bg-[#0a0a1a]/50 min-h-[250px]">
+                    {waStatus === 'error' ? (
+                      <p className="text-sm text-red-500 text-center">Failed to connect to WhatsApp service.<br />Make sure the Node.js microservice is running on port 3001.</p>
+                    ) : waStatus === 'initializing' || (waStatus === 'not_running' && form.config.profile) ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-8 h-8 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-sm text-gray-400">Initializing WhatsApp Client...</p>
+                      </div>
+                    ) : waStatus === 'connected' ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="text-4xl text-emerald-500">✓</div>
+                        <p className="text-sm text-emerald-400 font-medium">WhatsApp Connected!</p>
+                      </div>
+                    ) : waStatus === 'qr_ready' && waQr ? (
+                      <div className="flex flex-col items-center">
+                        <div className="bg-white p-3 rounded-xl mb-4">
+                          {/* We use a simple image for the QR if react-qr-code isn't installed, or we can use the library */}
+                          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(waQr)}`} alt="QR Code" className="w-[180px] h-[180px]" />
+                        </div>
+                        <p className="text-sm text-gray-400 text-center">
+                          <strong className="text-gray-200">Ready to pair</strong><br />
+                          Open WhatsApp → Linked Devices → Link a Device
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center">
+                        <QrCode className="w-20 h-20 text-gray-600 mb-4" strokeWidth={1} />
+                        <p className="text-sm text-gray-500 text-center">
+                          Select a profile above to generate a QR Code.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ))}
+              ) : (
+                CONFIG_FIELDS[form.platform]?.map(field => (
+                  <div key={field.key}>
+                    <label className="text-xs text-gray-400 mb-1 block">{field.label}</label>
+                    <input
+                      type={field.secret ? 'password' : 'text'}
+                      value={form.config[field.key] || ''}
+                      onChange={e => setForm(f => ({ ...f, config: { ...f.config, [field.key]: e.target.value } }))}
+                      placeholder={field.placeholder}
+                      className="w-full bg-[#0a0a1a] border border-[#1e1e3f] rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-500 font-mono"
+                    />
+                  </div>
+                ))
+              )}
 
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Route messages to agent (optional)</label>

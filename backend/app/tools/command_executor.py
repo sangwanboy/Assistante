@@ -2,6 +2,7 @@ import subprocess
 import os
 
 from app.tools.base import BaseTool
+from typing import Optional
 
 class CommandExecutorTool(BaseTool):
     @property
@@ -28,28 +29,35 @@ class CommandExecutorTool(BaseTool):
             "required": ["command"],
         }
 
-    async def execute(self, command: str, cwd: str = None, **kwargs) -> str:
+    async def execute(self, command: str, cwd: Optional[str] = None, **kwargs) -> str:
+        import asyncio
+        import os
+        import subprocess
         try:
-            # Use powershell as the shell
-            result = subprocess.run(
-                ["powershell", "-Command", command],
-                capture_output=True,
-                text=True,
-                timeout=60,
+            # Run powershell non-interactive to prevent hanging on prompts
+            process = await asyncio.create_subprocess_exec(
+                "powershell", "-NonInteractive", "-Command", command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 cwd=cwd or os.getcwd(),
             )
 
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60.0)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.communicate() # wait for it to actually die
+                return "Error: Command execution timed out (60s limit)."
+
             output = ""
-            if result.stdout:
-                output += result.stdout
-            if result.stderr:
-                output += f"\n[stderr]\n{result.stderr}"
-            if result.returncode != 0:
-                output += f"\n[exit code: {result.returncode}]"
+            if stdout:
+                output += stdout.decode('utf-8', errors='replace')
+            if stderr:
+                output += f"\n[stderr]\n{stderr.decode('utf-8', errors='replace')}"
+            if process.returncode != 0:
+                output += f"\n[exit code: {process.returncode}]"
 
             return output.strip() or "(no output)"
 
-        except subprocess.TimeoutExpired:
-            return "Error: Command execution timed out (60s limit)."
         except Exception as e:
             return f"Error: {str(e)}"

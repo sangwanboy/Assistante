@@ -67,7 +67,7 @@ class DockerCodeExecutorTool(BaseTool):
             "required": ["code"],
         }
 
-    async def execute(self, code: str, timeout: int = TIMEOUT_SECONDS) -> str:
+    async def execute(self, code: str, timeout: int = TIMEOUT_SECONDS, **kwargs) -> str:
         if _is_docker_available():
             return await self._run_in_docker(code, timeout)
         else:

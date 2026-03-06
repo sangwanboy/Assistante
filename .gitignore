@@ -12,6 +12,7 @@ venv/
 
 # Database & uploads
 backend/data/assitance.db
+backend/*.db
 backend/data/uploads/*
 !backend/data/uploads/.gitkeep
 
@@ -33,13 +34,20 @@ desktop/out/
 .DS_Store
 Thumbs.db
 
-# Temp files
-tmpclaude-*
-nul
+# WhatsApp Service
+whatsapp-service/node_modules/
+whatsapp-service/.wwebjs_auth/
+whatsapp-service/.wwebjs_cache/
 
-# Log and build output files
+# Logs
+backend/backend_log.txt
 *.log
 ts_errors.txt
 frontend/build_full.txt
 frontend/build_utf8.txt
 frontend/vite.log
+
+# Temp files
+test_upload.txt
+tmpclaude-*
+nul

@@ -60,6 +60,19 @@ async def init_database():
             except Exception:
                 pass
 
+        # Migrate: add new workflow engine columns
+        workflow_engine_migrations = [
+            ("workflows", "version", "VARCHAR DEFAULT '1'"),
+            ("nodes", "label", "VARCHAR"),
+            ("edges", "source_handle", "VARCHAR"),
+            ("edges", "label", "VARCHAR"),
+        ]
+        for table, col_name, col_type in workflow_engine_migrations:
+            try:
+                await conn.execute(sqlalchemy.text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
+            except Exception:
+                pass
+
         # Migrate: add heartbeat & reliability columns to agents
         for col_name, col_type in [("failure_count", "INTEGER DEFAULT 0"), ("last_heartbeat", "DATETIME")]:
             try:

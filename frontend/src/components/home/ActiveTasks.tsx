@@ -17,22 +17,26 @@ export function ActiveTasks({ onAction }: ActiveTasksProps) {
   }, [loadAgents]);
 
   const displayAgents = agents.filter(a => a.is_active);
+  const onlineCount = displayAgents.filter(a => {
+    const s = statuses[a.id];
+    return s && (s.state === 'idle' || s.state === 'working');
+  }).length;
 
   return (
     <div className="bg-[#0e0e1c] rounded-sm border border-[#1c1c30] overflow-hidden"
-    style={{ padding:'8px', margin:'8px' }}
+      style={{ padding: '8px', margin: '8px' }}
     >
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors rounded-sm"
-        style={{ padding:'8px' }}
+        style={{ padding: '8px' }}
       >
         <div className="flex items-center gap-2">
           <h2 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Active Agents</h2>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-            {displayAgents.length} online
+            {onlineCount} online
           </span>
           {isCollapsed
             ? <ChevronDown className="w-3.5 h-3.5 text-gray-600" />

@@ -10,7 +10,7 @@ import type { AppSettings } from '../../types';
 type SettingsTab = 'api_keys' | 'local_models' | 'defaults';
 
 export function SettingsPanel() {
-  const { showSettings, toggleSettings, selectedModel, setSelectedModel } = useSettingsStore();
+  const { showSettings, toggleSettings, selectedModel, setSelectedModel, temperature, setTemperature } = useSettingsStore();
   const { models } = useChatStore();
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -113,11 +113,10 @@ export function SettingsPanel() {
                           onClick={() => setActiveTab(tab.key)}
                           whileHover={{ x: 2 }}
                           whileTap={{ scale: 0.98 }}
-                          className={`w-full flex items-center gap-3 px-4 py-3  text-sm font-semibold transition-all ${
-                            activeTab === tab.key
+                          className={`w-full flex items-center gap-3 px-4 py-3  text-sm font-semibold transition-all ${activeTab === tab.key
                               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
                               : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
-                          }`}
+                            }`}
                           style={{ padding: '5px' }}
                         >
                           {tab.icon}
@@ -236,11 +235,10 @@ export function SettingsPanel() {
                                   onClick={() => setSelectedModel(m.id)}
                                   whileHover={{ scale: 1.01 }}
                                   whileTap={{ scale: 0.99 }}
-                                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition-all text-left ${
-                                    selectedModel === m.id
+                                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition-all text-left ${selectedModel === m.id
                                       ? 'border-indigo-500/50 bg-indigo-500/10 shadow-[0_0_16px_rgba(139,92,246,0.2)]'
                                       : 'border-[#1c1c30] hover:bg-white/5 hover:border-[#2a2a45]'
-                                  }`}
+                                    }`}
                                 >
                                   <span className="text-lg">{getProviderIcon(m.provider)}</span>
                                   <div className="flex-1 min-w-0">
@@ -259,15 +257,47 @@ export function SettingsPanel() {
                         )}
                       </AnimatePresence>
 
+                      {/* Temperature Slider */}
+                      {activeTab === 'defaults' && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-semibold text-white">Temperature</label>
+                            <span className="text-sm font-mono text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-lg">
+                              {temperature.toFixed(1)}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="2"
+                            step="0.1"
+                            value={temperature}
+                            onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                            className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                            style={{
+                              background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${(temperature / 2) * 100}%, #1c1c30 ${(temperature / 2) * 100}%, #1c1c30 100%)`,
+                            }}
+                          />
+                          <div className="flex justify-between text-[10px] text-gray-600">
+                            <span>Precise (0.0)</span>
+                            <span>Balanced (1.0)</span>
+                            <span>Creative (2.0)</span>
+                          </div>
+                        </motion.div>
+                      )}
+
                       {message && (
                         <motion.div
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className={`text-sm font-medium px-4 py-3 rounded-lg border ${
-                            message.startsWith('Error')
+                          className={`text-sm font-medium px-4 py-3 rounded-lg border ${message.startsWith('Error')
                               ? 'bg-red-500/10 text-red-400 border-red-500/20'
                               : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          }`}
+                            }`}
                         >
                           {message}
                         </motion.div>

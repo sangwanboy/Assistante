@@ -6,6 +6,7 @@ class DocumentCreate(BaseModel):
     file_type: str
     size: int
     content_hash: str
+    conversation_id: str | None = None
 
 class DocumentOut(BaseModel):
     id: str
@@ -13,6 +14,7 @@ class DocumentOut(BaseModel):
     file_type: str
     size: int
     content_hash: str
+    conversation_id: str | None = None
     created_at: datetime
 
     class Config:

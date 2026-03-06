@@ -81,6 +81,7 @@ class AgentMessengerTool(BaseTool):
         content: str | None = None,
         group_name: str | None = None,
         agent_ids: list[str] | None = None,
+        **kwargs,
     ) -> str:
         messaging = AgentMessagingService.get_instance()
 

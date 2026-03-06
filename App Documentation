@@ -28,11 +28,11 @@ Agents can autonomously leverage tools to interact with the environment:
 - **Docker Sandboxed Executor**: Run code in isolated Docker containers (no network, RAM/CPU capped).
 - **Tool/Skill Creators**: Agents can write, test, and save new tools/skills for themselves or others to use later.
 - **Agent Messenger**: Send direct/group messages between agents via tool calls.
-- **Workflow Manager**: Create and manage workflows programmatically from within conversations.
+- **Workflow Manager**: Create, manage, and execute workflows programmatically from within conversations. Agents can build entire node graphs directly from JSON payload designs.
 - **Memory Tool**: Persistent agent memory read/write.
 
-### 4. Human-In-The-Loop (HITL) Safety
-Potentially destructive actions (like running code or CLI commands) trigger a backend `asyncio.Event` lock. The agent's execution is paused, and a WebSocket alert is sent to the frontend. Execution resumes only when the user explicitly clicks "Allow" or "Deny". An "Always Allow" option persists user preferences to localStorage.
+### 4. Human-In-The-Loop (HITL) & Execution Observability
+Potentially destructive actions (like running code or CLI commands) trigger a backend `asyncio.Event` lock. The agent's execution is paused, and a WebSocket alert is sent to the frontend. Execution resumes only when the user explicitly clicks "Allow" or "Deny" via a sleek **inline chat UI** component sliding above the input area. An "Always Allow" option persists user preferences to localStorage. For all tool executions (autonomous or approved), the UI provides rich observability using transient "Waiting for..." loading badges during execution, which perfectly resolve into permanent colored Tool Result log cards embedded inside the chat history.
 
 ### 5. Document Knowledge Base (RAG)
 Users can upload files (PDFs, Markdown, TXT) which are immediately chunked, embedded via `sentence-transformers`, and stored in a local **ChromaDB** vector database. Agents can query this database to answer questions grounded in the user's private data.
@@ -51,7 +51,10 @@ To prevent LLM context limit crashes and runaway costs, a `ContextPruner` monito
 If an agent writes faulty Python code or misuses a tool API, the framework catches the Python Exception/Traceback. Instead of halting, the backend injects the traceback directly back into the LLM's prompt and instructs it to self-correct and try again.
 
 ### 10. Node-Based Workflow Engine
-A visual `ReactFlow` editor allows users to string together automated processes (DAGs). Example: A Webhook Trigger node activates a "Summarize Document" action node, which passes data to an "Email Draft" action node. Workflows can be assigned to specific agents or groups.
+A robust visual `ReactFlow` editor that executes Directed Acyclic Graphs (DAGs). 
+- **Dynamic Node Execution**: Supports branching (Condition/Switch), Loops, Delays, Merging, HTTP Requests, and dynamic Agent assignments.
+- **Agent Integration**: Workflows can auto-trigger in the background when an agent receives a message, or an agent can explicitly execute a workflow as a tool (`WorkflowManagerTool`). Agents can construct templates for users dynamically.
+- **Real-Time Observability**: Node execution statuses stream live to the frontend via WebSockets, allowing users to watch colored node state changes and inspect historical runs via an Execution Dashboard.
 
 ### 11. Multi-Agent Orchestration Engine
 
@@ -111,6 +114,12 @@ The orchestration system provides a unified chat experience where multiple agent
 
 ### 13. Omnichannel Integration
 External platform adapters for Telegram, Discord, Slack, and WhatsApp route incoming messages to assigned agents and send responses back on the originating platform.
+
+#### WhatsApp (Web/QR) Microservice
+- **Node.js Microservice**: A dedicated service in `whatsapp-service/` using `whatsapp-web.js` to manage headless WhatsApp Web sessions.
+- **QR Login**: Generates live QR codes via the frontend `IntegrationsView` for direct pairing of personal/business numbers.
+- **Profile Management**: Supports isolated sessions (e.g., "Crossclaw Personal", "Humane Personal") using isolated Node.js clients and localized authentication storage.
+- **Webhook Bridge**: Forward incoming messages to the Python backend for AI processing and response generation.
 
 ### 14. Proactive Heartbeat Schedules
 Background tasks fire at configurable intervals (15m to 24h), triggering agents to execute predefined tasks autonomously.

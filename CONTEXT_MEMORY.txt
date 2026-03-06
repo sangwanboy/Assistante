@@ -83,6 +83,12 @@ HOW TO RUN:
   - Added agent_id field to Conversation interface in frontend/src/types/index.ts.
   - Chat streaming now uses the agent.name instead of hardcoding "Assistant".
 
+[2026-03-05] Workflow Engine Automation:
+  - Phase 1: Expanded Node System (Agent, HTTP Request, Format, Webhook nodes). Built a ReactFlow editor with dynamic node configurations and styling.
+  - Phase 2: Workflow Runtime & Observability: Implemented DAG execution, branching/conditions, loop/delay nodes. Added WebSockets to stream execution status in real-time. Added Execution Runs panel in frontend.
+  - Phase 3: Agent Integration: Added `WorkflowManagerTool` actions `execute` and `create_from_json` allowing agents to natively invoke or generate templates. Added background auto-triggering on incoming channel messages.
+  - UI Bug Fixes: Fixed the Action Approval ("Always Allow") bug where Vite HMR disconnected the websocket state. Added Tailwind typography modifiers to `MarkdownRenderer` to fix paragraph and list item spacing issues in chat messages.
+
 - app/services/__init__.py -> Empty init
 - app/services/conversation_service.py -> ConversationService: CRUD for conversations + messages
 - app/services/chat_service.py -> CORE: ChatService orchestrator with skill injection into system prompts
@@ -132,30 +138,69 @@ HOW TO RUN:
 - app/models/agent_schedule.py -> AgentSchedule ORM (agent_id, interval_minutes, task_config_json, last_run)
 - app/models/agent_message.py -> AgentMessage ORM + AgentGroupDiscussion ORM (P2P messaging)
 - app/models/task.py -> NEW: Task ORM (id, chain_id, assigned_agent_id, conversation_id, status, prompt, result, progress, checkpoint, timeout_seconds, retry_count, max_retries, timestamps)
+- app/models/task.py -> NEW: Task ORM (id, chain_id, assigned_agent_id, conversation_id, status, prompt, result, progress, checkpoint, timeout_seconds, retry_count, max_retries, timestamps)
 - app/models/chain.py -> NEW: DelegationChain ORM (id, conversation_id, parent_task_id, state, depth, max_depth, agents_involved_json, plan_summary, total_tokens_used, max_token_budget, timestamps)
+
+- app/schemas/__init__.py -> Empty init
+- app/schemas/chat.py -> ChatRequest, ChatResponse, StreamChunkResponse pydantic models
+- app/schemas/conversation.py -> ConversationCreate/Update/Out/DetailOut pydantic models
+- app/schemas/models.py -> ModelInfoOut, ToolInfoOut (with is_builtin flag) pydantic models
+- app/schemas/agent.py -> AgentCreate/Update/Out pydantic models
+- app/schemas/document.py -> DocumentCreate/Out pydantic models
+- app/schemas/workflow.py -> WorkflowCreate/Out, NodeCreate/Out, EdgeCreate/Out, WorkflowGraph models
+- app/schemas/custom_tool.py -> CustomToolCreate/Update/Out, CustomToolTestRequest/Response schemas
+- app/schemas/skill.py -> SkillCreate/Update/Out, SkillImportRequest, SkillExportResponse schemas
 - app/schemas/integration.py -> IntegrationCreate/Update/Out schemas
 - app/schemas/schedule.py -> ScheduleCreate/Update/Out schemas
 - app/schemas/agent_message.py -> message + group schemas
 - app/schemas/task.py -> NEW: TaskOut, ChainOut pydantic response schemas for tasks and delegation chains
+
+- app/services/__init__.py -> Empty init
+- app/services/conversation_service.py -> ConversationService: CRUD for conversations + messages
+- app/services/chat_service.py -> CORE: ChatService orchestrator with skill injection into system prompts
+- app/services/document_service.py -> DocumentService: upload, chunk, embed docs into ChromaDB; search
+- app/services/workflow_service.py -> WorkflowService: CRUD for workflows, nodes, edges; save_graph()
+- app/services/workflow_engine.py -> WorkflowEngine: executes DAG of nodes (trigger -> actions via LLM)
+- app/services/custom_tool_service.py -> CustomToolService: CRUD for custom tools, DynamicTool wrapper, sandbox execution
+- app/services/skill_service.py -> SkillService: CRUD for skills, OpenClaw SKILL.md parse/export, active instructions aggregation
+- app/services/agent_status.py -> AgentStatusManager singleton: in-memory agent status (idle/working/offline), async queue broadcast to WebSocket subscribers
+- app/services/hitl_service.py -> HITLManager: manages asyncio.Event locks and pending tool approvals for sensitive operations
+- app/services/context_pruner.py -> ContextPruner: estimates token usage and summarizes conversation history when limits are reached
 - app/services/heartbeat.py -> HeartbeatService singleton: asyncio 60s tick, interval-based schedule firing
 - app/services/agent_messaging.py -> AgentMessagingService: per-agent asyncio.Queue inboxes, send_direct/send_group
 - app/services/marketplace_service.py -> reads/parses .md skill files from marketplace catalog directory
-- app/services/context_pruner.py -> ContextPruner: estimates token usage, summarizes old context when limits reached
 - app/services/redis_client.py -> NEW: Async Redis client singleton (redis.asyncio), get_instance(), close(), optional fallback if Redis unavailable
 - app/services/mention_parser.py -> NEW: parse_mentions(text) + resolve_mentions(session, mentions, channel_id) with regex @mention extraction and channel membership validation
 - app/services/orchestration.py -> NEW: OrchestrationEngine class with plan_and_execute(), _ask_system_agent(), detect_circular_invocation(), check_depth(). System Agent produces JSON plan, delegates to agents sequentially, synthesizes final response. Logs all chain lifecycle events.
 - app/services/task_queue.py -> NEW: TaskQueue(redis_client) with enqueue(), update_progress(), get_state(), check_task_timeouts(). Timeout strategy per task type.
 - app/services/agent_heartbeat.py -> NEW: Three-layer heartbeat with emit_heartbeat(), update_task_progress(), update_chain_state(), start_monitor(), recovery protocol with failure escalation
+- app/services/omnichannel/ -> BaseChannelAdapter + Telegram/Discord/Slack/WhatsApp adapters + OmnichannelManager (NEW: whatsapp-web.js microservice integration).
+
+- app/tools/__init__.py -> Empty init
+- app/tools/base.py -> BaseTool ABC (name, description, parameters_schema, execute)
+- app/tools/registry.py -> ToolRegistry: manages tools, register_defaults(), unregister(), load_custom_tools(), is_builtin tracking
+- app/tools/web_search.py -> WebSearchTool: uses duckduckgo-search
+- app/tools/file_manager.py -> FileManagerTool: read/write/list files in workspace dir
+- app/tools/code_executor.py -> CodeExecutorTool: runs Python code in subprocess (30s timeout)
+- app/tools/datetime_tool.py -> DateTimeTool: returns current date/time
+- app/tools/knowledge_base_tool.py -> KnowledgeBaseTool: searches ChromaDB vector store for RAG
+- app/tools/tool_creator.py -> ToolCreatorTool: built-in tool that lets agents create/update/list/delete custom tools
+- app/tools/skill_creator.py -> SkillCreatorTool: built-in tool that lets agents create/update/list/delete/import skills
 - app/tools/agent_messenger.py -> AgentMessengerTool: send_direct/send_group/list_groups/create_group/get_inbox
 - app/tools/command_executor.py -> CommandExecutorTool: runs PowerShell/shell commands with HITL approval
 - app/tools/docker_executor.py -> DockerCodeExecutorTool: runs code in Docker container (no network, RAM/CPU capped)
 - app/tools/memory_tool.py -> MemoryTool: persistent agent memory read/write
-- app/services/omnichannel/ -> BaseChannelAdapter + Telegram/Discord/Slack/WhatsApp adapters + OmnichannelManager
-- data/marketplace/ -> 7 pre-built skill .md files (web_researcher, code_reviewer, daily_briefing, etc.)
+- app/tools/workflow_manager.py -> WorkflowManagerTool: agents can natively invoke or generate templates.
+
+--- WhatsApp Service (whatsapp-service/) ---
+- index.js -> Node.js microservice using whatsapp-web.js for headless QR-based login and session management.
+- package.json -> Node.js dependencies (whatsapp-web.js, qrcode-terminal, express, cors, axios, dotenv).
 
 --- Frontend (frontend/) ---
-- vite.config.ts -> Vite config with React, Tailwind, dev proxy to backend
-- index.html -> Entry HTML with Assitance title
+- vite.config.ts -> Vite config with React, Tailwind, dev proxy to backend.
+- src/components/integrations/IntegrationsView.tsx -> Updated with live QR code polling for 'whatsapp_web' platform.
+- src/components/agents/AgentsView.tsx -> Updated with Provider/Model split dropdowns for filtering.
+- src/types/index.ts -> Added 'whatsapp_web' platform type for integrations.
 - src/main.tsx -> React entry point
 - src/App.tsx -> Root component with view routing: Sidebar + HomeView/ChatView/Others + top bar with notifications and user menu
 - src/index.css -> Tailwind import + base styles + scrollbar + code highlighting
@@ -180,7 +225,7 @@ HOW TO RUN:
 - src/components/chat/ChatView.tsx -> Unified chat: sidebar with Announcements/Channels (AUTO/MANUAL badges)/System Agents/DMs; orchestration mode toggle; agent status dots in header; orchestration plan banner; delegation chain graph (ReactFlow); active chain indicator. All P2P code removed.
 - src/components/chat/MessageBubble.tsx -> Single message bubble (user/assistant/tool) with @mention highlighting (indigo styled spans)
 - src/components/chat/MessageInput.tsx -> Text input with send button, Shift+Enter support, Integrated Microphone for STT, @mention autocomplete dropdown with agent status dots (idle/working/offline/initializing/error)
-- src/components/chat/ApprovalModal.tsx -> Glassmorphism modal for Human-in-the-Loop tool approval/denial
+- src/components/chat/InlineHITLApproval.tsx -> Inline contextual component for Human-in-the-Loop tool approval/denial (replaced global modal)
 - src/components/chat/StreamingMessage.tsx -> In-progress streaming message with cursor + tool calls
 - src/components/chat/DelegationChainGraph.tsx -> NEW: ReactFlow-based inline graph showing User -> Agent chain with animated edges, status-colored, compact height (100px)
 - src/components/chat/ChainNode.tsx -> NEW: Custom ReactFlow node component with status dot (color-coded), agent name, optional progress bar
@@ -468,6 +513,17 @@ HOW TO RUN:
        `final_tool_calls.extend(chunk.tool_calls)` in both stream functions.
 
 [2026-03-03] Session 7 — Multi-Agent Orchestration & Heartbeat Architecture (7 Phases):
+
+[2026-03-06] Session 8 — Tool Execution Engine Fix & 18-Tool Audit:
+  - Bug Fix (`TypeError: AgentMessengerTool.execute() got an unexpected keyword argument 'conversation_id'`): 
+    * `chat_service.py:_execute_tool_calls` was passing `conversation_id` globally. Refactored to use `inspect.signature` to dynamically inject `conversation_id`, `_agent_id`, and `_session` only into tools that support them natively or via `**kwargs`.
+  - Tool Registry Completion: Added missing memory tools (`SaveMemoryTool`, `RecallMemoriesTool`, `WriteDailyLogTool`) to `registry.py`, bringing the total built-in tool count to 18.
+  - Comprehensive Audit: Created an automated test suite verifying proper instantiation and execution of all 18 tools. All tools successfully compiled and executed. UI testing confirmed Chat system compatibility.
+  - UI UX Glitch Fixes:
+    * Fixed **Transient Loading State**: Added an animated purple "Waiting for {tool_name}..." skeleton to `StreamingMessage.tsx` during LLM and subprocess execution waits.
+    * Fixed **Tool Result Rendering**: Updated `chatStore.ts` `agent_turn_end` reducer to persist `streamingToolCalls` into the `messages` array so all internal API calls (e.g. `get_datetime`, `command_executor`) render a visual purple log card.
+    * Fixed **ActiveDialogue UI Parity**: Refactored the hardcoded message rendering in `ActiveDialogue.tsx` to natively use `MessageBubble.tsx` and `StreamingMessage.tsx`. Ensures tool results display beautifully on the Home dashboard instead of rendering as raw text strings.
+    * Fixed **HITL Modal Logic**: Updated `chat_service.py` to enforce `sensitive_tools = ["command_executor"]`. Replaced the disruptive global `HITLApprovalModal` with a sleek, contextual `InlineHITLApproval` component that slides into the chat flow right above the input box.
 
   0. INFRASTRUCTURE (Redis + DB Schema + Config):
      Backend:
@@ -1430,6 +1486,56 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
   - Must kill all node processes (`Get-Process node | Stop-Process -Force`) before restarting to
     avoid Vite silently bumping to port 5174 due to stale process holding 5173.
 
+[2026-03-05] Session 8 — Audit Report Bug Fixes (6 fixes):
+
+  1. WorkflowsView "Use Template" buttons non-functional (Bug #2):
+     - Root cause: Template buttons had no onClick handler.
+     - Fix: Added `handleUseTemplate()` function in WorkflowsView.tsx that creates a
+       workflow via api.createWorkflow() using template name/desc, and opens the ReactFlow editor.
+     - Added onClick={()=>handleUseTemplate(tpl)} to both template gallery sections.
+
+  2. Agent Status showing OFFLINE despite agents being responsive (Bugs #3 + #8):
+     - Root cause: AgentStatusManager started with empty statuses dict. Agents only got status
+       when set_status() was called during chat. Frontend defaulted to 'offline' for missing agents.
+     - Fix (backend): Added `initialize_agents(session)` method to AgentStatusManager
+       (agent_status.py) that queries all active agents and sets them to 'idle' on startup.
+     - Fix (backend): Called initialize_agents() during lifespan startup in main.py.
+     - Fix (frontend): Changed ActiveTasks.tsx "X online" counter to count agents whose
+       actual WebSocket status is 'idle' or 'working' (not just all active agents).
+
+  3. Temperature slider missing from Settings Defaults tab (Bug #4):
+     - Root cause: settingsStore.ts had temperature/setTemperature but SettingsPanel.tsx
+       never rendered a UI element for it.
+     - Fix: Added a styled range input (0.0-2.0, step 0.1) with gradient track, value label,
+       and scale labels (Precise/Balanced/Creative) to the Defaults tab in SettingsPanel.tsx.
+
+  4. WebSocket connection warnings flooding console (Bug #5):
+     - Root cause: agentStatusStore.ts used console.log/console.error for every WS event.
+     - Fix: Changed all routine WS logging to console.debug in agentStatusStore.ts.
+       Critical errors still surface. Verbose data payloads removed from log messages.
+
+  5. @mention dropdown not triggering in DM views (Bug #7):
+     - Root cause: ChatView.tsx passed agents=[] to MessageInput in DM view (non-group,
+       non-channel conversations), so mention autocomplete had no candidates.
+     - Fix: Changed DM fallback from [] to agents.map(...) so all agents are available
+       for @mention even in direct message context.
+
+  6. Quick Action buttons (center panel) — Bug #6:
+     - Investigation revealed this works as designed. The quick action sends a message
+       via handleQuickAction, and the empty state grid disappears once the chat starts.
+       No code change required.
+
+  Files Modified:
+    - frontend/src/components/workflows/WorkflowsView.tsx (handleUseTemplate + onClick)
+    - backend/app/services/agent_status.py (initialize_agents method)
+    - backend/app/main.py (startup initialization call)
+    - frontend/src/components/home/ActiveTasks.tsx (online counter fix)
+    - frontend/src/components/settings/SettingsPanel.tsx (temperature slider)
+    - frontend/src/stores/agentStatusStore.ts (WS log noise reduction)
+    - frontend/src/components/chat/ChatView.tsx (@mention agents in DM view)
+
+  Verified: npx tsc --noEmit → 0 errors.
+
 ================================================================================
                                  END
 ================================================================================
@@ -1661,3 +1767,77 @@ async def audio_endpoint(websocket: WebSocket):
 ---
 
 Implementing these will take CrossClaw from a great multi-model router to a highly resilient agentic OS.
+
+[2026-03-05] Session 8 — WorkflowManagerTool Bug Fix + Chat File Upload Feature:
+
+  1. WorkflowManagerTool UnboundLocalError Fix:
+     - Root cause: `async_session` was imported at the module level in `workflow_manager.py`
+       (`from app.db.engine import async_session`). Python's scoping rules caused the name
+       `async_session` inside the `execute()` method to shadow the module-level import when
+       used in an `async with async_session() as session:` block, since `session` is also
+       a local variable. This created an `UnboundLocalError`.
+     - Fix: Moved the import inside the `execute()` method body and aliased it to a unique name:
+       `from app.db.engine import async_session as workflow_session_factory`
+       Then used: `async with workflow_session_factory() as session:`
+     - Verified: Direct Python execution of `WorkflowManagerTool.execute(action='list')`
+       successfully lists all 3 workflows from the database.
+     - File modified: `backend/app/tools/workflow_manager.py`
+
+  2. Chat File Upload Feature (Frontend):
+     - Added a paperclip (Paperclip icon from lucide-react) button to `MessageInput.tsx`
+       for attaching files directly in chat conversations.
+     - Implemented a hidden `<input type="file">` element linked to the paperclip button.
+     - Added file selection handler that uploads files via Axios POST to
+       `/api/knowledge` with `conversation_id` for scoped file uploads.
+     - Displays a loading spinner on the paperclip button during upload.
+     - File modified: `frontend/src/components/chat/MessageInput.tsx`
+
+  3. Backend: Scoped File Uploads by Conversation:
+     - Updated `Document` model to include `conversation_id` (nullable FK to conversations).
+     - Updated `DocumentService` to accept `conversation_id` during upload and
+       filter document searches by `conversation_id` when provided.
+     - Updated `KnowledgeBaseTool` to pass `conversation_id` for scoped RAG searches.
+     - Updated `/api/knowledge` POST endpoint to accept `conversation_id` form field.
+     - Files modified: `backend/app/models/document.py`, `backend/app/services/document_service.py`,
+       `backend/app/tools/knowledge_base_tool.py`, `backend/app/api/knowledge.py`
+
+  Known Issues Discovered:
+  - When the AI agent has cached error messages in its conversation history from
+    previous failures, it may repeat those errors even after the underlying code
+    is fixed. Starting a new conversation resolves this.
+  - Browser subagent had intermittent connectivity issues during verification passes,
+    but the fix was confirmed working via direct Python test.
+
+================================================================================
+                         THINGS TO REMEMBER (UPDATED)
+================================================================================
+- WorkflowManagerTool: The `async_session` import MUST be inside the `execute()` method,
+  NOT at the module level. If it's at module level, Python scoping will cause
+  UnboundLocalError due to variable shadowing with the `session` local variable.
+- Backend server runs on port 8321 (not 8000). Frontend expects port 8321.
+  Always start backend with: uv run uvicorn app.main:app --host 127.0.0.1 --port 8321
+- Frontend install: `axios` was added as a dependency for file upload support.
+
+[2026-03-06] Session 8 (continued) — Home Workspace View Fix:
+  - Rewrote `WorkspaceView.tsx` from a static hardcoded mock (4 fixed nodes) to a dynamic
+    component that fetches real workflows from the backend API.
+  - Now shows: workflow selector tabs, real node graphs with color-coded type icons,
+    workflow info (name/description), and an "Execute Workflow" button.
+  - Handles empty state (no workflows) and loading state gracefully.
+  - File modified: `frontend/src/components/home/WorkspaceView.tsx`
+
+[2026-03-06] Session 9 — File-Based Agent Brain Migration:
+  - Created `AgentBrainService` locally inside `backend/data/agents/<slug>/` to hold agent config.
+  - Agents now retrieve their Identity, Soul, Memory, and daily logs from markdown files (`IDENTITY.md`, `SOUL.md`, `MEMORY.md`, `memory/<date>.md`) and construct their system prompt. This supersedes relying on legacy DB columns.
+  - Added robust utf-8/utf-16/cp1252 file decoding logic to `_safe_read` because users Windows files copied in possessed BOM/encoding irregularities. 
+  - Upgraded both `save_memory` and added a new `write_daily_log` tool directly hooking into this file-based architecture.
+  - Introduced startup scaffolding in `main.py`'s `lifespan` block that dynamically generates these base structure files for new or newly imported system/user agents automatically.
+
+[2026-03-06] Session 9 (continued) — Debugging Scaffolding and Hangs:
+  - **Scaffolding Bug**: The startup logic in `main.py` crashed because `scaffold_all_agents` incorrectly assumed `Agent` objects from the DB were dictionaries (`agent.get()`). Fixed this by checking `isinstance(agent, dict)` so it handles both DB models and dictionaries properly, resolving the "API 500" error that occurred when loading the frontend Agents page.
+  - **Command Executor Hang**: The `command_executor` tool previously used synchronous `subprocess.run()`, which blocked the entire application's async event loop indefinitely when a command (like `kill`) hung waiting for user input. Rewrote `command_executor` to use `asyncio.create_subprocess_exec` and run `powershell -NonInteractive`, ensuring that hanging commands fail safely instead of locking up the chat.
+
+[2026-03-06] Session 10 — Tool Compatibility and HITL Policy:
+  - **Tool TypeError**: Fixed `TypeError: execute() got an unexpected keyword argument 'conversation_id'` in `agent_messenger.py` and `docker_executor.py`. `chat_service.py` injects `conversation_id` into all tool calls, but these tools lacked `**kwargs` in their signatures to absorb it.
+  - **HITL Disabled**: Disabled Human-in-the-Loop (HITL) approval requirements globally in `chat_service.py` by emptying the `sensitive_tools` list. Agents can now execute all tools and scripts autonomously without manual confirmation prompts.
+  - **Backend Stability**: Re-established backend connectivity by resolving port 8321 conflicts and ensuring clean restarts after code modifications.
