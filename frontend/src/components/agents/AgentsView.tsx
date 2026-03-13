@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Bot, X, Loader2, Power, Wrench, Brain, Heart, Sparkles, Eye, EyeOff, Key } from 'lucide-react';
+import { Plus, Edit2, Trash2, Bot, X, Loader2, Power, Wrench, Brain, Heart, Sparkles, Eye, EyeOff, Key, Search, Users, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useAgentStore } from '../../stores/agentStore';
@@ -29,8 +29,10 @@ export function AgentsView() {
 
   const [formData, setFormData] = useState({
     name: '', description: '', provider: '', model: '', system_prompt: '', is_active: true,
+    role: '', groups: '[]',
     personality_tone: '', personality_traits: '[]', communication_style: '',
     enabled_tools: '[]', enabled_skills: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
+    context_window_tokens: 256000,
     api_key: '',
   });
   const [configTab, setConfigTab] = useState<'soul' | 'mind' | 'memory'>('soul');
@@ -38,6 +40,7 @@ export function AgentsView() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
   const [availableSkills, setAvailableSkills] = useState<{ id: string; name: string; description: string }[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const TONE_OPTIONS = ['professional', 'friendly', 'sarcastic', 'empathetic', 'witty', 'serious', 'playful'];
   const STYLE_OPTIONS = ['formal', 'casual', 'technical', 'storytelling', 'concise', 'verbose'];
@@ -52,8 +55,10 @@ export function AgentsView() {
 
   const emptyForm = {
     name: '', description: '', provider: '', model: '', system_prompt: '', is_active: true,
+    role: '', groups: '[]',
     personality_tone: '', personality_traits: '[]', communication_style: '',
     enabled_tools: '[]', enabled_skills: '[]', reasoning_style: '', memory_context: '', memory_instructions: '',
+    context_window_tokens: 256000,
     api_key: '',
   };
 
@@ -63,12 +68,14 @@ export function AgentsView() {
     setFormData({
       name: agent.name, description: agent.description || '', provider: agent.provider,
       model: agent.model, system_prompt: agent.system_prompt || '', is_active: agent.is_active,
+      role: agent.role || '', groups: agent.groups || '[]',
       personality_tone: agent.personality_tone || '', personality_traits: agent.personality_traits || '[]',
       communication_style: agent.communication_style || '',
       enabled_tools: agent.enabled_tools || '[]',
       enabled_skills: agent.enabled_skills || '[]',
       reasoning_style: agent.reasoning_style || '', memory_context: agent.memory_context || '',
       memory_instructions: agent.memory_instructions || '',
+      context_window_tokens: agent.context_window_tokens || 256000,
       api_key: '',
     });
     setConfigTab('soul');
@@ -141,6 +148,20 @@ export function AgentsView() {
             </motion.button>
           </div>
 
+          {/* Discovery Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search agents by name, role, or group..."
+                className="w-full pl-11 pr-4 py-3 rounded-lg bg-[#0e0e1c] border border-[#1c1c30] focus:border-indigo-500/50 text-gray-200 text-sm transition-all placeholder-gray-600"
+              />
+            </div>
+          </div>
+
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
@@ -188,7 +209,17 @@ export function AgentsView() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               <AnimatePresence>
-                {agents.map((agent, index) => {
+                {agents.filter(agent => {
+                  if (!searchQuery) return true;
+                  const q = searchQuery.toLowerCase();
+                  const groupsStr = agent.groups || '[]';
+                  return (
+                    agent.name.toLowerCase().includes(q) ||
+                    (agent.role || '').toLowerCase().includes(q) ||
+                    (agent.description || '').toLowerCase().includes(q) ||
+                    groupsStr.toLowerCase().includes(q)
+                  );
+                }).map((agent, index) => {
                   const sparkData = getSparkData();
                   return (
                     <motion.div
@@ -247,6 +278,9 @@ export function AgentsView() {
                           if (agent.is_active && status.state === 'working') {
                             badge = 'WORKING';
                             badgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
+                          } else if (agent.is_active && status.state === 'learning') {
+                            badge = 'LEARNING';
+                            badgeClass = 'bg-purple-500/10 text-purple-400 border border-purple-500/20 animate-pulse';
                           } else if (agent.is_active && status.state === 'idle') {
                             badge = 'ONLINE';
                             badgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
@@ -257,9 +291,30 @@ export function AgentsView() {
                           return <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${badgeClass}`}>{badge}</span>;
                         })()}
                       </div>
-                      <p className="text-sm text-gray-500 line-clamp-2 min-h-[40px] mb-4">
+                      <p className="text-sm text-gray-500 line-clamp-2 min-h-[40px] mb-2">
                         {agent.description || 'No description provided.'}
                       </p>
+
+                      {/* Role & Groups badges */}
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {agent.role && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            <Briefcase className="w-2.5 h-2.5" />
+                            {agent.role}
+                          </span>
+                        )}
+                        {(() => {
+                          try {
+                            const groups: string[] = JSON.parse(agent.groups || '[]');
+                            return groups.map(g => (
+                              <span key={g} className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                <Users className="w-2.5 h-2.5" />
+                                {g}
+                              </span>
+                            ));
+                          } catch { return null; }
+                        })()}
+                      </div>
 
                       <div className="mt-4 pt-4 border-t border-[#1c1c30]">
                         <Sparkline data={sparkData} color={agent.is_active ? '#818cf8' : '#374151'} />
@@ -363,6 +418,30 @@ export function AgentsView() {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2.5">
+                            <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                              <Briefcase className="w-3 h-3" />
+                              Role
+                            </label>
+                            <input
+                              type="text" value={formData.role}
+                              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                              className={inputClass} placeholder="e.g. Data Analysis Specialist"
+                            />
+                          </div>
+                          <div className="space-y-2.5">
+                            <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                              <Users className="w-3 h-3" />
+                              Groups
+                            </label>
+                            <input
+                              type="text" value={(() => { try { return JSON.parse(formData.groups).join(', '); } catch { return formData.groups; } })()}
+                              onChange={(e) => setFormData({ ...formData, groups: JSON.stringify(e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)) })}
+                              className={inputClass} placeholder="data-team, engineering-team"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2.5">
                             <label className="text-xs font-semibold text-gray-400">Provider</label>
                             <select
                               required value={formData.provider}
@@ -438,8 +517,8 @@ export function AgentsView() {
                                   {options.map(opt => (
                                     <button
                                       key={opt} type="button"
-                                      onClick={() => setFormData({ ...formData, [field]: (formData as Record<string, any>)[field] === opt ? '' : opt })}
-                                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${(formData as Record<string, any>)[field] === opt
+                                      onClick={() => setFormData({ ...formData, [field]: (formData as Record<string, unknown>)[field] === opt ? '' : opt })}
+                                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${(formData as Record<string, unknown>)[field] === opt
                                         ? `${activeColor} text-white`
                                         : 'bg-[#141426] text-gray-500 border-[#1c1c30] hover:border-[#2a2a45] hover:text-gray-300'
                                         }`}
@@ -518,7 +597,7 @@ export function AgentsView() {
                               <div className="space-y-1.5">
                                 {availableSkills.map(skill => {
                                   let enabled: string[] = [];
-                                  try { enabled = JSON.parse(formData.enabled_skills || '[]'); } catch { }
+                                  try { enabled = JSON.parse(formData.enabled_skills || '[]'); } catch { /* ignore */ }
                                   const active = enabled.includes(skill.name);
                                   return (
                                     <label key={skill.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#1c1c30] hover:bg-white/5 cursor-pointer transition-colors">
@@ -580,6 +659,30 @@ export function AgentsView() {
                                 >
                                   {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                 </button>
+                              </div>
+                            </div>
+                            <div className="space-y-2.5 mt-4 pt-4 border-t border-[#1a1a2e]">
+                              <div className="flex items-center justify-between">
+                                <label className="text-xs font-semibold text-gray-400">Context Window (Prune Limit)</label>
+                                <span className="text-xs font-mono text-indigo-400">{formData.context_window_tokens.toLocaleString()} tokens</span>
+                              </div>
+                              <p className="text-[11px] text-gray-500">Memory prune starts before this limit. Range: 60,000 to 256,000.</p>
+                              <input
+                                type="range"
+                                min="60000"
+                                max="256000"
+                                step="1000"
+                                value={formData.context_window_tokens}
+                                onChange={(e) => setFormData({ ...formData, context_window_tokens: parseInt(e.target.value, 10) })}
+                                className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                                style={{
+                                  background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${((formData.context_window_tokens - 60000) / (256000 - 60000)) * 100}%, #1c1c30 ${((formData.context_window_tokens - 60000) / (256000 - 60000)) * 100}%, #1c1c30 100%)`,
+                                }}
+                              />
+                              <div className="flex justify-between text-[10px] text-gray-600">
+                                <span>60k</span>
+                                <span>128k sync point</span>
+                                <span>256k</span>
                               </div>
                             </div>
                           </>

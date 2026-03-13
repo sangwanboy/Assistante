@@ -9,6 +9,7 @@ interface NodeConfig {
     type: string;
     sub_type: string;
     label: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     config: Record<string, any>;
 }
 
@@ -16,15 +17,18 @@ interface NodeConfigPanelProps {
     node: NodeConfig | null;
     agents: Agent[];
     onClose: () => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onUpdate: (nodeId: string, label: string, config: Record<string, any>) => void;
 }
 
 export function NodeConfigPanel({ node, agents, onClose, onUpdate }: NodeConfigPanelProps) {
     const [label, setLabel] = useState('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [config, setConfig] = useState<Record<string, any>>({});
 
     useEffect(() => {
         if (node) {
+            // eslint-disable-next-line
             setLabel(node.label || node.sub_type);
             setConfig(node.config || {});
         }
@@ -35,6 +39,7 @@ export function NodeConfigPanel({ node, agents, onClose, onUpdate }: NodeConfigP
     const color = NODE_CATEGORY_COLORS[node.type] || '#6366f1';
     const Icon = ICON_MAP[node.sub_type];
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateConfig = (key: string, value: any) => {
         const updated = { ...config, [key]: value };
         setConfig(updated);
@@ -80,6 +85,32 @@ export function NodeConfigPanel({ node, agents, onClose, onUpdate }: NodeConfigP
                             onChange={e => updateConfig('model', e.target.value)}
                             style={inputStyle}
                         />
+
+                        <div className="mt-4 pt-4 border-t border-[#1c1c30]">
+                            <p className="text-xs text-indigo-400 font-semibold mb-3">Autonomous Guards</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <FieldLabel>Max Steps</FieldLabel>
+                                    <input
+                                        type="number"
+                                        value={config.max_steps || 40}
+                                        onChange={e => updateConfig('max_steps', parseInt(e.target.value))}
+                                        style={inputStyle}
+                                        placeholder="40"
+                                    />
+                                </div>
+                                <div>
+                                    <FieldLabel>Max Tokens</FieldLabel>
+                                    <input
+                                        type="number"
+                                        value={config.max_tokens || 200000}
+                                        onChange={e => updateConfig('max_tokens', parseInt(e.target.value))}
+                                        style={inputStyle}
+                                        placeholder="200000"
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </>
                 );
 
@@ -165,6 +196,26 @@ export function NodeConfigPanel({ node, agents, onClose, onUpdate }: NodeConfigP
                             onChange={e => updateConfig('key', e.target.value)}
                             style={inputStyle}
                             placeholder="my_variable"
+                        />
+                        <FieldLabel>Value</FieldLabel>
+                        <input
+                            value={config.value || ''}
+                            onChange={e => updateConfig('value', e.target.value)}
+                            style={inputStyle}
+                            placeholder="{{data.field}} or static value"
+                        />
+                    </>
+                );
+
+            case 'save_memory':
+                return (
+                    <>
+                        <FieldLabel>Memory Key</FieldLabel>
+                        <input
+                            value={config.key || ''}
+                            onChange={e => updateConfig('key', e.target.value)}
+                            style={inputStyle}
+                            placeholder="user_preference"
                         />
                         <FieldLabel>Value</FieldLabel>
                         <input
@@ -346,6 +397,42 @@ export function NodeConfigPanel({ node, agents, onClose, onUpdate }: NodeConfigP
                     </>
                 );
 
+            case 'parallel':
+                return (
+                    <>
+                        <FieldLabel>Branch Count</FieldLabel>
+                        <input
+                            type="number"
+                            value={config.branch_count || 2}
+                            onChange={e => updateConfig('branch_count', parseInt(e.target.value) || 2)}
+                            style={inputStyle}
+                            min={2}
+                            max={10}
+                            placeholder="2"
+                        />
+                        <FieldLabel>Merge Strategy</FieldLabel>
+                        <select
+                            value={config.merge_strategy || 'wait_all'}
+                            onChange={e => updateConfig('merge_strategy', e.target.value)}
+                            style={selectStyle}
+                        >
+                            <option value="wait_all">Wait for All</option>
+                            <option value="first_completed">First Completed</option>
+                            <option value="majority">Majority (50%+)</option>
+                        </select>
+                        <FieldLabel>Timeout (seconds)</FieldLabel>
+                        <input
+                            type="number"
+                            value={config.timeout_seconds || 300}
+                            onChange={e => updateConfig('timeout_seconds', parseInt(e.target.value) || 300)}
+                            style={inputStyle}
+                            min={10}
+                            max={3600}
+                            placeholder="300"
+                        />
+                    </>
+                );
+
             default:
                 return (
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', fontStyle: 'italic' }}>
@@ -437,6 +524,8 @@ const inputStyle: React.CSSProperties = {
     fontSize: '13px',
     outline: 'none',
     boxSizing: 'border-box',
+    textOverflow: 'ellipsis',
+    minWidth: 0,
 };
 
 const selectStyle: React.CSSProperties = {

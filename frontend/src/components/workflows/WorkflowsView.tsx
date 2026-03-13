@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import ReactFlow, {
     Background,
     Controls,
@@ -88,6 +88,7 @@ const nodeLibrary = [
     {
         category: 'Data', type: 'data', color: NODE_CATEGORY_COLORS.data, items: [
             { label: 'Set Variable', icon: Variable, sub_type: 'set_variable' },
+            { label: 'Save Memory', icon: Save, sub_type: 'save_memory' },
             { label: 'Transform JSON', icon: Braces, sub_type: 'transform_json' },
             { label: 'Template', icon: FileCode, sub_type: 'template' },
         ]
@@ -136,7 +137,8 @@ export function WorkflowsView() {
     const [createName, setCreateName] = useState('New Workflow');
     const [createDesc, setCreateDesc] = useState('');
     const [createAssign, setCreateAssign] = useState('none');
-    const [configNode, setConfigNode] = useState<any>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [configNode, setConfigNode] = useState<{ id: string; type: string; sub_type: string; label: string; config: Record<string, any> } | null>(null);
 
     const { agents } = useAgentStore();
     const { channels } = useChannelStore();
@@ -149,6 +151,7 @@ export function WorkflowsView() {
     useEffect(() => {
         loadWorkflows();
         return () => disconnectWs(); // Cleanup
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -158,6 +161,7 @@ export function WorkflowsView() {
         } else {
             disconnectWs();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedWorkflow]);
 
     const loadWorkflows = async () => {
@@ -173,6 +177,7 @@ export function WorkflowsView() {
         try {
             const graph = await api.getWorkflowGraph(id);
             if (graph.nodes.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 setNodes(graph.nodes.map((n: any) => ({
                     id: n.id,
                     type: 'customNode',
@@ -184,6 +189,7 @@ export function WorkflowsView() {
                         config: JSON.parse(n.config_json || '{}'),
                     },
                 })));
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 setEdges(graph.edges.map((e: any) => ({
                     id: e.id,
                     source: e.source_node_id,
@@ -293,7 +299,7 @@ export function WorkflowsView() {
         setNodes((nds) => nds.concat(newNode));
     };
 
-    const handleNodeClick = (_: any, node: any) => {
+    const handleNodeClick = (_: React.MouseEvent, node: { id: string; data: { category: string; sub_type: string; label: string; config?: Record<string, unknown> } }) => {
         setConfigNode({
             id: node.id,
             type: node.data.category,
@@ -303,6 +309,7 @@ export function WorkflowsView() {
         });
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleConfigUpdate = (nodeId: string, label: string, config: Record<string, any>) => {
         setNodes(nds => nds.map(n =>
             n.id === nodeId
@@ -317,8 +324,6 @@ export function WorkflowsView() {
                 name: tpl.name,
                 description: tpl.desc,
             });
-            setWorkflows([newWf, ...workflows]);
-            setSelectedWorkflow(newWf);
 
             // Auto-generate nodes from template
             const templateNodes = tpl.nodes.map((sub_type, i) => ({
@@ -332,7 +337,6 @@ export function WorkflowsView() {
                 },
                 position: { x: 250, y: 80 + i * 120 },
             }));
-            setNodes(templateNodes);
 
             // Auto-wire edges
             const templateEdges: Edge[] = templateNodes.slice(0, -1).map((n, i) => ({
@@ -342,9 +346,32 @@ export function WorkflowsView() {
                 animated: true,
                 style: { stroke: 'rgba(139, 92, 246, 0.5)', strokeWidth: 2 },
             }));
-            setEdges(templateEdges);
+
+            // Save template to DB immediately
+            const dbNodes = templateNodes.map(n => ({
+                id: n.id,
+                type: SUB_TYPE_TO_CATEGORY[n.data.sub_type] || 'action',
+                sub_type: n.data.sub_type,
+                label: n.data.label,
+                config_json: '{}',
+                position_x: n.position.x.toString(),
+                position_y: n.position.y.toString(),
+            }));
+            const dbEdges = templateEdges.map(e => ({
+                id: e.id,
+                source_node_id: e.source,
+                target_node_id: e.target,
+                source_handle: null,
+            }));
+            await api.saveWorkflowGraph(newWf.id, { nodes: dbNodes, edges: dbEdges });
+
+            setWorkflows([newWf, ...workflows]);
+            setSelectedWorkflow(newWf);
         } catch (e) {
             console.error('Failed to create workflow from template:', e);
+            import('../../stores/uiStore').then(({ useUIStore }) => {
+                useUIStore.getState().addToast('Failed to create from template', 'error');
+            });
         }
     };
 
@@ -479,6 +506,7 @@ export function WorkflowsView() {
 
                     <div className="flex-1 relative" style={{ backgroundColor: '#080810' }}>
                         <ReactFlow
+                            key={selectedWorkflow.id}
                             nodes={nodes}
                             edges={edges}
                             onNodesChange={onNodesChange}

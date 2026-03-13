@@ -37,7 +37,11 @@ export interface ModelInfo {
   provider: string;
   supports_streaming: boolean;
   supports_tools: boolean;
-  context_window: number;
+  context_window: number | null;
+  rpm: number | null;
+  tpm: number | null;
+  rpd: number | null;
+  is_fallback: boolean;
 }
 
 export interface ToolInfo {
@@ -49,7 +53,9 @@ export interface ToolInfo {
 
 export interface StreamEvent {
   type: 'chunk' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'agent_turn_start' | 'agent_turn_end'
-  | 'chain_start' | 'chain_update' | 'chain_complete' | 'orchestration_plan' | 'task_progress';
+  | 'chain_start' | 'chain_update' | 'chain_complete' | 'orchestration_plan' | 'task_progress'
+  | 'autonomous_start' | 'autonomous_step_start' | 'autonomous_step_end'
+  | 'autonomous_complete' | 'autonomous_timeout' | 'autonomous_budget_exceeded' | 'autonomous_error';
   delta?: string;
   tool_name?: string;
   tool_call_id?: string;
@@ -71,6 +77,14 @@ export interface StreamEvent {
   // Task progress fields
   task_id?: string;
   progress?: number;
+  // Autonomous execution fields
+  task_goal?: string;
+  step?: number;
+  max_steps?: number;
+  total_tool_calls?: number;
+  tool_calls_used?: number;
+  // Usage tracking
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
 export interface AppSettings {
@@ -91,6 +105,9 @@ export interface Agent {
   model: string;
   system_prompt: string | null;
   is_active: boolean;
+  // Identity
+  role: string | null;
+  groups: string | null;                       // JSON list
   // Soul
   personality_tone: string | null;
   personality_traits: string | null;       // JSON list
@@ -102,12 +119,21 @@ export interface Agent {
   // Memory
   memory_context: string | null;
   memory_instructions: string | null;
+  context_window_tokens: number | null;
   // Per-agent API key (masked in responses)
   api_key: string | null;
   is_system?: boolean;
   total_cost?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface GroupDiscussion {
+  id: string;
+  name: string;
+  description: string;
+  agent_ids: string[];
+  created_at: string;
 }
 
 export interface Document {

@@ -12,11 +12,11 @@ const PLATFORM_ICONS: Record<string, string> = {
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
-  telegram: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  discord: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  slack: 'bg-green-500/20 text-green-400 border-green-500/30',
-  whatsapp: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  whatsapp_web: 'bg-[#25D366]/20 text-[#25D366] border-[#25D366]/30',
+  telegram: 'text-blue-400',
+  discord: 'text-indigo-400',
+  slack: 'text-rose-400',
+  whatsapp: 'text-emerald-400',
+  whatsapp_web: 'text-emerald-400',
 };
 
 const CONFIG_FIELDS: Record<string, { label: string; key: string; placeholder: string; secret?: boolean }[]> = {
@@ -47,7 +47,7 @@ export function IntegrationsView() {
   const [toast, setToast] = useState('');
 
   // WhatsApp QR State
-  const [waStatus, setWaStatus] = useState<'idle' | 'initializing' | 'qr_ready' | 'connected' | 'error'>('idle');
+  const [waStatus, setWaStatus] = useState<'idle' | 'initializing' | 'qr_ready' | 'connected' | 'not_running' | 'error'>('idle');
   const [waQr, setWaQr] = useState<string>('');
 
   // New integration form state
@@ -59,11 +59,6 @@ export function IntegrationsView() {
     is_active: true,
   });
 
-  useEffect(() => {
-    load();
-    api.getAgents().then(setAgents).catch(() => { });
-  }, []);
-
   async function load() {
     setLoading(true);
     try {
@@ -72,6 +67,12 @@ export function IntegrationsView() {
     } catch { /* empty */ }
     setLoading(false);
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line
+    load();
+    api.getAgents().then(setAgents).catch(() => { });
+  }, []);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -100,7 +101,7 @@ export function IntegrationsView() {
 
   // --- WhatsApp Polling ---
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+    let intervalId: ReturnType<typeof setInterval>;
 
     if (showAddModal && form.platform === 'whatsapp_web' && form.config.profile) {
       // Polling function
@@ -122,7 +123,7 @@ export function IntegrationsView() {
               setWaStatus('initializing');
             }
           }
-        } catch (e) {
+        } catch {
           setWaStatus('error');
         }
       };
@@ -131,8 +132,10 @@ export function IntegrationsView() {
       checkQr();
       intervalId = setInterval(checkQr, 3000);
     } else {
-      setWaStatus('idle');
-      setWaQr('');
+      // Reset state outside the effect synchronous path
+      const reset = () => { setWaStatus('idle'); setWaQr(''); };
+      const tid = setTimeout(reset, 0);
+      return () => clearTimeout(tid);
     }
 
     return () => {
@@ -182,10 +185,10 @@ export function IntegrationsView() {
       {/* Platform info cards */}
       <div className="grid grid-cols-5 gap-4 mb-8">
         {(['telegram', 'discord', 'slack', 'whatsapp', 'whatsapp_web'] as const).map(p => (
-          <div key={p} className={`rounded-xl border p-4 ${PLATFORM_COLORS[p]}`}>
-            <div className="text-2xl mb-2">{PLATFORM_ICONS[p]}</div>
-            <div className="font-semibold capitalize">{p}</div>
-            <div className="text-xs mt-1 opacity-70">
+          <div key={p} className={`rounded-2xl border border-[#1c1c30] bg-[#0a0a14] p-5 flex flex-col items-center justify-center transition-all hover:border-[#2a2a45] hover:bg-[#141426] shadow-lg`}>
+            <div className={`text-3xl mb-3 ${PLATFORM_COLORS[p]}`}>{PLATFORM_ICONS[p]}</div>
+            <div className="font-semibold text-gray-200 capitalize">{p.replace('_', ' ')}</div>
+            <div className="text-[11px] font-medium text-gray-500 mt-1.5 uppercase tracking-wider">
               {integrations.filter(i => i.platform === p).length} connected
             </div>
           </div>

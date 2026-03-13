@@ -129,6 +129,6 @@ class CustomToolService:
 
     async def get_active_tools(self) -> list[CustomTool]:
         result = await self.session.execute(
-            select(CustomTool).where(CustomTool.is_active == True).order_by(CustomTool.name)
+            select(CustomTool).where(CustomTool.is_active).order_by(CustomTool.name)
         )
         return list(result.scalars().all())

@@ -74,8 +74,10 @@ class BrowserTool(BaseTool):
 
             if action == "navigate":
                 url = params.get("url")
-                if not url: return "Error: url is required for 'navigate'."
-                if not url.startswith("http"): url = "https://" + url
+                if not url:
+                    return "Error: url is required for 'navigate'."
+                if not url.startswith("http"):
+                    url = "https://" + url
                 await page.goto(url, wait_until="domcontentloaded", timeout=15000)
                 return f"Navigated to {page.url}. Page title: {await page.title()}"
 
@@ -90,24 +92,27 @@ class BrowserTool(BaseTool):
 
             elif action == "click":
                 selector = params.get("selector")
-                if not selector: return "Error: selector is required for 'click'."
+                if not selector:
+                    return "Error: selector is required for 'click'."
                 await page.click(selector, timeout=5000)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=3000)
-                except:
+                except Exception:
                     pass
                 return f"Clicked element matching '{selector}'."
 
             elif action == "type":
                 selector = params.get("selector")
                 text = params.get("text")
-                if not selector or not text: return "Error: selector and text are required for 'type'."
+                if not selector or not text:
+                    return "Error: selector and text are required for 'type'."
                 await page.fill(selector, text, timeout=5000)
                 return f"Typed text into '{selector}'."
 
             elif action == "evaluate":
                 js_code = params.get("js_code")
-                if not js_code: return "Error: js_code is required for 'evaluate'."
+                if not js_code:
+                    return "Error: js_code is required for 'evaluate'."
                 result = await page.evaluate(js_code)
                 return f"Evaluation result: {result}"
 
@@ -135,7 +140,7 @@ class BrowserTool(BaseTool):
                         });
                     }''')
                     await asyncio.sleep(0.5)
-                except:
+                except Exception:
                     pass
                 
                 screenshot_bytes = await page.screenshot(type="jpeg", quality=60)
@@ -146,7 +151,7 @@ class BrowserTool(BaseTool):
                     await page.evaluate('''() => {
                         document.querySelectorAll('.ai-interactive-highlight').forEach(el => el.classList.remove('ai-interactive-highlight'));
                     }''')
-                except:
+                except Exception:
                     pass
                 
                 return json.dumps({

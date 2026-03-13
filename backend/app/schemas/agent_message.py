@@ -18,7 +18,7 @@ class AgentMessageOut(BaseModel):
     to_agent_id: Optional[str]
     group_id: Optional[str]
     content: str
-    role: str
+    role: str = "agent"
     created_at: datetime
     is_read: bool
 

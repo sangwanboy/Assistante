@@ -13,12 +13,36 @@ import { useChatStore } from './stores/chatStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useAgentStatusStore } from './stores/agentStatusStore';
 import { useAgentControlStore } from './stores/agentControlStore';
+import { GlobalToastContainer } from './components/common/GlobalToastContainer';
 
 export default function App() {
-  const [activeView, setActiveView] = useState('home');
+  const [activeView, setActiveView] = useState(() => {
+    const path = window.location.pathname.replace('/', '');
+    const validViews = ['home', 'chat', 'knowledge', 'workflows', 'agents', 'tools', 'integrations', 'heartbeat'];
+    return validViews.includes(path) ? path : 'home';
+  });
   const [statusMessage, setStatusMessage] = useState('Ready');
   const { loadConversations, loadModels } = useChatStore();
   const { showSettings, toggleSettings } = useSettingsStore();
+
+  // Keep browser URL strictly synced with activeView state
+  useEffect(() => {
+    const urlPath = activeView === 'home' ? '/' : `/${activeView}`;
+    if (window.location.pathname !== urlPath) {
+      window.history.pushState({}, '', urlPath);
+    }
+  }, [activeView]);
+
+  // Handle browser back/forward buttons smoothly
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.replace('/', '');
+      const validViews = ['home', 'chat', 'knowledge', 'workflows', 'agents', 'tools', 'integrations', 'heartbeat'];
+      setActiveView(validViews.includes(path) ? path : 'home');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     loadConversations();
@@ -71,6 +95,7 @@ export default function App() {
       </div>
 
       <SettingsPanel />
+      <GlobalToastContainer />
     </div>
   );
 }

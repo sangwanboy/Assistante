@@ -1,5 +1,4 @@
 import json
-import re
 import httpx
 
 from sqlalchemy import select
@@ -224,7 +223,7 @@ class SkillService:
 
     async def get_active_skills(self) -> list[Skill]:
         result = await self.session.execute(
-            select(Skill).where(Skill.is_active == True).order_by(Skill.name)
+            select(Skill).where(Skill.is_active).order_by(Skill.name)
         )
         return list(result.scalars().all())
 
@@ -232,3 +231,85 @@ class SkillService:
         """Return combined instructions from all active skills, for system prompt injection."""
         skills = await self.get_active_skills()
         return self.render_instructions(skills)
+
+    async def update_skill_metrics(self, skill_id: str, success: bool, cost: float = 0.0, duration: float = 0.0):
+        """Update execution metrics for a skill."""
+        from app.models.skill import Skill
+        skill = await self.session.get(Skill, skill_id)
+        if not skill:
+            return
+        if success:
+            skill.success_count = (skill.success_count or 0) + 1
+        else:
+            skill.failure_count = (skill.failure_count or 0) + 1
+        skill.total_execution_cost = (skill.total_execution_cost or 0.0) + cost
+        skill.usage_frequency = (skill.usage_frequency or 0) + 1
+        await self.session.commit()
+
+    async def get_skill_performance(self, skill_id: str) -> dict | None:
+        """Get performance metrics for a skill."""
+        from app.models.skill import Skill
+        skill = await self.session.get(Skill, skill_id)
+        if not skill:
+            return None
+        total = (skill.success_count or 0) + (skill.failure_count or 0)
+        success_rate = (skill.success_count or 0) / max(total, 1)
+        return {
+            "skill_id": skill_id,
+            "success_rate": round(success_rate, 3),
+            "total_executions": total,
+            "success_count": skill.success_count or 0,
+            "failure_count": skill.failure_count or 0,
+            "total_cost": skill.total_execution_cost or 0.0,
+            "usage_frequency": skill.usage_frequency or 0,
+        }
+
+    async def auto_disable_check(self):
+        """Disable skills with <50% success rate after 10+ uses."""
+        from app.models.skill import Skill
+        from sqlalchemy import select
+        stmt = select(Skill).where(Skill.is_active == True)
+        result = await self.session.execute(stmt)
+        skills = result.scalars().all()
+        disabled = 0
+        for skill in skills:
+            total = (skill.success_count or 0) + (skill.failure_count or 0)
+            if total >= 10:
+                success_rate = (skill.success_count or 0) / total
+                if success_rate < 0.5:
+                    skill.is_active = False
+                    disabled += 1
+        if disabled > 0:
+            await self.session.commit()
+        return disabled
+
+    async def find_relevant_skills(self, task_description: str, limit: int = 5) -> list:
+        """Find skills relevant to a task description using keyword matching."""
+        from app.models.skill import Skill
+        from sqlalchemy import select
+        stmt = select(Skill).where(Skill.is_active == True)
+        result = await self.session.execute(stmt)
+        skills = result.scalars().all()
+
+        # Simple keyword overlap scoring
+        task_words = set(task_description.lower().split())
+        scored = []
+        for skill in skills:
+            skill_words = set((skill.name + " " + (skill.description or "")).lower().split())
+            overlap = len(task_words & skill_words)
+            if overlap > 0:
+                scored.append((overlap, skill))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [s for _, s in scored[:limit]]
+
+    async def get_shared_skills(self) -> list:
+        """Get all approved/deployed skills available to any agent."""
+        from app.models.skill import Skill
+        from sqlalchemy import select
+        stmt = select(Skill).where(
+            Skill.is_active == True,
+            Skill.lifecycle_stage.in_(["approved", "deployed"])
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

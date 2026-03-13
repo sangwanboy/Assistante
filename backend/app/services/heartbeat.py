@@ -15,9 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
-    from app.services.chat_service import ChatService
-    from app.providers.registry import ProviderRegistry
-    from app.tools.registry import ToolRegistry
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +70,11 @@ class HeartbeatService:
         if self._session_factory is None:
             return
         from app.models.agent_schedule import AgentSchedule
-        from app.models.agent import Agent
 
         async with self._session_factory() as session:
             now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
             result = await session.execute(
-                select(AgentSchedule).where(AgentSchedule.is_active == True)
+                select(AgentSchedule).where(AgentSchedule.is_active)
             )
             schedules = result.scalars().all()
 
@@ -99,7 +96,6 @@ class HeartbeatService:
     async def _fire(self, sched, session: AsyncSession) -> None:
         """Execute the scheduled task for an agent."""
         from app.models.agent import Agent
-        from app.models.agent_schedule import AgentSchedule
         from app.services.chat_service import ChatService
 
         agent_result = await session.execute(

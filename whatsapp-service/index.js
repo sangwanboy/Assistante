@@ -65,7 +65,7 @@ app.post('/api/whatsapp/connect', async (req, res) => {
         console.log(`[${profile}] Received: ${msg.body}`);
         const iid = profileToIntegration.get(profile);
         if (iid) {
-            const webhookUrl = `http://localhost:8321/api/integrations/${iid}/webhook/whatsapp_web`;
+            const webhookUrl = `http://localhost:8322/api/integrations/${iid}/webhook/whatsapp_web`;
             try {
                 await axios.post(webhookUrl, {
                     profile: profile,

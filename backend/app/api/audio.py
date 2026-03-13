@@ -3,14 +3,12 @@ from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from app.db.engine import async_session
 from app.config import settings
 from google import genai
 from google.genai import types
 import edge_tts
-import io
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -43,9 +41,9 @@ async def transcribe_audio(
             tmp.write(content)
             tmp_path = tmp.name
             
-        # Gemini 2.0 Flash handles audio natively
+        # Gemini 2.5 Flash handles audio natively
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=[
                 'Please transcribe this audio accurately.',
                 types.Part.from_bytes(
@@ -78,7 +76,7 @@ async def text_to_speech(
         # We can stream the output
         async def iter_audio():
             async for chunk in communicate.stream():
-                if chunk["data"]:
+                if chunk["type"] == "audio":
                     yield chunk["data"]
 
         return StreamingResponse(iter_audio(), media_type="audio/mpeg")

@@ -23,6 +23,7 @@ class AgentHeartbeatService:
     CHAIN_PREFIX = "assitance:chain:"
 
     UNRESPONSIVE_THRESHOLD = 10  # seconds
+    STALLED_THRESHOLD = 20  # seconds
     OFFLINE_THRESHOLD = 30  # seconds
     MONITOR_INTERVAL = 5  # seconds
 
@@ -160,7 +161,7 @@ class AgentHeartbeatService:
             await asyncio.sleep(self.MONITOR_INTERVAL)
 
     async def _check_stale_agents(self):
-        """Scan all agent states and mark unresponsive/offline as needed."""
+        """Scan all agent states and mark stalled/offline as needed."""
         if not self._redis:
             return
 
@@ -191,10 +192,74 @@ class AgentHeartbeatService:
                 if elapsed > self.OFFLINE_THRESHOLD and current.get("state") != AgentState.OFFLINE:
                     status_mgr.set_status(agent_id, AgentState.OFFLINE)
                     logger.warning("Agent %s marked OFFLINE (no heartbeat for %.0fs)", agent_id, elapsed)
+                elif elapsed > self.STALLED_THRESHOLD and current.get("state") not in (
+                    AgentState.OFFLINE, AgentState.STALLED, AgentState.ERROR
+                ):
+                    status_mgr.set_status(agent_id, AgentState.STALLED)
+                    logger.warning("Agent %s marked STALLED (no heartbeat for %.0fs)", agent_id, elapsed)
             except Exception:
                 continue
 
     # ── Recovery Protocol ──
+
+    async def restart_agent(self, agent_id: str):
+        """Attempt to restart a stalled agent by resetting its state."""
+        from app.services.agent_status import AgentStatusManager, AgentState
+
+        status_mgr = await AgentStatusManager.get_instance()
+        current = status_mgr.get_status(agent_id)
+
+        if current.get("state") in (AgentState.STALLED, AgentState.ERROR):
+            status_mgr.set_status(agent_id, AgentState.RECOVERING)
+            logger.info("Agent %s marked RECOVERING — attempting restart", agent_id)
+
+            # Brief pause to allow cleanup
+            await asyncio.sleep(1)
+
+            # Reset to IDLE
+            status_mgr.set_status(agent_id, AgentState.IDLE)
+            await self.reset_failure_count(agent_id)
+            logger.info("Agent %s restarted successfully — now IDLE", agent_id)
+            return True
+
+        return False
+
+    async def reassign_agent_tasks(self, agent_id: str):
+        """Reassign all pending/running tasks from a stalled agent to System Agent."""
+        from app.db.engine import async_session
+        from app.models.agent import Agent
+        from app.models.task import Task
+        from sqlalchemy import select
+
+        async with async_session() as session:
+            # Find System Agent
+            stmt = select(Agent).where(Agent.is_system)
+            res = await session.execute(stmt)
+            sys_agent = res.scalar_one_or_none()
+            if not sys_agent:
+                logger.warning("Cannot reassign tasks — no System Agent found")
+                return 0
+
+            # Find tasks assigned to the stalled agent
+            stmt = select(Task).where(
+                Task.assigned_agent_id == agent_id,
+                Task.status.in_(["pending", "running", "queued"])
+            )
+            result = await session.execute(stmt)
+            tasks = result.scalars().all()
+
+            count = 0
+            for task in tasks:
+                task.assigned_agent_id = sys_agent.id
+                task.status = "pending"
+                task.prompt = f"[SYSTEM ESCALATION: Agent stalled, task reassigned]\n\nOriginal Task:\n{task.prompt}"
+                count += 1
+
+            if count > 0:
+                await session.commit()
+                logger.info("Reassigned %d tasks from stalled agent %s to System Agent %s",
+                            count, agent_id, sys_agent.name)
+            return count
 
     async def handle_agent_failure(self, agent_id: str, task_id: str | None = None):
         """Handle agent failure: increment failure count, escalate if needed."""
@@ -214,8 +279,23 @@ class AgentHeartbeatService:
             await session.commit()
 
             if agent.failure_count >= 3:
-                status_mgr.set_status(agent_id, AgentState.ERROR, "Repeated failures — human review required")
-                logger.error("[ALERT] %s failed %d times. Human review required.", agent.name, agent.failure_count)
+                status_mgr.set_status(agent_id, AgentState.ERROR, "Repeated failures — escalating to System Agent.")
+                logger.error("[ALERT] %s failed %d times. Escalating to System Agent.", agent.name, agent.failure_count)
+                
+                if task_id:
+                    task = await session.get(Task, task_id)
+                    if task:
+                        from sqlalchemy import select
+                        stmt = select(Agent).where(Agent.is_system)
+                        res = await session.execute(stmt)
+                        sys_agent = res.scalar_one_or_none()
+                        if sys_agent:
+                            task.assigned_agent_id = sys_agent.id
+                            task.status = "pending"
+                            task.retry_count = 0
+                            task.prompt = f"[SYSTEM ESCALATION: Sub-agent '{agent.name}' failed repeatedly]\n\nOriginal Task:\n{task.prompt}"
+                            await session.commit()
+                            logger.info("Task %s escalated to System Agent %s", task_id, sys_agent.name)
             else:
                 # Requeue the task if applicable
                 if task_id:
@@ -236,6 +316,93 @@ class AgentHeartbeatService:
             if agent and agent.failure_count > 0:
                 agent.failure_count = 0
                 await session.commit()
+
+    async def reassign_task(self, task_id: str, reason: str = ""):
+        """Reassign a stuck task to a different capable agent."""
+        from app.db.engine import async_session
+        from app.models.agent import Agent
+        from app.models.task import Task
+        from sqlalchemy import select
+
+        async with async_session() as session:
+            task = await session.get(Task, task_id)
+            if not task or task.status not in ("running", "pending"):
+                return False
+
+            original_agent_id = task.assigned_agent_id
+
+            # Find a different active agent
+            stmt = select(Agent).where(
+                Agent.is_active,
+                Agent.id != original_agent_id,
+            ).order_by(Agent.failure_count.asc())
+            result = await session.execute(stmt)
+            candidate = result.scalars().first()
+
+            if candidate:
+                task.assigned_agent_id = candidate.id
+                task.status = "pending"
+                task.prompt = f"[REASSIGNED: {reason}]\n\n{task.prompt}"
+                await session.commit()
+                logger.info(
+                    "Task %s reassigned from %s to %s: %s",
+                    task_id, original_agent_id, candidate.id, reason
+                )
+                return True
+            return False
+
+    async def reroute_workflow(self, workflow_run_id: str):
+        """Skip a stuck workflow node and continue execution."""
+        from app.db.engine import async_session
+        from app.models.workflow import WorkflowRun, NodeExecution
+        from sqlalchemy import select
+
+        async with async_session() as session:
+            run = await session.get(WorkflowRun, workflow_run_id)
+            if not run or run.status != "running":
+                return False
+
+            # Find stuck node executions
+            stmt = select(NodeExecution).where(
+                NodeExecution.run_id == workflow_run_id,
+                NodeExecution.status == "running",
+            )
+            result = await session.execute(stmt)
+            stuck_nodes = result.scalars().all()
+
+            for node_exec in stuck_nodes:
+                node_exec.status = "skipped"
+                node_exec.error = "Skipped by self-healing: node was stuck"
+                logger.warning(
+                    "Workflow %s: skipped stuck node %s",
+                    workflow_run_id, node_exec.node_id
+                )
+
+            if stuck_nodes:
+                await session.commit()
+                return True
+            return False
+
+    async def throttle_agent(self, agent_id: str, duration_seconds: int = 60):
+        """Temporarily reduce an agent's concurrency by marking it as throttled."""
+        from app.services.agent_status import AgentStatusManager, AgentState
+
+        status_mgr = await AgentStatusManager.get_instance()
+        status_mgr.set_status(
+            agent_id, AgentState.WORKING,
+            f"Throttled for {duration_seconds}s due to repeated issues"
+        )
+        logger.info("Agent %s throttled for %ds", agent_id, duration_seconds)
+
+        # Auto-unthrottle after duration
+        async def _unthrottle():
+            import asyncio
+            await asyncio.sleep(duration_seconds)
+            status_mgr.set_status(agent_id, AgentState.IDLE)
+            logger.info("Agent %s unthrottled", agent_id)
+
+        import asyncio
+        asyncio.create_task(_unthrottle())
 
     @classmethod
     def reset(cls):

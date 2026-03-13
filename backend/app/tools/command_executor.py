@@ -31,8 +31,18 @@ class CommandExecutorTool(BaseTool):
 
     async def execute(self, command: str, cwd: Optional[str] = None, **kwargs) -> str:
         import asyncio
-        import os
-        import subprocess
+
+        # Security: Block dangerous commands
+        BLOCKED_PATTERNS = [
+            "rm -rf /", "rm -rf /*", "del /s /q", "format c:",
+            "mkfs.", ":(){:|:&};:", "dd if=/dev/zero",
+            "chmod -R 777 /", "chown -R", "> /dev/sda",
+        ]
+        cmd_lower = command.lower().strip() if isinstance(command, str) else str(command).lower()
+        for pattern in BLOCKED_PATTERNS:
+            if pattern in cmd_lower:
+                return f"BLOCKED: Command contains dangerous pattern '{pattern}'. This operation is not allowed."
+
         try:
             # Run powershell non-interactive to prevent hanging on prompts
             process = await asyncio.create_subprocess_exec(

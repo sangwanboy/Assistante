@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session, async_session
-from app.models.agent_message import AgentMessage, AgentGroupDiscussion
+from app.models.agent_message import AgentGroupDiscussion
 from app.models.agent import Agent
 from app.schemas.agent_message import (
     AgentMessageCreate, AgentMessageOut,
@@ -50,7 +50,7 @@ async def create_group(
 ):
     """Create a group discussion. The main system agent is always included."""
     system_result = await session.execute(
-        select(Agent).where(Agent.is_system == True)
+        select(Agent).where(Agent.is_system)
     )
     system_agent = system_result.scalar_one_or_none()
     participant_ids = list(body.agent_ids)
@@ -227,7 +227,7 @@ async def _auto_delegate(
             result = await session.execute(
                 select(Agent)
                 .where(Agent.name.ilike(f"%{agent_name}%"))
-                .where(Agent.is_active == True)
+                .where(Agent.is_active)
             )
             target = result.scalars().first()
             if not target:

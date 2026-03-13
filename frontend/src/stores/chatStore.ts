@@ -3,6 +3,23 @@ import type { Conversation, Message, StreamEvent, ModelInfo } from '../types';
 import { api } from '../services/api';
 import { WebSocketClient } from '../services/websocket';
 
+function normalizeStreamError(error?: string): string {
+  const msg = error || 'Unknown error';
+  const lowered = msg.toLowerCase();
+
+  if (
+    lowered.includes('resource_exhausted') ||
+    lowered.includes('quota exceeded') ||
+    lowered.includes('rate limit') ||
+    lowered.includes('429')
+  ) {
+    return 'Model quota reached. Please wait about a minute and retry, or switch to another model.';
+  }
+
+  const compact = msg.replace(/\s+/g, ' ').trim();
+  return compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
+}
+
 interface ChatState {
   // Data
   conversations: Conversation[];
@@ -27,6 +44,14 @@ interface ChatState {
   currentChainAgent: string | null;
   currentChainTask: string | null;
 
+  // Throttling State (Internal)
+  _pendingContent: string;
+  _throttleTimeout: ReturnType<typeof setTimeout> | null;
+
+  // Economy Metrics
+  sessionTokens: number;
+  sessionCost: number;
+
   // WebSocket
   wsClient: WebSocketClient | null;
 
@@ -35,7 +60,7 @@ interface ChatState {
   loadModels: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   createConversation: (model?: string, is_group?: boolean, agent_id?: string, channel_id?: string) => Promise<string>;
-  startOrLoadAgentChat: (agent: any) => Promise<string>;
+  startOrLoadAgentChat: (agent: { id: string; model?: string; name?: string }) => Promise<string>;
   startOrLoadChannelChat: (channel: import('../types').Channel) => Promise<string>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
@@ -64,13 +89,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentChainAgent: null,
   currentChainTask: null,
   wsClient: null,
+  _pendingContent: '',
+  _throttleTimeout: null,
+  sessionTokens: 0,
+  sessionCost: 0,
 
   loadConversations: async () => {
     try {
       const conversations = await api.getConversations();
       set({ conversations });
-    } catch (e: any) {
-      set({ error: e.message });
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
 
@@ -85,21 +114,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   selectConversation: async (id: string) => {
     try {
+      console.log('[ChatStore] selectConversation called with id:', id);
       const conv = await api.getConversation(id);
+      console.log('[ChatStore] selectConversation loaded conv:', conv.id, 'messages:', conv.messages?.length);
       set({
         activeConversationId: id,
         messages: conv.messages || [],
         error: null,
       });
       get().connectWebSocket(id);
-    } catch (e: any) {
-      set({ error: e.message });
+    } catch (e: unknown) {
+      console.error('[ChatStore] selectConversation error:', e);
+      set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
 
   createConversation: async (model?: string, is_group?: boolean, agent_id?: string, channel_id?: string) => {
     try {
-      const conv = await api.createConversation({ model: model || 'gemini/gemini-2.5-flash', is_group, agent_id, channel_id } as any);
+      console.log('[ChatStore] createConversation called with:', { model, is_group, agent_id, channel_id });
+      const conv = await api.createConversation({ model: model || 'gemini/gemini-2.5-flash', is_group, agent_id, channel_id } as Record<string, unknown>);
+      console.log('[ChatStore] createConversation result:', conv.id);
       set((state) => ({
         conversations: [conv, ...state.conversations],
         activeConversationId: conv.id,
@@ -108,27 +142,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
       get().connectWebSocket(conv.id);
       return conv.id;
-    } catch (e: any) {
-      set({ error: e.message });
+    } catch (e: unknown) {
+      console.error('[ChatStore] createConversation error:', e);
+      set({ error: e instanceof Error ? e.message : String(e) });
       return '';
     }
   },
 
-  startOrLoadAgentChat: async (agent: any) => {
+  startOrLoadAgentChat: async (agent: { id: string; model?: string; name?: string }) => {
     try {
-      // Find existing active conversation for this agent
+      console.log('[ChatStore] startOrLoadAgentChat for agent:', agent.id, agent.name);
       const state = get();
       const existing = state.conversations.find((c) => c.agent_id === agent.id);
 
       if (existing) {
+        console.log('[ChatStore] Found existing conversation:', existing.id);
         await state.selectConversation(existing.id);
         return existing.id;
       }
 
-      // If not found, create new conversation tied to this agent
+      console.log('[ChatStore] No existing conversation, creating new one');
       return await state.createConversation(agent.model, false, agent.id);
-    } catch (e: any) {
-      set({ error: e.message });
+    } catch (e: unknown) {
+      console.error('[ChatStore] startOrLoadAgentChat error:', e);
+      set({ error: e instanceof Error ? e.message : String(e) });
       return '';
     }
   },
@@ -145,8 +182,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       // Group mode triggered implicitly by it being a channel
       return await state.createConversation(undefined, true, undefined, channel.id);
-    } catch (e: any) {
-      set({ error: e.message });
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : String(e) });
       return '';
     }
   },
@@ -162,8 +199,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ...(needsClear ? { activeConversationId: null, messages: [] } : {}),
         };
       });
-    } catch (e: any) {
-      set({ error: e.message });
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
 
@@ -173,12 +210,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set((state) => ({
         conversations: state.conversations.map((c) => (c.id === id ? { ...c, title } : c)),
       }));
-    } catch (e: any) {
-      set({ error: e.message });
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
 
   connectWebSocket: (conversationId: string) => {
+    console.log('[ChatStore] connectWebSocket called for:', conversationId);
     const existing = get().wsClient;
     if (existing) {
       existing.disconnect();
@@ -188,26 +226,47 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onEvent: (event: StreamEvent) => {
         switch (event.type) {
           case 'chunk':
-            set((state) => ({
-              streamingContent: state.streamingContent + (event.delta || ''),
-              streamingAgentName: event.agent_name || state.streamingAgentName,
-            }));
+            // Fast-path for non-visible updates or low velocity? 
+            // Better to always throttle during active streaming to be safe.
+            set((state) => {
+              state._pendingContent += (event.delta || '');
+              if (event.agent_name) state.streamingAgentName = event.agent_name;
+
+              if (!state._throttleTimeout) {
+                state._throttleTimeout = setTimeout(() => {
+                  const { _pendingContent } = get();
+                  set((s) => ({
+                    streamingContent: s.streamingContent + _pendingContent,
+                    _pendingContent: '',
+                    _throttleTimeout: null
+                  }));
+                }, 40); // 40ms = ~25fps, plenty for smooth text but saves 90% of renders
+              }
+              return { isStreaming: true };
+            });
             break;
 
           case 'agent_turn_start':
+            if (get()._throttleTimeout) clearTimeout(get()._throttleTimeout!);
             set({
               streamingAgentName: event.agent_name || null,
               streamingContent: '',
               streamingToolCalls: [],
+              _pendingContent: '',
+              _throttleTimeout: null,
             });
             break;
 
           case 'agent_turn_end':
             set((state) => {
+              // Flush any remaining content
+              if (state._throttleTimeout) clearTimeout(state._throttleTimeout);
+              const finalContent = state.streamingContent + state._pendingContent;
+
               const agentMsg: Message = {
                 id: event.message_id,
                 role: 'assistant',
-                content: state.streamingContent,
+                content: finalContent,
                 agent_name: state.streamingAgentName,
               };
 
@@ -218,11 +277,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 agent_name: state.streamingAgentName,
               }));
 
+              const defaultCostPer1k = 0.002; // Average fallback cost over various models
+              const increment = (event.usage?.total_tokens || 0);
+              const newTokens = state.sessionTokens + increment;
+              const newCost = state.sessionCost + (increment / 1000) * defaultCostPer1k;
+
               return {
                 messages: [...state.messages, ...toolMessages, agentMsg],
                 streamingContent: '',
+                _pendingContent: '',
+                _throttleTimeout: null,
                 streamingToolCalls: [],
                 streamingAgentName: null,
+                isStreaming: false,
+                sessionTokens: newTokens,
+                sessionCost: newCost,
               };
             });
             break;
@@ -290,17 +359,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
             });
             break;
 
+          // ── Autonomous Execution Loop Events ──
+          case 'autonomous_start':
+            set({
+              activeChainState: 'autonomous',
+              currentChainAgent: event.agent_name || null,
+              currentChainTask: `Autonomous: ${(event.task_goal || '').slice(0, 60)}...`,
+              activeChainDepth: event.max_steps || 0,
+            });
+            break;
+
+          case 'autonomous_step_start':
+            set({
+              currentChainTask: `Step ${event.step}/${event.max_steps}: Working...`,
+            });
+            break;
+
+          case 'autonomous_step_end':
+            set({
+              currentChainTask: `Step ${event.step} done (${event.total_tool_calls} tools used)`,
+            });
+            break;
+
+          case 'autonomous_complete':
+          case 'autonomous_timeout':
+          case 'autonomous_budget_exceeded':
+          case 'autonomous_error':
+            set({
+              activeChainState: null,
+              currentChainAgent: null,
+              currentChainTask: null,
+              activeChainDepth: 0,
+            });
+            break;
+
           case 'done':
             set(() => ({
               isStreaming: false,
               streamingContent: '',
               streamingToolCalls: [],
               streamingAgentName: null,
-              activeChainId: null,
-              activeChainState: null,
-              orchestrationPlan: null,
-              currentChainAgent: null,
-              currentChainTask: null,
             }));
             // Refresh conversation list to update timestamps
             get().loadConversations();
@@ -308,7 +406,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           case 'error':
             set({
-              error: event.error || 'Unknown error',
+              error: normalizeStreamError(event.error),
               isStreaming: false,
               streamingContent: '',
               streamingToolCalls: [],
@@ -327,7 +425,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   sendMessage: (content: string, model: string) => {
     const { wsClient, activeConversationId } = get();
-    if (!wsClient || !activeConversationId) return;
+    console.log('[ChatStore] sendMessage called. wsClient:', !!wsClient, 'activeConversationId:', activeConversationId, 'wsConnected:', wsClient?.isConnected);
+    if (!wsClient || !activeConversationId) {
+      console.warn('[ChatStore] sendMessage ABORTED — wsClient or activeConversationId is null');
+      return;
+    }
 
     const userMsg: Message = {
       role: 'user',

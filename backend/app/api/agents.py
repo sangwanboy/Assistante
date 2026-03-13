@@ -1,14 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List
-import json
+from sqlalchemy import select, or_
+from typing import List, Optional
 from pydantic import BaseModel
 
 from app.db.engine import get_session
 from app.models.agent import Agent
 from app.schemas.agent import AgentCreate, AgentUpdate, AgentOut
-from app.services.agent_status import AgentStatusManager
 
 router = APIRouter()
 
@@ -78,16 +76,79 @@ Return ONLY valid JSON with these fields:
 
 @router.get("", response_model=List[AgentOut])
 async def list_agents(db: AsyncSession = Depends(get_session)):
-    result = await db.execute(select(Agent).order_by(Agent.name))
+    result = await db.execute(
+        select(Agent).where(Agent.status != "deleted").order_by(Agent.name)
+    )
     return result.scalars().all()
 
 
+@router.get("/discover", response_model=List[AgentOut])
+async def discover_agents(
+    role: Optional[str] = Query(None, description="Filter by role (partial match)"),
+    tools: Optional[str] = Query(None, description="Filter by tool name in enabled_tools"),
+    group: Optional[str] = Query(None, description="Filter by group membership"),
+    capability: Optional[str] = Query(None, description="General search across role, description, tools"),
+    db: AsyncSession = Depends(get_session),
+):
+    """Discover agents by role, tools, group membership, or general capability."""
+    import json as _json
+
+    stmt = select(Agent).where(Agent.is_active == True, Agent.status != "deleted")  # noqa: E712
+    filters = []
+
+    if role:
+        filters.append(Agent.role.ilike(f"%{role}%"))
+    if tools:
+        filters.append(Agent.enabled_tools.ilike(f"%{tools}%"))
+    if group:
+        filters.append(Agent.groups.ilike(f"%{group}%"))
+    if capability:
+        filters.append(or_(
+            Agent.role.ilike(f"%{capability}%"),
+            Agent.description.ilike(f"%{capability}%"),
+            Agent.enabled_tools.ilike(f"%{capability}%"),
+            Agent.name.ilike(f"%{capability}%"),
+        ))
+
+    if filters:
+        from sqlalchemy import and_
+        stmt = stmt.where(and_(*filters))
+
+    stmt = stmt.order_by(Agent.name)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 @router.post("", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
-async def create_agent(agent_in: AgentCreate, db: AsyncSession = Depends(get_session)):
+async def create_agent(
+    agent_in: AgentCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
+    from app.services.agent_limits import can_create_agent
+
+    rc_wrapper = getattr(request.app.state, "redis_client", None)
+    redis = rc_wrapper.redis if rc_wrapper is not None else None
+
+    allowed, reason = await can_create_agent(db, redis)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=reason,
+        )
+
     agent = Agent(**agent_in.model_dump())
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
+
+    # Register in Redis agent registry (key: agents:active, type: SET)
+    if redis is not None:
+        try:
+            await redis.sadd("agents:active", agent.id)
+        except Exception:
+            pass
+
     return agent
 
 
@@ -115,17 +176,94 @@ async def update_agent(agent_id: str, agent_in: AgentUpdate, db: AsyncSession = 
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_session)):
+async def delete_agent(
+    agent_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
     agent = await db.get(Agent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-        
+
     if getattr(agent, "is_system", False):
         raise HTTPException(status_code=403, detail="Cannot delete a system orchestrator agent")
 
-    await db.delete(agent)
+    # Soft-delete: mark status='deleted' so capacity is freed, row retained for audit.
+    agent.status = "deleted"
+    agent.is_active = False
     await db.commit()
+
+    # Free capacity in Redis registry
+    rc_wrapper = getattr(request.app.state, "redis_client", None)
+    redis = rc_wrapper.redis if rc_wrapper is not None else None
+    if redis is not None:
+        try:
+            await redis.srem("agents:active", agent_id)
+        except Exception:
+            pass
+
     return None
+
+
+class AgentEvolveRequest(BaseModel):
+    memory_update: Optional[str] = None
+    tool_strategy: Optional[str] = None
+    execution_pattern: Optional[str] = None
+
+
+@router.post("/{agent_id}/evolve")
+async def evolve_agent(
+    agent_id: str,
+    req: AgentEvolveRequest,
+    db: AsyncSession = Depends(get_session),
+):
+    """Allow an agent to evolve by accumulating memory and strategies after tasks.
+    
+    Unlike update, this APPENDS to memory_context rather than overwriting.
+    Sets the agent to 'learning' state during the process.
+    """
+    from app.services.agent_status import AgentStatusManager, AgentState
+
+    agent = await db.get(Agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Set learning state
+    status_mgr = await AgentStatusManager.get_instance()
+    status_mgr.set_status(agent_id, AgentState.LEARNING, "Evolving from task experience")
+
+    updated_fields = []
+
+    if req.memory_update:
+        existing = agent.memory_context or ""
+        separator = "\n---\n" if existing else ""
+        agent.memory_context = existing + separator + req.memory_update
+        updated_fields.append("memory_context")
+
+    if req.tool_strategy:
+        existing_instructions = agent.memory_instructions or ""
+        separator = "\n" if existing_instructions else ""
+        agent.memory_instructions = existing_instructions + separator + f"[Strategy] {req.tool_strategy}"
+        updated_fields.append("memory_instructions")
+
+    if req.execution_pattern:
+        existing_instructions = agent.memory_instructions or ""
+        separator = "\n" if existing_instructions else ""
+        agent.memory_instructions = existing_instructions + separator + f"[Pattern] {req.execution_pattern}"
+        updated_fields.append("memory_instructions")
+
+    await db.commit()
+    await db.refresh(agent)
+
+    # Return to idle
+    status_mgr.set_status(agent_id, AgentState.IDLE)
+
+    return {
+        "status": "evolved",
+        "agent_id": agent_id,
+        "agent_name": agent.name,
+        "updated_fields": updated_fields,
+    }
 
 
 # ──────────────────────────────────────────────
@@ -191,7 +329,17 @@ async def agent_to_agent_chat(
             temperature=req.temperature,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent chat error: {str(e)}")
+        msg = str(e)
+        lowered = msg.lower()
+        if "quota" in lowered or "resource_exhausted" in lowered or "rate limit" in lowered or "429" in lowered:
+            raise HTTPException(status_code=429, detail=f"Agent chat error: {msg}")
+            if "api key not valid" in lowered or "api_key_invalid" in lowered or "invalid api key" in lowered:
+                raise HTTPException(status_code=401, detail=msg)
+            if (
+                "provider" in lowered and "not configured" in lowered
+            ) or "no available fallback provider" in lowered or "all connection attempts failed" in lowered:
+                raise HTTPException(status_code=503, detail=msg)
+        raise HTTPException(status_code=500, detail=f"Agent chat error: {msg}")
 
     # Determine the conversation_id that was used/created
     # chat() creates one if empty; we need to retrieve it from the conversation service

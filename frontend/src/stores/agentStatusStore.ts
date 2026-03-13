@@ -1,19 +1,35 @@
 import { create } from 'zustand';
 import { useAgentStore } from './agentStore';
 
-export type AgentState = 'idle' | 'working' | 'offline' | 'initializing' | 'error';
+export type AgentState = 'idle' | 'working' | 'learning' | 'stalled' | 'recovering' | 'offline' | 'initializing' | 'error';
 
 export interface AgentStatus {
     state: AgentState;
     task?: string;
     current_task_id?: string;
     progress?: number;
+    status_lines?: string[];
     last_heartbeat?: string;
+}
+
+export interface HeartbeatMetrics {
+    tick: number;
+    timestamp: string;
+    monitors: {
+        agent?: { idle: number; working: number; stalled: number; offline: number; error: number; recovering: number; total: number; recovered: number };
+        task?: { active: number; pending: number; stalled: number; timed_out: number };
+        workflow?: { active_nodes: number; stuck_nodes: number; retried_nodes: number; skipped_nodes: number };
+        resource?: { throttle_level: string; max_utilization_pct: number; max_concurrent_tasks: number };
+        communication?: { pending_mentions: number; escalated_mentions: number; queue_stalled: boolean };
+        watchdog?: { killed: number };
+    };
 }
 
 interface AgentStatusStore {
     statuses: Record<string, AgentStatus>;
     isConnected: boolean;
+    heartbeatMetrics: HeartbeatMetrics | null;
+    resourceAlert: string | null;
     connect: () => void;
     disconnect: () => void;
 }
@@ -25,6 +41,8 @@ let intentionalClose = false;
 export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
     statuses: {},
     isConnected: false,
+    heartbeatMetrics: null,
+    resourceAlert: null,
 
     connect: () => {
         // Don't connect if we already have an open/connecting socket
@@ -37,7 +55,7 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
         // Connect directly to backend port to bypass unstable Vite WS proxy
-        const backendPort = '8321';
+        const backendPort = '8322';
         const wsUrl = `${protocol}//${host}:${backendPort}/api-ws/agents/status`;
         console.debug('[AgentStatus WS] Connecting to:', wsUrl);
 
@@ -70,7 +88,7 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
                 } else if (data.type === 'chain_update') {
                     // Chain updates are also broadcast via status WS; chatStore handles them via chat WS
                 } else if (data.type === 'task_progress') {
-                    // Update agent status with task progress
+                    // This could be from an agent (with agent_id) OR from the orchestrator (with just chain_id and status_lines)
                     if (data.agent_id) {
                         set((state) => ({
                             statuses: {
@@ -83,7 +101,30 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
                                 }
                             }
                         }));
+                    } else if (data.chain_id && data.status_lines) {
+                        // Orchestrator subtask tracking -- route to System Agent (or active orchestrator) to drive the UI monitor
+                        // Try to find the system agent (usually Janny) to attach this state to
+                        const systemAgentId = Object.keys(get().statuses).find(id => get().statuses[id]?.task?.includes("Orchestrating") || get().statuses[id]?.state === 'working');
+                        if (systemAgentId) {
+                            set((state) => ({
+                                statuses: {
+                                    ...state.statuses,
+                                    [systemAgentId]: {
+                                        ...state.statuses[systemAgentId],
+                                        state: 'working' as AgentState,
+                                        progress: data.progress,
+                                        status_lines: data.status_lines,
+                                    }
+                                }
+                            }));
+                        }
                     }
+                } else if (data.type === 'heartbeat_metrics') {
+                    // Master Heartbeat periodic metrics
+                    set({ heartbeatMetrics: data as HeartbeatMetrics });
+                } else if (data.type === 'resource_alert') {
+                    // Resource throttle alert
+                    set({ resourceAlert: data.throttle_level || null });
                 }
             } catch (e) {
                 console.error('[AgentStatus WS] Parse error:', e);

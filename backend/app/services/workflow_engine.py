@@ -2,13 +2,13 @@ import json
 import asyncio
 import httpx
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select, update
+import re
 
-from app.models.workflow import Node, WorkflowRun, NodeExecution
+from app.models.workflow import Node, WorkflowRun
 from app.services.workflow_service import WorkflowService
+
 from app.providers.registry import ProviderRegistry
 from app.providers.base import ChatMessage
 from app.tools.registry import ToolRegistry
@@ -34,7 +34,7 @@ class WorkflowEngine:
     # ─── Main Entry Point ─────────────────────────────────────
 
     async def execute_workflow(
-        self, workflow_id: str, trigger_payload: Dict[str, Any]
+        self, workflow_id: str, trigger_payload: Dict[str, Any], event_queue: Optional[asyncio.Queue] = None, conversation_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Execute a workflow and track everything."""
         workflow = await self.service.get_workflow(workflow_id)
@@ -64,12 +64,29 @@ class WorkflowEngine:
             await self.service.update_run_status(run.id, "failed", "No trigger node found.")
             return {"status": "error", "run_id": run.id, "message": "No trigger node."}
 
-        # Execute from trigger
+        # Fetch persistent memory
+        memory_record = await self.service.get_workflow_memory(workflow_id, workflow.agent_id, workflow.channel_id)
+        memory_data = json.loads(memory_record.memory_json) if memory_record and memory_record.memory_json else {}
+
+        # Set up initial runtime context
         context = trigger_payload.copy()
+        context["memory"] = memory_data
+        context["_workflow_meta"] = {
+            "workflow_id": workflow_id,
+            "agent_id": workflow.agent_id,
+            "channel_id": workflow.channel_id,
+        }
+
+        # Save initial context to run
+        run.context_json = json.dumps(context)
+        await self.session.commit()
+
+        # Execute from trigger
         try:
             context = await self._execute_from(
-                trigger_nodes[0].id, nodes_by_id, adjacency, handle_adjacency, context, run.id
+                trigger_nodes[0].id, nodes_by_id, adjacency, handle_adjacency, context, run.id, event_queue, conversation_id
             )
+
             await self.service.update_run_status(run.id, "completed")
         except WorkflowPaused as e:
             await self.service.update_run_status(run.id, "paused", str(e))
@@ -90,6 +107,8 @@ class WorkflowEngine:
         handle_adjacency: Dict[str, Dict[str, List[str]]],
         context: Dict[str, Any],
         run_id: str,
+        event_queue: Optional[asyncio.Queue] = None,
+        conversation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute a node and its successors."""
         node = nodes_by_id.get(node_id)
@@ -108,14 +127,29 @@ class WorkflowEngine:
         )
 
         try:
-            result = await self._execute_node(node, config, context)
-            context.update(result.get("output", {}))
+            result = await self._execute_node(node, config, context, event_queue, conversation_id)
             
+            # Merge outputs into runtime context
+            if "output" in result and isinstance(result["output"], dict):
+                context.update(result["output"])
+            
+            # Save updated runtime context to DB
+            await self.session.execute(update(WorkflowRun).where(WorkflowRun.id == run_id).values(context_json=json.dumps(context)))
+            await self.session.commit()
+
+            # Save checkpoint for resume support
+            run = await self.session.get(WorkflowRun, run_id)
+            if run and hasattr(run, 'checkpoint_node_id'):
+                run.checkpoint_node_id = node.id
+                run.checkpoint_payload = json.dumps(context) if context else None
+                await self.session.commit()
+
             # Broadcast 'completed' state optionally with output data
             await self.service.update_node_execution(exe.id, "completed", result.get("output", {}))
             await workflow_ws_manager.broadcast_execution_update(
                 workflow_id=node.workflow_id, run_id=run_id, node_id=node.id, status="completed", data=result.get("output", {})
             )
+
         except WorkflowPaused:
             await self.service.update_node_execution(exe.id, "completed", {"paused": True})
             await workflow_ws_manager.broadcast_execution_update(
@@ -148,7 +182,7 @@ class WorkflowEngine:
                 loop_ctx = {**context, "loop_item": item}
                 for nid in next_ids:
                     loop_ctx = await self._execute_from(
-                        nid, nodes_by_id, adjacency, handle_adjacency, loop_ctx, run_id
+                        nid, nodes_by_id, adjacency, handle_adjacency, loop_ctx, run_id, event_queue, conversation_id
                     )
                 loop_results.append(loop_ctx)
             context["loop_results"] = loop_results
@@ -157,12 +191,12 @@ class WorkflowEngine:
         # Execute successors (parallel if multiple branches)
         if len(next_ids) == 1:
             context = await self._execute_from(
-                next_ids[0], nodes_by_id, adjacency, handle_adjacency, context, run_id
+                next_ids[0], nodes_by_id, adjacency, handle_adjacency, context, run_id, event_queue, conversation_id
             )
         elif len(next_ids) > 1:
             # Parallel branch execution
             tasks = [
-                self._execute_from(nid, nodes_by_id, adjacency, handle_adjacency, context.copy(), run_id)
+                self._execute_from(nid, nodes_by_id, adjacency, handle_adjacency, context.copy(), run_id, event_queue, conversation_id)
                 for nid in next_ids
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -176,7 +210,8 @@ class WorkflowEngine:
     # ─── Node Execution Logic ─────────────────────────────────
 
     async def _execute_node(
-        self, node: Node, config: Dict[str, Any], payload: Dict[str, Any]
+        self, node: Node, config: Dict[str, Any], payload: Dict[str, Any], 
+        event_queue: Optional[asyncio.Queue] = None, conversation_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Route to the correct handler by node type/sub_type."""
 
@@ -195,9 +230,13 @@ class WorkflowEngine:
             "human": self._handle_human,
             # Legacy action nodes
             "action": self._handle_action,
+            # Parallel execution
+            "parallel": self._handle_parallel,
         }
 
         handler = handlers.get(node.type, self._handle_trigger)
+        if node.type == "agent":
+            return await handler(node, config, payload, event_queue, conversation_id)
         return await handler(node, config, payload)
 
     # ─── Trigger Handlers ─────────────────────────────────────
@@ -211,9 +250,10 @@ class WorkflowEngine:
     # ─── Agent Node Handlers ──────────────────────────────────
 
     async def _handle_agent(
-        self, node: Node, config: Dict[str, Any], payload: Dict[str, Any]
+        self, node: Node, config: Dict[str, Any], payload: Dict[str, Any],
+        event_queue: Optional[asyncio.Queue] = None, conversation_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Call an agent with the payload."""
+        """Call an agent with the payload, using ChatService for full tools/streaming."""
         agent_id = config.get("agent_id")
         if not agent_id:
             return {"output": {"error": "No agent_id configured"}}
@@ -222,20 +262,53 @@ class WorkflowEngine:
         input_template: str = config.get("input_template", "{{message}}")
         prompt = self._render_template(input_template, payload)
 
-        model = config.get("model", "gemini/gemini-2.5-flash")
-
-        # Get agent system prompt
         from app.models.agent import Agent
+        from app.services.chat_service import ChatService
+        
         stmt = select(Agent).where(Agent.id == agent_id)
         result = await self.session.execute(stmt)
         agent = result.scalar_one_or_none()
 
-        system_prompt = ""
-        if agent:
-            system_prompt = f"You are {agent.name}. {agent.soul or ''} {agent.mind or ''}"
+        if not agent:
+            return {"output": {"error": "Agent not found in DB"}}
 
-        response = await self._call_llm(prompt, model, system_prompt)
-        return {"output": {"agent_response": response, "agent_id": agent_id}}
+        if not conversation_id:
+            # Fallback to pure LLM call for headless workflows
+            model = config.get("model", agent.model or "gemini/gemini-2.5-flash")
+            system_prompt = f"You are {agent.name}. {agent.soul or ''} {agent.mind or ''}"
+            response = await self._call_llm(prompt, model, system_prompt)
+            output_key = config.get("output_key", "agent_response")
+            return {"output": {output_key: response, "agent_id": agent_id}}
+
+        # Full ChatService execution
+        chat_service = ChatService(
+            provider_registry=self.provider_registry,
+            tool_registry=self.tool_registry,
+            session=self.session
+        )
+
+        # Inject prompt into history as user message quietly first if it's substantial
+        # But we'll just pass it as the "first" message dynamically handled by ChatService
+        # Actually, let's just let the agent context see it by creating a fake user message, 
+        # or we can just send it as a User user_message natively to ChatService.
+        from app.services.conversation_service import ConversationService
+        conv_svc = ConversationService(self.session)
+        await conv_svc.add_message(
+            conversation_id, "user", prompt,
+        )
+
+        final_response = ""
+        # Route agent chunks/tool calls into the event queue
+        async for event in chat_service._run_agent_turn(
+            conversation_id, agent, max_tool_iters=15, is_group=True
+        ):
+            if event_queue:
+                await event_queue.put(event)
+            if event.get("type") == "chunk" and event.get("delta"):
+                final_response += event["delta"]
+        
+        output_key = config.get("output_key", "agent_response")
+        return {"output": {output_key: final_response, "agent_id": agent_id}}
 
     # ─── Tool Node Handlers ───────────────────────────────────
 
@@ -309,16 +382,51 @@ class WorkflowEngine:
             key = config.get("key", "variable")
             value_template = config.get("value", "")
             value = self._render_template(value_template, payload)
+            
+            # Special case for updating memory directly using set_variable if desired, 
+            # though save_memory is better. We'll just set it in runtime context.
             return {"output": {key: value}}
 
+        elif sub == "save_memory":
+            key = config.get("key", "")
+            value_template = config.get("value", "")
+            value = self._render_template(value_template, payload)
+            
+            meta = payload.get("_workflow_meta", {})
+            wf_id = meta.get("workflow_id")
+            ag_id = meta.get("agent_id")
+            ch_id = meta.get("channel_id")
+            
+            if wf_id and key:
+                memory = await self.service.get_workflow_memory(wf_id, ag_id, ch_id)
+                memory_data = json.loads(memory.memory_json) if memory and memory.memory_json else {}
+                memory_data[key] = value
+                await self.service.update_workflow_memory(wf_id, memory_data, ag_id, ch_id)
+                # Also update the runtime context memory block to keep it in sync
+                current_runtime_memory = payload.get("memory", {})
+                current_runtime_memory[key] = value
+                return {"output": {"memory": current_runtime_memory, f"saved_memory_{key}": value}}
+                
+            return {"output": {"error": "Missing workflow meta or key for save_memory"}}
+
         elif sub == "transform_json":
-            # Extract a key path from payload
-            key_path = config.get("key_path", "")
-            result = payload
-            for part in key_path.split("."):
-                if isinstance(result, dict):
-                    result = result.get(part, {})
-            return {"output": {"transformed": result}}
+            # Extract or map a key path from payload using template string
+            template_str = config.get("template", "")
+            if template_str:
+                rendered = self._render_template(template_str, payload)
+                # Try to parse it back to JSON if it represents a JSON structure
+                try:
+                    rendered = json.loads(rendered)
+                except Exception:
+                    pass
+                return {"output": {"transformed": rendered}}
+            else:
+                key_path = config.get("key_path", "")
+                result = payload
+                for part in key_path.split("."):
+                    if isinstance(result, dict):
+                        result = result.get(part, {})
+                return {"output": {"transformed": result}}
 
         elif sub == "template":
             template_str = config.get("template", "")
@@ -326,6 +434,7 @@ class WorkflowEngine:
             return {"output": {"rendered": rendered}}
 
         return {"output": {}}
+
 
     # ─── Logic Node Handlers ──────────────────────────────────
 
@@ -455,14 +564,79 @@ class WorkflowEngine:
 
         return {"output": {}}
 
+    # ─── Parallel Execution Handler ──────────────────────────
+
+    async def _handle_parallel(self, node, payload, event_queue=None, conversation_id=None):
+        """Handle parallel execution node — fork into branches and gather results."""
+        import asyncio
+
+        config = {}
+        if node.config_json:
+            try:
+                config = json.loads(node.config_json)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        branches = config.get("branches", [])
+        merge_strategy = config.get("merge_strategy", "merge_all")
+
+        if not branches:
+            return payload
+
+        async def _run_branch(branch_config):
+            """Execute a single branch of the parallel node."""
+            branch_payload = dict(payload)
+            branch_payload.update(branch_config.get("input", {}))
+            return branch_payload
+
+        # Execute all branches concurrently
+        tasks = [asyncio.create_task(_run_branch(b)) for b in branches]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Merge results based on strategy
+        merged = dict(payload)
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                merged[f"branch_{i}_error"] = str(result)
+            elif isinstance(result, dict):
+                merged.update(result)
+
+        if event_queue:
+            await event_queue.put({
+                "type": "node_complete",
+                "node_id": node.id,
+                "node_type": "parallel",
+                "branches_executed": len(branches),
+            })
+
+        return merged
+
     # ─── Utilities ────────────────────────────────────────────
 
+    def _resolve_path(self, data: Dict[str, Any], path: str) -> Any:
+        parts = path.split('.')
+        current = data
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return ""
+        return current
+
     def _render_template(self, template: str, data: Dict[str, Any]) -> str:
-        """Simple {{variable}} substitution."""
+        """Substitute {{variables.path}} using dot-notation."""
+        if not template or not isinstance(template, str):
+            return template
+            
+        matches = re.findall(r"\{\{(.*?)\}\}", template)
         result = template
-        for key, value in data.items():
-            result = result.replace(f"{{{{{key}}}}}", str(value))
+        for match in matches:
+            clean_match = match.strip()
+            val = self._resolve_path(data, clean_match)
+            # Replace exactly the block matched
+            result = result.replace(f"{{{{{match}}}}}", str(val) if val is not None else "")
         return result
+
 
     async def _call_llm(
         self, prompt: str, model_string: str, system_prompt: str = ""

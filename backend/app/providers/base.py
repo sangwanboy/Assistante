@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import AsyncIterator
 
+from app.config import settings
+
 
 @dataclass
 class ModelInfo:
@@ -11,6 +13,9 @@ class ModelInfo:
     supports_streaming: bool = True
     supports_tools: bool = True
     context_window: int = 8192
+    tpm: int | None = None
+    rpm: int | None = None
+    rpd: int | None = None
 
 
 @dataclass
@@ -36,10 +41,23 @@ class StreamChunk:
     finish_reason: str | None = None
     tool_calls: list[dict] | None = None
     usage: TokenUsage | None = None
+    error: str | None = None
 
 
 class BaseProvider(ABC):
     """Abstract base class that every AI provider must implement."""
+
+    @classmethod
+    def get_api_key(cls, provider_name: str) -> str | None:
+        """Retrieve provider API key directly from runtime settings."""
+        provider = (provider_name or "").strip().lower()
+        if provider == "openai":
+            return settings.openai_api_key
+        if provider == "anthropic":
+            return settings.anthropic_api_key
+        if provider in {"gemini", "google"}:
+            return settings.gemini_api_key
+        return None
 
     @property
     @abstractmethod

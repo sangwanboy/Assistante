@@ -35,7 +35,7 @@ export const useAgentControlStore = create<AgentControlStore>((set, get) => ({
         set({ _intentionalClose: false });
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
-        const backendPort = '8321';
+        const backendPort = '8322';
         const wsUrl = `${protocol}//${host}:${backendPort}/api-ws/agents/control`;
 
         const newWs = new WebSocket(wsUrl);

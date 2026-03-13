@@ -13,13 +13,30 @@ export function WorkflowRunsPanel({ workflowId, onClose }: Props) {
     const [selectedRun, setSelectedRun] = useState<WorkflowRunDetail | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [memory, setMemory] = useState<any>(null);
+    const [activeTab, setActiveTab] = useState<'timeline' | 'variables' | 'memory'>('timeline');
 
     useEffect(() => {
         loadRuns();
+        loadMemory();
         // Poll for updates every 5 seconds if panel is open
-        const interval = setInterval(loadRuns, 5000);
+        const interval = setInterval(() => {
+            loadRuns();
+            loadMemory();
+        }, 5000);
         return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workflowId]);
+
+    const loadMemory = async () => {
+        try {
+            const data = await api.getWorkflowMemory(workflowId);
+            setMemory(data);
+        } catch (error) {
+            console.error('Failed to load memory:', error);
+        }
+    };
 
     const loadRuns = async () => {
         try {
@@ -102,8 +119,28 @@ export function WorkflowRunsPanel({ workflowId, onClose }: Props) {
                             )}
                         </div>
 
-                        <div>
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 pl-1">Execution Steps</h4>
+                        <div className="flex border-b border-[#1c1c30] mb-4">
+                            <button
+                                className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider ${activeTab === 'timeline' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
+                                onClick={() => setActiveTab('timeline')}
+                            >
+                                Timeline
+                            </button>
+                            <button
+                                className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider ${activeTab === 'variables' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
+                                onClick={() => setActiveTab('variables')}
+                            >
+                                Variables
+                            </button>
+                            <button
+                                className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider ${activeTab === 'memory' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
+                                onClick={() => setActiveTab('memory')}
+                            >
+                                Memory
+                            </button>
+                        </div>
+
+                        {activeTab === 'timeline' && (
                             <div className="flex flex-col gap-2 relative">
                                 {/* Timeline line */}
                                 <div className="absolute left-3 top-2 bottom-4 w-px bg-[#1c1c30]"></div>
@@ -132,7 +169,23 @@ export function WorkflowRunsPanel({ workflowId, onClose }: Props) {
                                     <div className="text-center text-xs text-gray-500 py-4">No node executions found.</div>
                                 )}
                             </div>
-                        </div>
+                        )}
+
+                        {activeTab === 'variables' && (
+                            <div className="bg-[#131320] rounded-lg border border-[#1c1c30] p-3 overflow-x-auto max-h-[400px]">
+                                <pre className="text-[11px] text-gray-300 font-mono w-full">
+                                    {selectedRun.context_json ? JSON.stringify(JSON.parse(selectedRun.context_json), null, 2) : 'No variables payload found.'}
+                                </pre>
+                            </div>
+                        )}
+
+                        {activeTab === 'memory' && (
+                            <div className="bg-[#131320] rounded-lg border border-[#1c1c30] p-3 overflow-x-auto max-h-[400px]">
+                                <pre className="text-[11px] text-gray-300 font-mono w-full">
+                                    {memory && memory.memory_json ? JSON.stringify(JSON.parse(memory.memory_json), null, 2) : 'No long-term workflow memory.'}
+                                </pre>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="p-4 flex flex-col gap-2">

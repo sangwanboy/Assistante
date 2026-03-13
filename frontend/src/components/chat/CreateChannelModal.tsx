@@ -31,8 +31,8 @@ export function CreateChannelModal({ isOpen, onClose }: CreateChannelModalProps)
             // Reset form
             setName('');
             setDescription('');
-        } catch (err: any) {
-            setError(err.message || 'Failed to create group');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to create group');
         } finally {
             setIsSubmitting(false);
         }

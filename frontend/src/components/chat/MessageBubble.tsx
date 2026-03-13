@@ -61,7 +61,7 @@ export function MessageBubble({ message }: Props) {
     return (
       <div className="flex justify-end gap-3 px-4 py-3">
         <div className="max-w-[72%]">
-          <div className="bg-indigo-600/25 border border-indigo-500/25 rounded-2xl rounded-tr-sm px-4 py-3">
+          <div className="bg-indigo-600/15 border border-indigo-500/15 rounded-2xl rounded-tr-sm px-4 py-3">
             <p className="text-[15px] text-gray-200 whitespace-pre-wrap break-words leading-relaxed">{highlightMentions(message.content)}</p>
           </div>
           <div className="text-[10px] text-gray-600 mt-1 text-right font-medium">You</div>

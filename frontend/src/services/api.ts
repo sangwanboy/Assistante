@@ -1,4 +1,24 @@
+import { useUIStore } from '../stores/uiStore';
+
 const BASE_URL = '/api';
+
+function normalizeApiError(status: number, rawError: string): string {
+  const msg = rawError || '';
+  const lowered = msg.toLowerCase();
+
+  if (
+    status === 429 ||
+    lowered.includes('resource_exhausted') ||
+    lowered.includes('quota exceeded') ||
+    lowered.includes('rate limit')
+  ) {
+    return 'Model quota reached. Please wait about a minute and retry, or switch to another model.';
+  }
+
+  const compact = msg.replace(/\s+/g, ' ').trim();
+  const shortened = compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
+  return `API Error ${status}: ${shortened || 'Request failed'}`;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -7,7 +27,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const error = await res.text();
-    throw new Error(`API Error ${res.status}: ${error}`);
+    const errMsg = normalizeApiError(res.status, error);
+    if (res.status >= 500) {
+      useUIStore.getState().addToast(errMsg, 'error');
+    }
+    throw new Error(errMsg);
   }
   return res.json();
 }
@@ -18,7 +42,7 @@ export const api = {
 
   // Conversations
   getConversations: () => request<import('../types').Conversation[]>('/conversations'),
-  createConversation: (data: { title?: string; model?: string; system_prompt?: string; is_group?: boolean; agent_id?: string }) =>
+  createConversation: (data: { title?: string; model?: string; system_prompt?: string; is_group?: boolean; agent_id?: string; channel_id?: string }) =>
     request<import('../types').Conversation>('/conversations', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -58,6 +82,9 @@ export const api = {
 
   // Agents
   getAgents: () => request<import('../types').Agent[]>('/agents'),
+  getAgentGroups: () => request<import('../types').GroupDiscussion[]>('/groups'),
+  createAgentGroup: (data: { name: string; description: string; agent_ids: string[] }) => request<import('../types').GroupDiscussion>('/groups', { method: 'POST', body: JSON.stringify(data) }),
+  deleteAgentGroup: (id: string) => request<void>(`/groups/${id}`, { method: 'DELETE' }),
   createAgent: (data: Partial<import('../types').Agent>) =>
     request<import('../types').Agent>('/agents', {
       method: 'POST',
@@ -70,6 +97,19 @@ export const api = {
     }),
   deleteAgent: (id: string) =>
     request<void>(`/agents/${id}`, { method: 'DELETE' }),
+  discoverAgents: (params: { role?: string; tools?: string; group?: string; capability?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params.role) searchParams.set('role', params.role);
+    if (params.tools) searchParams.set('tools', params.tools);
+    if (params.group) searchParams.set('group', params.group);
+    if (params.capability) searchParams.set('capability', params.capability);
+    return request<import('../types').Agent[]>(`/agents/discover?${searchParams.toString()}`);
+  },
+  evolveAgent: (id: string, data: { memory_update?: string; tool_strategy?: string; execution_pattern?: string }) =>
+    request<{ status: string; agent_id: string; agent_name: string; updated_fields: string[] }>(`/agents/${id}/evolve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   agentChat: (agentId: string, data: { message: string; target_agent_id: string; conversation_id?: string; temperature?: number }) =>
     request<{ response: string; from_agent_id: string; from_agent_name: string; to_agent_id: string; to_agent_name: string; conversation_id: string }>(`/agents/${agentId}/chat`, {
       method: 'POST',
@@ -91,7 +131,14 @@ export const api = {
       body: formData,
       // Do NOT set Content-Type header here, browser sets it with appropriate boundary for FormData
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const err = await res.text();
+      const errMsg = normalizeApiError(res.status, err);
+      if (res.status >= 500) {
+        useUIStore.getState().addToast(errMsg, 'error');
+      }
+      throw new Error(errMsg);
+    }
     return res.json() as Promise<import('../types').Document>;
   },
   deleteDocument: (id: string) =>
@@ -113,6 +160,8 @@ export const api = {
     request<import('../types/workflow').WorkflowRun[]>(`/workflows/${id}/runs`),
   getWorkflowRunDetail: (runId: string) =>
     request<import('../types/workflow').WorkflowRunDetail>(`/workflows/runs/${runId}`),
+  getWorkflowMemory: (id: string) =>
+    request<unknown>(`/workflows/${id}/memory`),
 
   // Custom Tools
   getCustomTools: () => request<import('../types').CustomTool[]>('/custom-tools'),
@@ -188,5 +237,29 @@ export const api = {
   getActiveChains: () => request<import('../types').ChainInfo[]>('/chains/active'),
   getChain: (id: string) => request<import('../types').ChainInfo>(`/chains/${id}`),
 
+  // System
+  getSystemContainers: () => request<{ available: boolean; total: number; active: number; idle: number; error?: string }>('/system/containers'),
+  getSystemMetrics: () => request<{
+    active_agents: number;
+    total_agents: number;
+    global_rpm: number;
+    total_rpm_limit: number;
+    global_tpm: number;
+    total_tpm_limit: number;
+    rate_limit_blocks: number;
+  }>('/system/metrics'),
+  getSystemDashboard: () => request<{
+    agents: { active: number; working: number; stalled: number; error: number };
+    workflows: { running: number; completed_24h: number; failed_24h: number };
+    tasks: { pending: number; running: number; queue_depth: number; dead_letter: number };
+    tokens: { used_today: number; cost_today: string; by_agent: Record<string, number> };
+    rate_limits: { rpm_usage: string; tpm_usage: string; throttle_level: string };
+    delegation_chains: { active: number; avg_depth: number };
+    heartbeat: { uptime_seconds: number; last_tick: string };
+  }>('/system/dashboard'),
+  updateModelCapability: (modelId: string, data: { rpm?: number | null, tpm?: number | null, context_window?: number | null }) =>
+    request<{ status: string; id: string }>(`/models/${encodeURIComponent(modelId)}/capability`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 };
-

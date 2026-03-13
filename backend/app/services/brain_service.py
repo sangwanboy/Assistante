@@ -9,10 +9,10 @@ Each agent gets a dedicated folder under data/agents/<slug>/ containing:
 
 These files ARE the agent's brain. The DB stores config; files store identity.
 """
-import os
 import re
+import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -265,3 +265,173 @@ class AgentBrainService:
             "today_log": AgentBrainService.read_today_log(agent_name),
             "recent_logs": AgentBrainService.read_recent_logs(agent_name, days=3),
         }
+
+    # ── Three-Layer Memory (DB + Vector) ──
+
+    CHROMA_PATH = Path(__file__).parent.parent.parent / "data" / "chroma"
+
+    @staticmethod
+    async def store_working_memory(agent_id: str, content: str):
+        """Layer 1: Store ephemeral working memory (expires in 1 hour)."""
+        from app.db.engine import async_session
+        from app.models.agent_memory import WorkingMemory
+        async with async_session() as session:
+            entry = WorkingMemory(
+                id=str(uuid.uuid4()),
+                agent_id=agent_id,
+                content=content,
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            )
+            session.add(entry)
+            await session.commit()
+
+    @staticmethod
+    async def store_episodic_memory(
+        agent_id: str, task_summary: str, outcome: str, task_id: str | None = None
+    ):
+        """Layer 2: Store a completed task summary as episodic memory."""
+        from app.db.engine import async_session
+        from app.models.agent_memory import EpisodicMemory
+        async with async_session() as session:
+            entry = EpisodicMemory(
+                id=str(uuid.uuid4()),
+                agent_id=agent_id,
+                task_id=task_id,
+                summary=task_summary,
+                outcome=outcome,
+            )
+            session.add(entry)
+            await session.commit()
+        logger.info("Stored episodic memory for agent %s (outcome=%s)", agent_id, outcome)
+
+    @staticmethod
+    async def store_long_term_memory(agent_id: str, content: str):
+        """Layer 3: Store content in ChromaDB with embeddings for semantic search."""
+        try:
+            import chromadb
+            client = chromadb.PersistentClient(
+                path=str(AgentBrainService.CHROMA_PATH)
+            )
+            collection = client.get_or_create_collection(
+                name=f"agent_{agent_id}_memory",
+                metadata={"hnsw:space": "cosine"},
+            )
+            doc_id = str(uuid.uuid4())
+            collection.add(
+                documents=[content],
+                ids=[doc_id],
+                metadatas=[{
+                    "agent_id": agent_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }],
+            )
+            logger.info("Stored long-term memory for agent %s (doc=%s)", agent_id, doc_id)
+        except Exception as exc:
+            logger.warning("Failed to store long-term memory: %s", exc)
+
+    @staticmethod
+    async def retrieve_relevant_memories(
+        agent_id: str, query: str, limit: int = 5
+    ) -> list[str]:
+        """Layer 3: Retrieve relevant long-term memories via semantic search."""
+        try:
+            import chromadb
+            client = chromadb.PersistentClient(
+                path=str(AgentBrainService.CHROMA_PATH)
+            )
+            try:
+                collection = client.get_collection(name=f"agent_{agent_id}_memory")
+            except Exception:
+                return []
+
+            results = collection.query(
+                query_texts=[query],
+                n_results=limit,
+            )
+            documents = results.get("documents", [[]])[0]
+            return documents
+        except Exception as exc:
+            logger.warning("Failed to retrieve long-term memories: %s", exc)
+            return []
+
+    @staticmethod
+    async def get_recent_episodic_memories(
+        agent_id: str, limit: int = 5
+    ) -> list[dict]:
+        """Layer 2: Retrieve recent episodic memories for context."""
+        from app.db.engine import async_session
+        from app.models.agent_memory import EpisodicMemory
+        from sqlalchemy import select
+
+        async with async_session() as session:
+            stmt = (
+                select(EpisodicMemory)
+                .where(EpisodicMemory.agent_id == agent_id)
+                .order_by(EpisodicMemory.created_at.desc())
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            memories = result.scalars().all()
+            return [
+                {
+                    "summary": m.summary,
+                    "outcome": m.outcome,
+                    "task_id": m.task_id,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in memories
+            ]
+
+    @staticmethod
+    async def cleanup_expired_working_memory():
+        """Remove expired working memory entries."""
+        from app.db.engine import async_session
+        from app.models.agent_memory import WorkingMemory
+        from sqlalchemy import delete
+
+        async with async_session() as session:
+            stmt = delete(WorkingMemory).where(
+                WorkingMemory.expires_at < datetime.now(timezone.utc)
+            )
+            result = await session.execute(stmt)
+            await session.commit()
+            if result.rowcount > 0:
+                logger.info("Cleaned up %d expired working memory entries", result.rowcount)
+
+    @staticmethod
+    async def summarize_and_archive(agent_id: str):
+        """Move expired working memory to episodic memory after summarization."""
+        from app.db.engine import async_session
+        from app.models.agent_memory import WorkingMemory
+        from sqlalchemy import select
+
+        async with async_session() as session:
+            stmt = (
+                select(WorkingMemory)
+                .where(
+                    WorkingMemory.agent_id == agent_id,
+                    WorkingMemory.expires_at < datetime.now(timezone.utc),
+                )
+            )
+            result = await session.execute(stmt)
+            expired = result.scalars().all()
+
+            if not expired:
+                return
+
+            # Concatenate expired working memories
+            combined = "\n".join(e.content for e in expired)
+            summary = f"Archived {len(expired)} working memory entries: {combined[:500]}"
+
+            # Store as episodic
+            await AgentBrainService.store_episodic_memory(
+                agent_id, summary, "archived"
+            )
+
+            # Delete the expired entries
+            from sqlalchemy import delete
+            ids = [e.id for e in expired]
+            del_stmt = delete(WorkingMemory).where(WorkingMemory.id.in_(ids))
+            await session.execute(del_stmt)
+            await session.commit()
+            logger.info("Archived %d working memories for agent %s", len(expired), agent_id)

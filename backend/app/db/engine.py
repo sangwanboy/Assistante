@@ -1,104 +1,66 @@
 import os
+import logging
+
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
+from app.config import settings
 from app.db.base import Base
 
+logger = logging.getLogger(__name__)
 
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "assitance.db")
-DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
+# ── Engine Configuration ──
+_engine_kwargs: dict = {"echo": False}
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+if settings.is_sqlite:
+    # SQLite: local file-based, no pooling needed
+    DATABASE_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "data",
+        "assitance.db",
+    )
+    DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
+else:
+    # PostgreSQL: connection pooling enabled
+    DATABASE_URL = settings.database_url
+    _engine_kwargs.update(
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+
+engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def init_database():
-    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-    # Ensure all new ORM models are imported before create_all
-    import app.models.integration  # noqa: F401
-    import app.models.agent_schedule  # noqa: F401
-    import app.models.agent_message  # noqa: F401
-    import app.models.task  # noqa: F401
-    import app.models.chain  # noqa: F401
+    """Initialize database: create tables and seed defaults."""
+    if settings.is_sqlite:
+        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+
+    # Import all models so metadata is populated
+    import app.models  # noqa: F401
+    import app.models.model_config  # noqa: F401
+    import app.models.agent_memory  # noqa: F401
+    import app.models.announcement  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        new_agent_cols = [
-            ("personality_tone", "TEXT"),
-            ("personality_traits", "TEXT"),
-            ("communication_style", "TEXT"),
-            ("enabled_tools", "TEXT"),
-            ("enabled_skills", "TEXT"),
-            ("reasoning_style", "TEXT"),
-            ("memory_context", "TEXT"),
-            ("memory_instructions", "TEXT"),
-            ("api_key", "TEXT"),
-            ("is_system", "BOOLEAN DEFAULT 0"),
-            ("total_cost", "FLOAT DEFAULT 0.0"),
-        ]
-        import sqlalchemy
-        from sqlalchemy import select, func
-        for col_name, col_type in new_agent_cols:
-            try:
-                await conn.execute(sqlalchemy.text(f"ALTER TABLE agents ADD COLUMN {col_name} {col_type}"))
-            except Exception:
-                pass  # Column already exists
-                
-        # Migrate: add agent_id to conversations
-        try:
-            await conn.execute(sqlalchemy.text(f"ALTER TABLE conversations ADD COLUMN agent_id VARCHAR"))
-        except Exception:
-            pass
 
-        # Migrate: add channel_id to conversations
-        try:
-            await conn.execute(sqlalchemy.text(f"ALTER TABLE conversations ADD COLUMN channel_id VARCHAR"))
-        except Exception:
-            pass
+    logger.info("Database tables created/verified (%s)", "SQLite" if settings.is_sqlite else "PostgreSQL")
 
-        # Migrate: add agent_id and channel_id to workflows
-        for col_name in ["agent_id", "channel_id"]:
-            try:
-                await conn.execute(sqlalchemy.text(f"ALTER TABLE workflows ADD COLUMN {col_name} VARCHAR"))
-            except Exception:
-                pass
+    # Seed defaults
+    await _seed_defaults()
 
-        # Migrate: add new workflow engine columns
-        workflow_engine_migrations = [
-            ("workflows", "version", "VARCHAR DEFAULT '1'"),
-            ("nodes", "label", "VARCHAR"),
-            ("edges", "source_handle", "VARCHAR"),
-            ("edges", "label", "VARCHAR"),
-        ]
-        for table, col_name, col_type in workflow_engine_migrations:
-            try:
-                await conn.execute(sqlalchemy.text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
-            except Exception:
-                pass
 
-        # Migrate: add heartbeat & reliability columns to agents
-        for col_name, col_type in [("failure_count", "INTEGER DEFAULT 0"), ("last_heartbeat", "DATETIME")]:
-            try:
-                await conn.execute(sqlalchemy.text(f"ALTER TABLE agents ADD COLUMN {col_name} {col_type}"))
-            except Exception:
-                pass
-
-        # Migrate: add orchestration_mode to channels
-        try:
-            await conn.execute(sqlalchemy.text("ALTER TABLE channels ADD COLUMN orchestration_mode VARCHAR DEFAULT 'autonomous'"))
-        except Exception:
-            pass
-
-        # Migrate: add mentioned_agents_json to messages
-        try:
-            await conn.execute(sqlalchemy.text("ALTER TABLE messages ADD COLUMN mentioned_agents_json TEXT"))
-        except Exception:
-            pass
-            
-    # Import models to ensure they are created by Base.metadata.create_all
+async def _seed_defaults():
+    """Seed default model configs, channels, and system agent."""
     from app.models.model_config import ModelConfig
     from app.models.agent import Agent, new_id
     from app.models.channel import Channel
-    from app.models.channel_agent import ChannelAgent
-    
-    # Seeding defaults
+    from app.models.model_registry import ModelCapability
+
     async with async_session() as session:
         # Seed ModelConfigs
         stmt = select(func.count(ModelConfig.id))
@@ -113,9 +75,22 @@ async def init_database():
             ]
             session.add_all(default_models)
             await session.commit()
-            
+
+        # Seed ModelCapability registry entries
+        stmt = select(func.count(ModelCapability.id))
+        cap_count = await session.scalar(stmt)
+        if cap_count == 0:
+            default_capabilities = [
+                ModelCapability(id="gemini/gemini-2.5-flash", provider="gemini", model_name="gemini-2.5-flash", rpm=1000, tpm=4000000, rpd=50000, context_window=1048576),
+                ModelCapability(id="gemini/gemini-2.5-pro", provider="gemini", model_name="gemini-2.5-pro", rpm=150, tpm=2000000, rpd=10000, context_window=2097152),
+                ModelCapability(id="anthropic/claude-3-5-sonnet-20241022", provider="anthropic", model_name="claude-3-5-sonnet-20241022", rpm=50, tpm=100000, rpd=5000, context_window=200000),
+                ModelCapability(id="openai/gpt-4o", provider="openai", model_name="gpt-4o", rpm=500, tpm=800000, rpd=10000, context_window=128000),
+            ]
+            session.add_all(default_capabilities)
+            await session.commit()
+
         # Seed Announcements Channel
-        stmt = select(func.count(Channel.id)).where(Channel.is_announcement == True)
+        stmt = select(func.count(Channel.id)).where(Channel.is_announcement)
         announcement_count = await session.scalar(stmt)
         if announcement_count == 0:
             announcements = Channel(
@@ -126,9 +101,9 @@ async def init_database():
             )
             session.add(announcements)
             await session.commit()
-            
+
         # Seed Main Agent
-        stmt = select(func.count(Agent.id)).where(Agent.is_system == True)
+        stmt = select(func.count(Agent.id)).where(Agent.is_system)
         main_count = await session.scalar(stmt)
         if main_count == 0:
             main_agent = Agent(
@@ -144,10 +119,13 @@ async def init_database():
                 personality_traits='["helpful", "big-picture", "detail-oriented"]',
                 communication_style="concise",
                 enabled_tools='["AgentManagerTool", "AgentDelegationTool", "ModelManagerTool"]',
+                capabilities='["orchestration", "task_delegation", "agent_management", "model_management"]',
+                performance_metrics='{"success_rate": 1.0, "tasks_completed": 0, "tasks_failed": 0, "avg_completion_time": 0}',
             )
             session.add(main_agent)
             await session.commit()
 
+    logger.info("Database seeding complete")
 
 
 async def get_session() -> AsyncSession:

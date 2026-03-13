@@ -1,11 +1,12 @@
+/* eslint-disable react-refresh/only-export-components */
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import {
     Zap, Clock, MessageSquare, AtSign, Play,
     User, Users,
     Globe, Database, FileText, Code,
-    Variable, Braces, FileCode,
-    GitBranch, Filter, RotateCw, Timer, Merge, Route,
+    Variable, Braces, FileCode, Save,
+    GitBranch, Filter, RotateCw, Timer, Merge, Route, Layers,
     UserCheck, Bell, Mail, Brain,
 } from 'lucide-react';
 import { NODE_CATEGORY_COLORS, NODE_CATEGORY_BG } from '../../types/workflow';
@@ -13,6 +14,7 @@ import { useWorkflowStore } from '../../stores/workflowStore';
 
 // ─── Icon Mapping (sub_type → icon) ─────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ICON_MAP: Record<string, any> = {
     // Triggers
     webhook: Zap,
@@ -30,6 +32,7 @@ const ICON_MAP: Record<string, any> = {
     file_read: FileText,
     // Data
     set_variable: Variable,
+    save_memory: Save,
     transform_json: Braces,
     template: FileCode,
     // Logic
@@ -39,6 +42,7 @@ const ICON_MAP: Record<string, any> = {
     loop: RotateCw,
     delay: Timer,
     merge: Merge,
+    parallel: Layers,
     // Human
     human_approval: UserCheck,
     // Legacy
@@ -64,6 +68,7 @@ interface CustomNodeData {
     label: string;
     sub_type: string;
     category: string;     // trigger, agent, tool, data, logic, human, action
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     config?: Record<string, any>;
     executionStatus?: string; // Legacy/static status
 }
@@ -80,6 +85,7 @@ const CustomWorkflowNode = memo(({ id, data, selected }: NodeProps<CustomNodeDat
     const execColor = executionStatus ? STATUS_COLORS[executionStatus] : undefined;
 
     const isCondition = ['condition', 'branch', 'switch'].includes(data.sub_type);
+    const isParallel = data.sub_type === 'parallel';
     const isTrigger = category === 'trigger';
 
     return (
@@ -182,8 +188,8 @@ const CustomWorkflowNode = memo(({ id, data, selected }: NodeProps<CustomNodeDat
                 id="default"
                 style={{
                     background: color,
-                    width: 10,
-                    height: 10,
+                    width: 14,
+                    height: 14,
                     border: '2px solid rgba(0,0,0,0.5)',
                 }}
             />
@@ -197,8 +203,8 @@ const CustomWorkflowNode = memo(({ id, data, selected }: NodeProps<CustomNodeDat
                         id="true"
                         style={{
                             background: '#22c55e',
-                            width: 8,
-                            height: 8,
+                            width: 12,
+                            height: 12,
                             border: '2px solid rgba(0,0,0,0.5)',
                             top: '60%',
                         }}
@@ -209,10 +215,52 @@ const CustomWorkflowNode = memo(({ id, data, selected }: NodeProps<CustomNodeDat
                         id="false"
                         style={{
                             background: '#ef4444',
-                            width: 8,
-                            height: 8,
+                            width: 12,
+                            height: 12,
                             border: '2px solid rgba(0,0,0,0.5)',
                             top: '60%',
+                        }}
+                    />
+                </>
+            )}
+
+            {/* Parallel nodes get numbered branch handles */}
+            {isParallel && (
+                <>
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="branch_0"
+                        style={{
+                            background: '#8b5cf6',
+                            width: 12,
+                            height: 12,
+                            border: '2px solid rgba(0,0,0,0.5)',
+                            top: '40%',
+                        }}
+                    />
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="branch_1"
+                        style={{
+                            background: '#8b5cf6',
+                            width: 12,
+                            height: 12,
+                            border: '2px solid rgba(0,0,0,0.5)',
+                            top: '60%',
+                        }}
+                    />
+                    <Handle
+                        type="source"
+                        position={Position.Left}
+                        id="branch_2"
+                        style={{
+                            background: '#8b5cf6',
+                            width: 12,
+                            height: 12,
+                            border: '2px solid rgba(0,0,0,0.5)',
+                            top: '50%',
                         }}
                     />
                 </>

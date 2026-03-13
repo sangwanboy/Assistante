@@ -51,3 +51,16 @@ frontend/vite.log
 test_upload.txt
 tmpclaude-*
 nul
+
+# Data directories (user data, vector DB, agent brains)
+backend/data/chroma/
+backend/data/agents/
+data/
+
+# Error/debug log files
+backend/backend_logs.txt
+backend/ruff_errors.txt
+frontend/lint_errors*.txt
+frontend/lint_results.json
+frontend/tsc_errors.txt
+frontend/build_errors.txt

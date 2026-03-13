@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Any
 import json
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.workflow import Workflow, Node, Edge, WorkflowRun, NodeExecution
 from app.schemas.workflow import NodeCreate, EdgeCreate
+
 
 
 class WorkflowService:
@@ -188,3 +189,7 @@ class WorkflowService:
         await self.session.commit()
         await self.session.refresh(exe)
         return exe
+
+    async def get_workflow_memory(self, workflow_id: str, agent_id: Optional[str] = None, channel_id: Optional[str] = None) -> Optional[Any]:
+        """Stub memory fetcher for Workflows. Orchestration uses Conversation memory instead."""
+        return None

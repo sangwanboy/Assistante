@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
@@ -22,13 +22,26 @@ def get_chat_service(request: Request, session: AsyncSession = Depends(get_sessi
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, service: ChatService = Depends(get_chat_service)):
     conversation_id = req.conversation_id or ""
-    response_text = await service.chat(
-        conversation_id=conversation_id,
-        user_message=req.message,
-        model_string=req.model,
-        system_prompt=req.system_prompt,
-        temperature=req.temperature,
-    )
+    try:
+        response_text = await service.chat(
+            conversation_id=conversation_id,
+            user_message=req.message,
+            model_string=req.model,
+            system_prompt=req.system_prompt,
+            temperature=req.temperature,
+        )
+    except Exception as e:
+        msg = str(e)
+        lowered = msg.lower()
+        if "quota" in lowered or "resource_exhausted" in lowered or "rate limit" in lowered or "429" in lowered:
+            raise HTTPException(status_code=429, detail=msg)
+        if "api key not valid" in lowered or "api_key_invalid" in lowered or "invalid api key" in lowered:
+            raise HTTPException(status_code=401, detail=msg)
+        if (
+            "provider" in lowered and "not configured" in lowered
+        ) or "no available fallback provider" in lowered or "all connection attempts failed" in lowered:
+            raise HTTPException(status_code=503, detail=msg)
+        raise HTTPException(status_code=500, detail=msg)
     return ChatResponse(
         conversation_id=conversation_id,
         message=response_text,
@@ -70,7 +83,11 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
                             user_message=content,
                             temperature=temperature,
                         ):
-                            await websocket.send_json(event)
+                            try:
+                                await websocket.send_json(event)
+                            except WebSocketDisconnect:
+                                logger.info("Client disconnected during group stream for conversation %s", conversation_id)
+                                return
                     else:
                         async for event in service.stream_chat(
                             conversation_id=conversation_id,
@@ -79,10 +96,20 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
                             system_prompt=system_prompt,
                             temperature=temperature,
                         ):
-                            await websocket.send_json(event)
+                            try:
+                                await websocket.send_json(event)
+                            except WebSocketDisconnect:
+                                logger.info("Client disconnected during stream for conversation %s", conversation_id)
+                                return
+                except WebSocketDisconnect:
+                    logger.info("WebSocket disconnected for conversation %s", conversation_id)
+                    return
                 except Exception as e:
                     logger.error("Chat error in conversation %s: %s", conversation_id, e, exc_info=True)
-                    await websocket.send_json({"type": "error", "error": str(e)})
+                    try:
+                        await websocket.send_json({"type": "error", "error": str(e)})
+                    except (WebSocketDisconnect, RuntimeError):
+                        return
 
     except WebSocketDisconnect:
         pass

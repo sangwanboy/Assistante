@@ -82,7 +82,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
               <div className={`w-7 h-7 rounded-lg bg-[#0e0e1c] flex items-center justify-center flex-shrink-0`}>
                 <action.icon className={`w-3.5 h-3.5 ${action.iconColor}`} />
               </div>
-              <span className="text-[11px] font-medium text-gray-300">{action.label}</span>
+              <span className="text-[11px] font-medium text-gray-300 leading-snug">{action.label}</span>
             </button>
           ))}
         </div>

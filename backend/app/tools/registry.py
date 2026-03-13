@@ -58,8 +58,16 @@ class ToolRegistry:
         from app.tools.workflow_manager import WorkflowManagerTool
         from app.tools.browser_tool import BrowserTool
         from app.tools.docker_executor import DockerCodeExecutorTool
+        from app.tools.session_status_tool import SessionStatusTool
         from app.tools.agent_messenger import AgentMessengerTool
         from app.tools.memory_tool import SaveMemoryTool, RecallMemoriesTool, WriteDailyLogTool
+        from app.tools.workspace_tools import (
+            WorkspaceWriteTool, WorkspaceReadTool, WorkspaceListTool, WorkspaceRunShellTool,
+        )
+        from app.tools.orchestrator_task import (
+            CheckTaskStatusTool, GetTaskTreeStatusTool, GetSubtaskResultsTool
+        )
+        from app.tools.agent_progress import UpdateTaskProgressTool
 
         for tool in [
             WebSearchTool(), FileManagerTool(), CodeExecutorTool(), CommandExecutorTool(),
@@ -78,6 +86,15 @@ class ToolRegistry:
             SaveMemoryTool(),
             RecallMemoriesTool(),
             WriteDailyLogTool(),
+            WorkspaceWriteTool(),
+            WorkspaceReadTool(),
+            WorkspaceListTool(),
+            WorkspaceRunShellTool(),
+            CheckTaskStatusTool(),
+            GetTaskTreeStatusTool(),
+            GetSubtaskResultsTool(),
+            UpdateTaskProgressTool(),
+            SessionStatusTool(),
         ]:
             self.register(tool)
             self._builtin_names.add(tool.name)

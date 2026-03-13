@@ -24,8 +24,8 @@ export const useAgentStore = create<AgentState>((set) => ({
         try {
             const agents = await api.getAgents();
             set({ agents, isLoading: false });
-        } catch (e: any) {
-            set({ error: e.message, isLoading: false });
+        } catch (e: unknown) {
+            set({ error: e instanceof Error ? e.message : String(e), isLoading: false });
         }
     },
 
@@ -33,8 +33,8 @@ export const useAgentStore = create<AgentState>((set) => ({
         try {
             const newAgent = await api.createAgent(data);
             set((state) => ({ agents: [...state.agents, newAgent] }));
-        } catch (e: any) {
-            set({ error: e.message });
+        } catch (e: unknown) {
+            set({ error: e instanceof Error ? e.message : String(e) });
         }
     },
 
@@ -44,8 +44,8 @@ export const useAgentStore = create<AgentState>((set) => ({
             set((state) => ({
                 agents: state.agents.map((a) => (a.id === id ? updatedAgent : a)),
             }));
-        } catch (e: any) {
-            set({ error: e.message });
+        } catch (e: unknown) {
+            set({ error: e instanceof Error ? e.message : String(e) });
         }
     },
 
@@ -61,8 +61,8 @@ export const useAgentStore = create<AgentState>((set) => ({
             set((state) => ({
                 agents: state.agents.filter((a) => a.id !== id),
             }));
-        } catch (e: any) {
-            set({ error: e.message });
+        } catch (e: unknown) {
+            set({ error: e instanceof Error ? e.message : String(e) });
         }
     },
 }));

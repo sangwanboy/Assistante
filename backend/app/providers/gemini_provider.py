@@ -88,10 +88,14 @@ class GeminiProvider(BaseProvider):
                         func = tc.get("function", {})
                         args_str = func.get("arguments", "{}")
                         args = json.loads(args_str) if isinstance(args_str, str) else args_str
-                        parts.append(types.Part.from_function_call(
-                            name=func.get("name", ""),
-                            args=args,
-                        ))
+                        kwargs = {"name": func.get("name", ""), "args": args}
+                        func_call = types.FunctionCall(**kwargs)
+                        part_kwargs = {"function_call": func_call}
+                        if tc.get("thought"):
+                            part_kwargs["thought"] = tc["thought"]
+                        if tc.get("thought_signature"):
+                            part_kwargs["thought_signature"] = bytes.fromhex(tc["thought_signature"])
+                        parts.append(types.Part(**part_kwargs))
                 if parts:
                     contents.append(types.Content(role="model", parts=parts))
             elif msg.role == "tool":
@@ -148,14 +152,19 @@ class GeminiProvider(BaseProvider):
                 if part.function_call:
                     if tool_calls is None:
                         tool_calls = []
-                    tool_calls.append({
+                    tc = {
                         "id": f"call_{uuid.uuid4().hex[:8]}",
                         "type": "function",
                         "function": {
                             "name": part.function_call.name,
                             "arguments": json.dumps(dict(part.function_call.args) if part.function_call.args else {}),
                         },
-                    })
+                    }
+                    if hasattr(part, "thought") and part.thought:
+                        tc["thought"] = part.thought
+                    if hasattr(part, "thought_signature") and getattr(part, "thought_signature", None):
+                        tc["thought_signature"] = part.thought_signature.hex() if isinstance(part.thought_signature, bytes) else str(part.thought_signature)
+                    tool_calls.append(tc)
 
         usage = None
         if hasattr(response, "usage_metadata") and response.usage_metadata:
@@ -209,14 +218,19 @@ class GeminiProvider(BaseProvider):
                 if part.text:
                     text += part.text
                 if part.function_call:
-                    accumulated_tool_calls.append({
+                    tc = {
                         "id": f"call_{uuid.uuid4().hex[:8]}",
                         "type": "function",
                         "function": {
                             "name": part.function_call.name,
                             "arguments": json.dumps(dict(part.function_call.args) if part.function_call.args else {}),
                         },
-                    })
+                    }
+                    if hasattr(part, "thought") and part.thought:
+                        tc["thought"] = part.thought
+                    if hasattr(part, "thought_signature") and getattr(part, "thought_signature", None):
+                        tc["thought_signature"] = part.thought_signature.hex() if isinstance(part.thought_signature, bytes) else str(part.thought_signature)
+                    accumulated_tool_calls.append(tc)
 
             finish = None
             if candidate.finish_reason:
@@ -243,10 +257,18 @@ class GeminiProvider(BaseProvider):
             )
 
     async def list_models(self) -> list[ModelInfo]:
+        from app.config import settings
+        cw = settings.gemini_context_window
+        tpm = settings.gemini_tpm
+        rpm = settings.gemini_rpm
+        rpd = settings.gemini_rpd
         return [
-            ModelInfo(id="gemini-2.5-flash", name="Gemini 2.5 Flash", provider="gemini", context_window=1048576),
-            ModelInfo(id="gemini-2.5-pro", name="Gemini 2.5 Pro", provider="gemini", context_window=1048576),
-            ModelInfo(id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite", provider="gemini", context_window=1048576),
-            ModelInfo(id="gemini-3-flash-preview", name="Gemini 3 Flash Preview", provider="gemini", context_window=1048576),
-            ModelInfo(id="gemini-3-pro-preview", name="Gemini 3 Pro Preview", provider="gemini", context_window=1048576),
+            ModelInfo(id="gemini-2.5-flash", name="Gemini 2.5 Flash", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-2.5-pro", name="Gemini 2.5 Pro", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3-flash-preview", name="Gemini 3 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3-pro-preview", name="Gemini 3 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3.1-flash-preview", name="Gemini 3.1 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3.1-flash-lite-preview", name="Gemini 3.1 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3.1-pro-preview", name="Gemini 3.1 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
         ]

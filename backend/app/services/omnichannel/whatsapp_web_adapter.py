@@ -62,7 +62,7 @@ class WhatsAppWebAdapter(BaseChannelAdapter):
         """Called by the integrations API on JSON events from Node service."""
         text = payload.get("text", "")
         from_id = payload.get("from", "")
-        profile = payload.get("profile", "")
+        payload.get("profile", "")
         
         if text and from_id:
             incoming = IncomingMessage(

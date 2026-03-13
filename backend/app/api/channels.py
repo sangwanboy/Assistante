@@ -59,7 +59,7 @@ async def get_channel_agents(channel_id: str, session: AsyncSession = Depends(ge
         
     if channel.is_announcement:
         # Announcements has all active agents
-        stmt = select(Agent).where(Agent.is_active == True)
+        stmt = select(Agent).where(Agent.is_active)
     else:
         stmt = select(Agent).join(ChannelAgent).where(ChannelAgent.channel_id == channel_id)
         

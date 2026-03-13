@@ -1,25 +1,36 @@
-from app.config import Settings
 from app.providers.base import BaseProvider, ModelInfo
+from app.config import settings
 
 
 class ProviderRegistry:
-    def __init__(self, config: Settings):
+    def __init__(self):
+        import logging
+        logger = logging.getLogger(__name__)
+
         self._providers: dict[str, BaseProvider] = {}
 
-        if config.openai_api_key:
+        openai_key = settings.openai_api_key
+        if openai_key:
             from app.providers.openai_provider import OpenAIProvider
-            self._providers["openai"] = OpenAIProvider(config.openai_api_key)
+            self._providers["openai"] = OpenAIProvider(openai_key)
+            logger.info("OpenAI provider initialized.")
 
-        if config.anthropic_api_key:
+        anthropic_key = settings.anthropic_api_key
+        if anthropic_key:
             from app.providers.anthropic_provider import AnthropicProvider
-            self._providers["anthropic"] = AnthropicProvider(config.anthropic_api_key)
+            self._providers["anthropic"] = AnthropicProvider(anthropic_key)
+            logger.info("Anthropic provider initialized.")
 
-        if config.gemini_api_key:
+        gemini_key = settings.gemini_api_key
+        logger.info(f"Gemini API key loaded from settings: {'present' if gemini_key else 'MISSING'}")
+        if gemini_key:
             from app.providers.gemini_provider import GeminiProvider
-            self._providers["gemini"] = GeminiProvider(config.gemini_api_key)
+            self._providers["gemini"] = GeminiProvider(gemini_key)
+            logger.info("Gemini provider initialized.")
 
         from app.providers.ollama_provider import OllamaProvider
-        self._providers["ollama"] = OllamaProvider(config.ollama_base_url)
+        self._providers["ollama"] = OllamaProvider(settings.ollama_base_url)
+        logger.info("Ollama provider initialized.")
 
     def get(self, provider_name: str) -> BaseProvider:
         provider = self._providers.get(provider_name)
@@ -30,6 +41,9 @@ class ProviderRegistry:
 
     def available_providers(self) -> list[str]:
         return [name for name, p in self._providers.items() if p.is_available()]
+
+    def registered_providers(self) -> list[str]:
+        return list(self._providers.keys())
 
     async def all_models(self) -> list[ModelInfo]:
         models = []
@@ -61,3 +75,9 @@ class ProviderRegistry:
 
     def add_provider(self, name: str, provider: BaseProvider):
         self._providers[name] = provider
+
+    def remove_provider(self, name: str):
+        # Never remove ollama baseline provider from registry.
+        if name == "ollama":
+            return
+        self._providers.pop(name, None)

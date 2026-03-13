@@ -21,7 +21,7 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
   return (
     <Collapsible.Root open={!isCollapsed} className="relative">
       <div
-        className={`bg-[#0a0a14] border-r border-[#1a1a2e] flex flex-col h-full flex-shrink-0 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-56'
+        className={`bg-[#0a0a14] border-r border-[#1a1a2e] flex flex-col h-full flex-shrink-0 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
           }`}
       >
         {/* Logo & Header */}

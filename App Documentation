@@ -3,13 +3,191 @@
 ## Overview
 **Assitance** is a highly capable, multi-purpose AI assistant platform designed to orchestrate complex tasks via a network of specialized AI agents. Unlike standard chatbots, it functions as an autonomous operating system for LLMs, complete with persistent memory, tool access, human-in-the-loop (HITL) safety checks, dynamic context pruning, multi-agent orchestration with delegation chains, three-layer heartbeat monitoring, and a visual node-based workflow engine.
 
+## Session Update (2026-03-13)
+
+### Phase 7: Dynamic Model-Specific Rate Limiting & Adaptive Throttling ✅ COMPLETED & CLEANED
+
+#### Final Status
+The system has been fully verified, cleaned, and is now in a production-ready state. All development servers have been terminated, and the codebase has been purged of temporary verification scripts and debug logging.
+
+#### Technical Highlights
+- **Rate Limiting**: Dynamic enforcement with `ModelRegistryService` and adaptive throttling is 100% operational.
+- **HUD Integration**: The Task Execution Monitor is seamlessly docked in the sidebar.
+- **Metrics Health**: Block tracking and worker capacity metrics are accurate and live.
+- **Code Hygiene**: Removed `verify_agents.py`, `verify_features.py`, and `DEBUG` loggers.
+
+---
+
+### Phase 6: Observability & Rate Limit Calibration ✅ COMPLETED
+
+#### Feature Overview
+This phase focused on bringing backend metrics directly into the user's line of sight during chat, and providing fine-grained control over the model registry's rate-limiting capabilities.
+
+#### Implementation Details
+- **Live Chat Dashboards**:
+  - Combined `System Metrics`, `Active Tasks`, and `Recent Workflows` into a single `ChatSidebarDashboard` component.
+  - Sidebar updates every 5 seconds to provide live RPM/TPM monitoring.
+  - Integrated into the Chat View's right-hand sidebar for immediate observability during agent execution.
+- **Model Resolution Fix**:
+  - Resolved a priority conflict where `agent.model` was being overwritten by request prompts.
+  - Corrected internal model ID mapping for `Gemini 3.1 Flash Lite` to match official provider strings.
+- **Editable Model Registry**:
+  - Implemented a `PUT` endpoint for updating model capabilities in the database.
+  - Transformed the Settings -> Capabilities table into an inline-editable dashboard.
+- **Unlimited Rate Limits**:
+  - Updated `ModelCapability` model to allow `NULL` values for RPM, TPM, and Context Window.
+  - Backend and frontend updated to treat empty/blank input fields as "Unlimited" (null).
+- **Registry Maintenance**:
+  - Executed cleanup scripts to remove duplicate or deprecated model configurations, streamlining the model selection experience.
+
+#### Files Modified
+- `backend/app/api/models_api.py` (New PUT endpoint)
+- `backend/app/models/model_registry.py` (Nullable schema)
+- `frontend/src/components/chat/ChatSidebarDashboard.tsx` (Live monitoring)
+- `frontend/src/components/settings/SettingsPanel.tsx` (Table editing)
+
+---
+
+## Session Update (2026-03-12)
+
+### Phase 1-2: Per-Agent Context Window Controls ✅ COMPLETED
+
+#### Feature Overview
+Each agent now has a dedicated, configurable context window setting that determines when conversation history is pruned. Instead of a fixed, global pruning threshold, the system respects each agent's individual limit (60,000 to 256,000 tokens).
+
+#### Architecture
+- **Database Layer**: Added `context_window_tokens` field to agents table with range validation (60k-256k).
+- **Migration**: Idempotent Alembic migration (v9f32a1b6aa10) safely adds column if it doesn't exist.
+- **Runtime Logic**: `chat_service._resolve_context_window_tokens(agent)` clamps and resolves the active limit per agent.
+- **Pruning Integration**: Three call sites in chat_service now pass the agent-specific window to context_pruner:
+  - Non-stream chat (line 566)
+  - Stream chat (line 810)
+  - Group turn (line 1177)
+
+#### Prune-Only Sync Behavior (Key Behavior Change)
+**Before**: Identity, Soul, and Mind were re-sent every time context grew large (proactive sync).
+**After**: Identity, Soul, and Mind are refreshed **only when pruning actually occurs** (event-driven sync).
+
+This prevents redundant identity re-injection and aligns with Assitance architecture philosophy: agent brains are authoritative at pruning time, not continuously.
+
+**Example Scenarios**:
+- **Small conversation** (100 tokens, well below agent's 256k limit): Original system prompt sent once; no pruning, no sync note.
+- **Large conversation** (999k tokens simulated, exceeds agent's 256k limit): Pruning triggered → middle chunk summarized → refreshed agent Identity/Soul/Mind injected alongside prune summary block.
+
+#### UI Implementation
+- Agent Settings now display a gradient context window slider (range 60k–256k, step 1k).
+- Labels at 60k (minimum), 128k (sync marker), and 256k (maximum) for quick reference.
+- Slider value bound to agent form data and submitted via API.
+
+#### Testing Validation
+- ✅ DB column exists and persists correctly
+- ✅ Schema validation enforces 60k–256k range
+- ✅ Prune sync note only injected when pruning is triggered
+- ✅ Non-pruned conversations retain original prompt (no unnecessary re-sync)
+- ✅ All touched files validate with zero errors
+
+---
+
+### Phase 3: CONTEXT PRUNING SYSTEM UPGRADE ✅ COMPLETED
+
+#### Implementation Summary
+Graduated from single 90% threshold to production-ready multi-threshold system.
+
+| Requirement | Status | Implementation |
+|---|---|---|
+| 1. Three-Threshold Model | ✅ DONE | SOFT 60% / ACTIVE 80% / EMERGENCY 99% in chat_service.py |
+| 2. Dynamic Recent Window | ✅ DONE | 6k token budget, floor=3, ceiling=10 in context_pruner.py |
+| 3. Layered Context (ContextAssembler) | ✅ DONE | context_assembler.py: System → SemanticMem → TaskState → Turns |
+| 4. Multi-Agent Safe Summaries | ✅ DONE | summary_manager.py: _detect_agent_names(), attribution preserved |
+| 5. Summary Drift Protection | ✅ DONE | _split_on_existing_summary() — extends, never re-summarizes |
+| 6. Tool Output Protection | ✅ DONE | tool_memory_store.py: TOOL_RESULT_ID:{uuid}, 10KB threshold |
+| 7. Emergency Pruning Path | ✅ DONE | _emergency_truncate(): keeps system + last 3 turns |
+| 8. Structured Task State | ✅ DONE | TaskState dataclass + ContextAssembler.inject_task_state() |
+| 9. Event Logging | ✅ DONE | pruning_events.py: PruneEvent + emit() with level routing |
+| 10. chat_service.py wired | ✅ DONE | All 3 call sites updated with 3 thresholds + agent_name |
+
+**New files**: `pruning_events.py`, `summary_manager.py`, `context_assembler.py`, `tool_memory_store.py`
+
+---
+
+### Phase 4: MULTI-AGENT MEMORY + AGENT LIMIT ARCHITECTURE ✅ COMPLETED
+
+| Feature | Status | Detail |
+|---|---|---|
+| Hard agent cap (MAX=60) | ✅ DONE | HTTP 429 AGENT_LIMIT_REACHED |
+| Redis agent registry | ✅ DONE | agents:active SET, SADD/SREM |
+| SemanticMemory table | ✅ DONE | agent_memories (fact/decision/summary) |
+| ConversationArchive table | ✅ DONE | conversation_archive (raw, never to LLM) |
+| MemoryCompactor service | ✅ DONE | 20-msg chunks → LLM extract → Tier-2 persist |
+| retrieve_for_context() | ✅ DONE | [SEMANTIC MEMORY] injection block |
+
+---
+
+### Phase 5: AGENT LIFECYCLE, MEMORY WIRING & OBSERVABILITY ✅ COMPLETED
+
+#### Agent Lifecycle Status
+- `agents.status` column: `active | idle | paused | deleted`
+- Soft delete (`DELETE /agents/{id}`) sets `status='deleted'`, SREM from Redis — row retained for audit
+- Agent capacity counted via `WHERE status != 'deleted'`
+- Alembic migration `b4c9e2a7f1d3` — idempotent, backfills existing rows
+
+#### Memory Pipeline — Fully Wired
+- `ChatService._build_context_with_memory()` runs before every LLM call in all 3 paths:
+  1. Retrieves Tier-2 semantic memories (`MemoryCompactor.retrieve_for_context()`)
+  2. Applies semantic memory token budget (20% of context window)
+  3. Assembles layered context (`ContextAssembler.build()`)
+- `MemoryCompactor` now accepts optional `redis_client` for Redis context buffer
+
+#### Token Budget System
+```
+TOKEN_BUDGET_SYSTEM_PCT        = 0.10   (10%) system prompt
+TOKEN_BUDGET_RECENT_PCT        = 0.30   (30%) recent turns
+TOKEN_BUDGET_SEMANTIC_MEM_PCT  = 0.20   (20%) semantic memory injection
+TOKEN_BUDGET_USER_MSG_PCT      = 0.10   (10%) current user message
+TOKEN_BUDGET_REASONING_PCT     = 0.30   (30%) model reasoning buffer
+```
+
+#### Redis Context Buffer
+- Key: `memory:agent:{agent_id}:context` — TTL 24h
+- `cache_context(agent_id, messages)` — stores non-system turns as JSON
+- `get_cached_context(agent_id)` — returns `list[dict] | None`
+
+#### Observability — /system/metrics
+```json
+{
+  "active_agents": 4,
+  "total_agents": 6,
+  "agent_capacity": {"used": 6, "limit": 60, "used_pct": 10.0},
+  "token_usage_per_request": 1250,
+  "memory_compaction": {"memories_created_24h": 45, "rate_per_hour": 1.88},
+  "pruning_events": {"soft": 12, "active": 4, "emergency": 0, "total": 16}
+}
+```
+
+---
+
+### WebSocket Stability & Orchestrator Behavior
+- System orchestrator now has deterministic handling for capability/tool questions (for example: "what tools/features do you have access to?").
+- Added protection against generic non-helpful refusal phrasing for normal user requests; fallback response now provides concrete capabilities and next action path.
+- Frontend websocket anti-churn behavior added: no redundant reconnect for same conversation when socket is OPEN/CONNECTING.
+- Heartbeat ping added on chat websocket client, with robust timer cleanup on close/disconnect.
+- Backend websocket stream send path now exits cleanly on expected client disconnect events.
+
+### Error Logging Behavior
+- Backend rotating error log path standardized and verified: `backend/logs/app_error.log`.
+- Known provider operational failures (quota exhausted, invalid API key, provider not configured) now log at warning level instead of error.
+
+### Delegation + Memory Recall
+- Added deterministic contribution recall for follow-up queries about delegated work output.
+- Added intent gating so contribution questions are not incorrectly treated as new delegation commands.
+
 ## Core Features & Functionality
 
 ### 1. Multi-Provider AI Support
 Assitance is agnostic to any single LLM provider. The backend seamlessly maps unified schemas to:
 - **OpenAI** (e.g., GPT-4o)
 - **Anthropic** (e.g., Claude 3.5 Sonnet)
-- **Google Gemini** (e.g., Gemini 2.5 Flash, utilized for native audio multimodal tasks)
+- **Google Gemini** (e.g., Gemini 2.5 Flash, Gemini 3 Preview, utilized for native audio multimodal tasks)
 - **Ollama** (Local execution for privacy and cost savings)
 
 ### 2. Persistent Specialized Agents
@@ -37,15 +215,16 @@ Potentially destructive actions (like running code or CLI commands) trigger a ba
 ### 5. Document Knowledge Base (RAG)
 Users can upload files (PDFs, Markdown, TXT) which are immediately chunked, embedded via `sentence-transformers`, and stored in a local **ChromaDB** vector database. Agents can query this database to answer questions grounded in the user's private data.
 
-### 6. Voice/Audio I/O
-- **Voice-to-Text**: Captures user microphone audio via the `MediaRecorder` API and transcribes it natively using Gemini 2.0 Flash's audio capabilities.
-- **Text-to-Speech**: Agent responses can be read aloud using `edge-tts`, a high-quality free speech synthesis engine.
+### 6. Voice/Audio I/O (Voice Mode)
+- **Voice-to-Text**: Captures user microphone audio via the `MediaRecorder` API and transcribes it natively using Gemini 2.5 Flash's backend audio capabilities.
+- **Text-to-Speech**: Agent responses are read aloud using `edge-tts`, a high-quality free speech synthesis engine.
+- **Continuous Voice Session**: Users can open a dedicated Voice Mode overlay from any chat which ties the STT and TTS engines together into a seamless conversational loop.
 
 ### 7. Token Economy & Cost Tracking
 Token usage (`prompt_tokens`, `completion_tokens`) is parsed natively from LLM responses. The backend calculates the fraction-of-a-cent monetary cost and tracks lifetime spend per agent in the SQLite database, streaming updates to the UI in real-time.
 
 ### 8. Context Pruning
-To prevent LLM context limit crashes and runaway costs, a `ContextPruner` monitors the token size of active conversations. If thresholds are met, it extracts the middle portion of the chat, summarizes it using a faster/cheaper model, and replaces the massive log with a dense summary block, preserving the original system prompt and the latest 5 turns.
+To prevent LLM context limit crashes and runaway costs, a `ContextPruner` monitors the token size of active conversations. Each agent now has its own configurable context window limit from 60k to 256k tokens. When the active conversation approaches that configured limit, the pruner extracts the middle portion of the chat, summarizes it using a faster/cheaper model, and replaces the massive log with a dense summary block while preserving the refreshed system prompt and the latest 5 turns. Identity, Soul, and Mind are only explicitly re-synced when pruning actually occurs.
 
 ### 9. Self-Correction Auto-Retry
 If an agent writes faulty Python code or misuses a tool API, the framework catches the Python Exception/Traceback. Instead of halting, the backend injects the traceback directly back into the LLM's prompt and instructs it to self-correct and try again.
@@ -74,12 +253,28 @@ The orchestration system provides a unified chat experience where multiple agent
 #### Orchestration Modes
 - **Autonomous**: When no @mentions are present, the System Agent automatically:
   1. Analyzes the task and available agents
-  2. Produces a structured JSON delegation plan
-  3. Creates delegation chain and task records in the database
-  4. Executes each step, passing outputs as context to the next agent
-  5. Synthesizes a final aggregated response from all agent outputs
+  2. Produces a structured JSON delegation plan with `group_id` for parallel execution and `depends_on_groups` for sequencing
+  3. Creates delegation chain, task, and workflow records in the database
+  4. Executes agent groups **in parallel** via `asyncio.gather` (agents within the same `group_id` run concurrently). Complex tasks are auto-upgraded via `AutonomousExecutionLoop` for multi-step PLAN→ACT→OBSERVE→REFLECT execution
+  5. Synthesizes a final aggregated response from all agent outputs integrating what they've researched/built
 - **Manual**: Only the System Agent responds directly. Users must use explicit @mentions to involve other agents.
 - Mode is toggleable per channel via a button in the channel header.
+
+#### Autonomous Execution Loop (`AutonomousExecutionLoop`)
+Complex delegated tasks run in a continuous **PLAN → ACT → OBSERVE → REFLECT → UPDATE PLAN** cycle:
+- Each "step" is a full agent turn with tool access. Between steps, the LLM observes results, reflects on progress, and decides whether to continue or declare completion.
+- Auto-upgrade heuristic: tasks containing complex keywords (build, create, analyze, debug, etc.) or >20 words are upgraded from single-turn to multi-step execution.
+- Limits: `max_steps=6`, `max_tool_calls=15`, `timeout=120s` per task (configurable via the Task model).
+- LLM-based completion detection after each step prevents unnecessary iterations.
+- Streams `autonomous_start`, `autonomous_step_start/end`, `autonomous_complete` events to the UI.
+
+#### Autonomous Execution Guardrails & Governance
+To prevent infinitely hallucinating scripts or "tool traps," Autonomous Execution runs through strict constraints:
+- **Planner Loop limits**: Hard limits (`max_steps=10`) per agent turn to guarantee eventual termination.
+- **Tool Governor**: Intercepts repetitive tool calls that return identical back-to-back errors and injects explicit dynamic System Reflection prompts instructing the LLM to change strategies.
+- **Supervisor Fallback**: The `AgentHeartbeatService` combined with the `TaskQueue` actively tracks agent telemetry. If an agent loops into 3 consecutive timeouts or unhandled failures, the underlying task gracefully degrades back to the top-level System Agent for analysis or human approval.
+- **Hard Timeouts**: Execution sandbox/DB tools are forcefully killed via `asyncio.wait_for` (60 seconds) to prevent infinite loops from hanging the thread.
+- **Parallel Execution Safety**: Batched DB writes prevent SQLAlchemy session concurrency issues. Frozen payload snapshots ensure all parallel agents see consistent prior context.
 
 #### Delegation Chain Graph
 - A ReactFlow-based node graph renders inline when a delegation chain is active.
@@ -93,24 +288,44 @@ The orchestration system provides a unified chat experience where multiple agent
 - **Token Budget**: 100k tokens per chain (configurable). Chain halts if budget exceeded, System Agent summarizes partial results.
 - **Task Timeouts**: Configurable per task (default 60s). Auto-retry up to 3 times on failure.
 
-### 12. Three-Layer Heartbeat Architecture
+#### Persistent Task Workspace & Worker Container Pool
+Autonomous tasks get a per-task sandboxed directory at `data/workspaces/{task_id}/`:
+- **Auto-created** when an autonomous loop task starts running.
+- **4 workspace tools**: `workspace_write`, `workspace_read`, `workspace_list`, `workspace_shell` — all scoped to the active task via `_task_id` context injection.
+- **Worker Container Pool**: Instead of slow ephemeral Docker runs, a singleton `ContainerPool` pre-warms a configurable pool (default N=3) of long-lived `crossclaw-worker` containers containing full environments (Python 3.12, Node.js 20, Git, Playwright).
+- **Execution Routing**: The `data/workspaces/` root is mounted into all worker containers at `/workspaces`. When `execute_code_sandboxed` runs, it dynamically assigns a pool container and executes the code via `.exec_run()` setting the `cwd` to `/workspaces/{task_id}`, achieving 0ms cold starts with secure per-task isolation.
+- **Subprocess Fallback**: Automatically falls back to isolated local Python subprocess execution if Docker is unavailable.
+- **Path traversal protection**: All native file operations are validated against the workspace root.
 
-#### Layer 1: Agent Process Heartbeat (Redis Pub/Sub)
-- `AgentHeartbeatService` singleton emits heartbeats to Redis key `assitance:agent_state:{agent_id}` with 60s TTL.
-- Background monitor checks stale agents every 5 seconds:
-  - 10s since last heartbeat: mark unresponsive.
-  - 30s since last heartbeat: mark offline.
-- Agent state machine: `offline -> initializing -> idle -> busy -> error`.
+### 12. Autonomous LLM Gateway & Rate Limits
 
-#### Layer 2: Task Execution Heartbeat
-- Per-task progress tracking stored in Redis key `assitance:task:{task_id}`.
-- Progress percentage (0-100) with checkpoint text.
-- Timeout detection with auto-retry: increment retry_count, requeue if < max_retries, else mark failed.
+The platform centralizes all outgoing LLM provider requests through a robust `LLMGateway` proxy.
 
-#### Layer 3: Delegation Chain Heartbeat
-- Chain state changes tracked on every event (not interval-based).
-- Broadcasts `chain_start`, `chain_update`, `chain_complete` events via WebSocket.
-- Recovery protocol: on agent failure, mark task as interrupted, increment failure_count, escalate after 3 consecutive failures.
+#### Global Concurrency & Tokens
+- **RateLimitManager**: Uses Redis-backed continuous sliding windows to dynamically enforce Request Per Minute (RPM), Tokens Per Minute (TPM), and Request Per Day (RPD) limits across the platform before requests hit the providers natively.
+- **Provider Fallbacks**: Dynamically routes around failures or hard throttles by tracking capabilities directly from the `ModelCapability` SQL tables instead of hardcoding API quotas.
+- **Agent Backpressure**: Concurrency bounds enforce active throttling via `asyncio.Semaphore`, pushing backpressure streams to the frontend to signal "Waiting for rate limit buckets...".
+
+### 13. Master Heartbeat Architecture
+
+The platform's runtime stability is guaranteed by the `MasterHeartbeat` service, a central 2-second tick loop coordinating five specialized sub-monitors.
+
+#### Agent Monitor
+- Replaces the legacy Layer 1 heartbeat.
+- Detects stalled agents (20s unresponsive) and transitions them to the `STALLED` state.
+- Automatically attempts a `restart_agent` sequence. If the agent remains frozen, it triggers `reassign_agent_tasks` to migrate the lost tasks back to the System Agent.
+
+#### Task & Workflow Monitors
+- **Task Monitor**: Checks task completion metrics. Warns at 60s of inactivity, auto-reassigns at 90s, and escalates at 120s back to the System Agent.
+- **Workflow Monitor**: Hooks directly into DAG execution states, detecting stuck nodes (90s) and invoking a structural `retry -> skip -> reroute` recovery strategy.
+
+#### Resource & Communication Monitors
+- **Resource Monitor**: Calculates current RPM/TPM against maximum LLM provider limits, automatically triggering Normal, Warn, Throttle, and Critical app-wide concurrency reduction to prevent rate-limit bans.
+- **Communication Monitor**: Prevents dead-drops by sweeping pending mentions, escalating unacknowledged `@mentions` directly, and tracking message queue latency.
+
+#### Execution Watchdog & Health Board
+- **Execution Watchdog**: A definitive 10-minute task execution circuit breaker to hard-stop any infinite loops that slip past other monitors.
+- **System Health Panel**: The frontend integrates `SystemHealthPanel.tsx`, which leverages the `heartbeat_metrics` WebSocket events to render real-time UI bars, nodes, logic, and graphs mirroring the backend loop.
 
 ### 13. Omnichannel Integration
 External platform adapters for Telegram, Discord, Slack, and WhatsApp route incoming messages to assigned agents and send responses back on the originating platform.
@@ -127,12 +342,86 @@ Background tasks fire at configurable intervals (15m to 24h), triggering agents 
 ### 15. Skill Marketplace
 A catalog of 7 pre-built skills (web researcher, code reviewer, daily briefing, smart summarizer, email drafter, data analyst, task automator) installable with one click.
 
+### 16. PostgreSQL & Alembic Migration System
+The platform has been upgraded from SQLite-only to dual PostgreSQL/SQLite support:
+- **PostgreSQL** (production): asyncpg driver with connection pooling (pool_size=20, max_overflow=10, pool_pre_ping, pool_recycle=3600).
+- **SQLite** (development): aiosqlite driver for zero-setup local development.
+- **Alembic Migrations**: All manual ALTER TABLE statements replaced with versioned Alembic migrations. Async migration environment configured in `backend/alembic/env.py`.
+- **Configuration**: `ASSITANCE_DATABASE_URL` environment variable. Defaults to SQLite. For PostgreSQL: `postgresql+asyncpg://assitance:assitance@localhost:5432/assitance`.
+- **Database Indexes**: Added on agents (is_active, is_system, role), tasks (status, assigned_agent_id, chain_id), workflow_runs (status, workflow_id), delegation_chains (state, parent_task_id).
+
+### 17. Agent Capability Registry
+A centralized capability index for intelligent task routing:
+- **Registration**: Each agent registers capabilities (domain expertise, supported tools, skill tags) stored as JSON in the `capabilities` field.
+- **Weighted Scoring**: `find_best_agent(task_description, required_capabilities)` scores agents using: 40% domain expertise overlap, 30% tool overlap, 30% historical success_rate from `performance_metrics`.
+- **Performance Tracking**: `performance_metrics` JSON field tracks success_rate, avg_completion_time, tasks_completed, tasks_failed per agent.
+- **Orchestration Integration**: OrchestrationEngine uses CapabilityRegistry instead of name-based matching for agent assignment.
+
+### 18. Three-Layer Agent Memory Architecture
+Agents now have structured persistent memory across three layers:
+- **Layer 1 — Working Memory**: Short-lived interaction context stored in the `WorkingMemory` DB table. Auto-expires after 1 hour. Used for active reasoning during task execution.
+- **Layer 2 — Episodic Memory**: Summaries of completed tasks stored in the `EpisodicMemory` DB table. Records agent_id, task_id, summary, outcome (success/failure/partial). Created automatically after each task completion.
+- **Layer 3 — Long-Term Memory**: Semantic embeddings stored in ChromaDB vector collections (one per agent). Supports cosine similarity search via `retrieve_relevant_memories(agent_id, query, limit=5)`. Content includes learned strategies, domain knowledge, and important context.
+- **Memory Lifecycle**: Working memory is periodically summarized and archived to episodic memory via `summarize_and_archive()`. Important episodic patterns are embedded into long-term memory.
+- **Chat Integration**: Before each agent turn, relevant long-term memories are retrieved via semantic search and injected into the agent's context.
+
+### 19. 6-Stage Task Lifecycle Engine
+Tasks now follow a structured lifecycle with full observability:
+1. **PLAN**: System Agent analyzes the task and produces a structured JSON plan.
+2. **DECOMPOSE**: Complex tasks are broken into subtasks with parent_task_id links forming a hierarchy.
+3. **ASSIGN**: CapabilityRegistry assigns the best-fit agent to each subtask based on weighted scoring.
+4. **EXECUTE**: Subtasks are queued via the distributed task queue. Agents work via the autonomous execution loop.
+5. **VERIFY**: System Agent reviews outputs for correctness and completeness.
+6. **FINALIZE**: Results are aggregated, the delegation chain is updated, and the final response is returned.
+- **Task Model**: Each task tracks `lifecycle_stage` (plan/decompose/assign/execute/verify/finalize), `parent_task_id` for subtask hierarchy, and standard fields (status, progress, retry_count).
+
+### 20. Distributed Task Queue
+Enhanced Redis-backed task queue with production features:
+- **Priority Levels**: URGENT (0), NORMAL (5), LOW (10) via Redis ZADD sorted sets. ZPOPMIN for priority-ordered dequeue.
+- **Distributed Locking**: SETNX-based claim mechanism prevents duplicate task consumption by multiple workers.
+- **Dead-Letter Queue**: Tasks that exceed max_retries are moved to `assitance:dead_letter` for manual inspection and requeue.
+- **Worker Polling**: `dequeue(agent_id)` supports per-agent task pickup with priority ordering.
+
+### 21. Announcement Broadcast System
+Structured broadcast messaging for coordinating all agents in a channel:
+- **Announcement Model**: Tracks target_agents (JSON array), acknowledgements (JSON dict of agent_id → timestamp), and execution_state (pending/partial/complete).
+- **Acknowledgement Tracking**: CommunicationMonitor sweeps for missing acknowledgements with 3 retry attempts at 10-second intervals.
+- **Escalation**: Unacknowledged announcements after retries are escalated to the System Agent.
+
+### 22. Secret Protection (Fernet Encryption)
+All API keys are encrypted at rest using symmetric Fernet encryption:
+- **SecretManager**: Singleton service using `cryptography.Fernet`. Provides `encrypt(plaintext)`, `decrypt(ciphertext)`, `get_api_key(provider)`.
+- **Key Management**: Encryption key sourced from `ASSITANCE_SECRET_KEY` environment variable. Auto-generated if not set.
+- **Provider Integration**: All providers access API keys exclusively through SecretManager. Raw keys are never exposed in configuration or logs.
+- **API Key Masking**: AgentOut schema masks API keys in API responses (shows only last 4 characters).
+
+### 23. Skill Discovery & Governance
+Automated skill discovery and security-validated deployment:
+- **Skill Discovery**: `SkillDiscoveryService` analyzes completed tasks for reusable patterns (tool usage sequences, workflow templates, prompt strategies). Integrated into `ReflectionService`.
+- **Skill Governor**: Validates all proposed skills through a security lifecycle:
+  - **PROPOSED**: Initial skill proposal from agent task execution.
+  - **SANDBOX_TESTING**: Isolated execution in restricted Docker containers (128MB RAM, 25% CPU, 30s timeout, no network).
+  - **SECURITY_REVIEW**: Static analysis scanning for blocked patterns (os.environ, subprocess, eval/exec, dynamic imports).
+  - **APPROVED**: All checks passed.
+  - **DEPLOYED**: Available for use by all agents.
+- **Skill Metrics**: Tracks success_count, failure_count, total_execution_cost, usage_frequency. Auto-disables skills with <50% success rate after 10+ uses.
+- **Skill Sharing**: `find_relevant_skills(task_description)` searches the registry by semantic similarity before agents invent new approaches.
+
+### 24. Security Hardening
+Production-grade security measures across all execution surfaces:
+- **Docker Containers**: Read-only filesystem (`--read-only`), all Linux capabilities dropped (`--cap-drop=ALL`), tmpfs for `/tmp`, process limit (pids_limit=256).
+- **Command Executor**: Blocked dangerous command patterns including `rm -rf`, `format`, `del /s`, `shutdown`, and similar destructive operations.
+- **Workflow Engine**: Permission checks before execution, workflows cannot access secrets directly, agents must have tool permissions for workflow node tools.
+- **Adaptive Rate Limiting**: 80% → WARN (reduce concurrency 25%), 90% → THROTTLE (queue requests), 95% → CRITICAL (5s backoff).
+- **Storm Prevention**: MAX_SIMULTANEOUS_RESPONDING_AGENTS=3 via asyncio.Semaphore in group chat. Conversation depth capped at 6 turns.
+- **Tool Governor**: Recursion depth max=3, per-tool rate limit of 5 calls/minute per agent, pre-execution resource checks.
+
 ## Technical Architecture
 
 ### Backend Stack
 - **Python 3.12** managed via `uv`.
 - **FastAPI** + **Uvicorn** for HTTP REST and WebSocket server capabilities.
-- **SQLAlchemy (Async)** + **SQLite** for relational structured data (Conversations, Agents, Workflows, Tasks, Chains).
+- **SQLAlchemy (Async)** + **PostgreSQL** (via asyncpg, production) / **SQLite** (via aiosqlite, development) for relational structured data. Connection pooling (pool_size=20, max_overflow=10). Migrations managed via **Alembic**.
 - **Redis** (`redis.asyncio`) for real-time heartbeat pub/sub, task queue state, and ephemeral agent state.
 - **ChromaDB** for vector embeddings.
 - **Pydantic** for strict typing, API schemas, and environment configuration.
@@ -152,8 +441,8 @@ A catalog of 7 pre-built skills (web researcher, code reviewer, daily briefing, 
    - If @mentions found: route only to mentioned agents.
    - If no mentions + autonomous mode: route to OrchestrationEngine for auto-delegation.
    - If no mentions + manual mode: route to System Agent only.
-4. **Orchestration Engine** (autonomous mode): System Agent produces a JSON plan, creates a DelegationChain, and delegates tasks sequentially to agents.
-5. **Agent Turn**: `ChatService._run_agent_turn()` builds the agent's prompt (personality + tools), streams the response, handles tool calls, and yields events.
+4. **Orchestration Engine** (autonomous mode): System Agent produces a JSON plan with `group_id`, creates a DelegationChain, and executes agent groups in parallel via `asyncio.gather`. Complex tasks are auto-upgraded to multi-step autonomous execution.
+5. **Agent Turn**: `ChatService._run_agent_turn()` builds the agent's prompt (personality + tools), streams the response, handles tool calls, and yields events. For autonomous tasks, `AutonomousExecutionLoop.run()` wraps multiple agent turns in a PLAN→ACT→OBSERVE→REFLECT cycle.
 6. **Heartbeat**: `AgentHeartbeatService` emits Redis heartbeats, monitors agent health, manages the recovery protocol.
 7. **Tool Loop**: If the LLM returns a Tool Call, `ChatService` checks if the tool is sensitive.
    - If sensitive, the `HITLManager` pauses and pings the Frontend WebSocket.
@@ -168,12 +457,33 @@ A catalog of 7 pre-built skills (web researcher, code reviewer, daily briefing, 
 | `GET /api/chains/active` | List active delegation chains |
 | `GET /api/chains/{chain_id}` | Chain detail with agents/depth/state |
 | `GET /api/health` | Enhanced: includes agent statuses, active task/chain counts |
+| `GET /api/system/dashboard` | Comprehensive system metrics (agents, workflows, tasks, tokens, rate_limits, heartbeat) |
+| `GET /api/system/containers` | Worker container pool status |
 
 ### Database Models (New)
 | Model | Purpose |
 |-------|---------|
 | `Task` | Individual delegated task (chain_id, agent_id, status, progress, timeout, retries) |
 | `DelegationChain` | Orchestration chain (state, depth, max_depth, agents_involved, plan_summary, token_budget) |
+| `WorkingMemory` | Ephemeral agent working memory (content, expires_at) |
+| `EpisodicMemory` | Agent task summaries (summary, outcome, task_id) |
+| `Announcement` | Broadcast messages with acknowledgement tracking |
+| `ModelCapability` | LLM model registry (context_window, RPM, TPM, RPD, max_concurrent) |
+
+### 25. Production Readiness (Session 18)
+The entire platform has been verified for production readiness across 6 phases:
+- **Agent Sandbox & DB Recovery**: Successfully restored missing default agents (System Agent, Data Analyst, Web Researcher) into the database to ensure baseline functionality of the orchestration engine.
+- **Frontend**: `tsc -b` → 0 TypeScript errors. `npm run build` → Vite success (1,234 kB bundle). `npm run lint` → 0 ESLint errors. All 44+ `any` violations resolved.
+- **Backend & APIs**: Verified core endpoints for Agents (`/api/agents`), Workflows (`/api/workflows`), Channels (`/api/channels`), and System Health (`/api/system/dashboard`) all return HTTP 200 OK. CORS restricted to `["http://localhost:5173", "http://localhost:3000"]`.
+- **Database**: Alembic migration baseline established. SQLite/PostgreSQL dual modes verified.
+- **UI Visual Testing**: `SystemHealthPanel` recovered from crash (`toLocaleString()` undefined error). `TaskMonitorPanel`, `WorkflowRunsPanel`, and `VoiceSession` UI components fully checked.
+- **Verification Commands**:
+  ```bash
+  # Frontend
+  cd frontend && npm run build
+  # Backend
+  cd backend && uv run ruff check .
+  ```
 
 ### Database Columns (Extended)
 | Model | New Columns |
@@ -181,3 +491,8 @@ A catalog of 7 pre-built skills (web researcher, code reviewer, daily briefing, 
 | `Agent` | `failure_count`, `last_heartbeat` |
 | `Channel` | `orchestration_mode` (autonomous/manual) |
 | `Message` | `mentioned_agents_json` |
+| `Agent` | `capabilities`, `performance_metrics` |
+| `Task` | `lifecycle_stage`, `parent_task_id` |
+| `DelegationChain` | `delegation_path` |
+| `Skill` | `lifecycle_stage`, `security_flags`, `sandbox_result`, `proposed_by_agent_id`, `success_count`, `failure_count`, `usage_frequency` |
+| `WorkflowRun` | `checkpoint_node_id`, `checkpoint_payload` |

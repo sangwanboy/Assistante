@@ -14,7 +14,7 @@ from app.services.omnichannel.whatsapp_adapter import WhatsAppAdapter
 from app.services.omnichannel.whatsapp_web_adapter import WhatsAppWebAdapter
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    pass
 
 logger = logging.getLogger(__name__)
 

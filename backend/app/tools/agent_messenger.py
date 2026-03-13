@@ -148,7 +148,7 @@ class AgentMessengerTool(BaseTool):
         from app.models.agent_message import AgentGroupDiscussion
         async with self._session_factory() as session:
             result = await session.execute(
-                select(AgentGroupDiscussion).where(AgentGroupDiscussion.is_active == True)
+                select(AgentGroupDiscussion).where(AgentGroupDiscussion.is_active)
             )
             return [
                 {"id": g.id, "name": g.name, "agent_ids": json.loads(g.agent_ids_json)}

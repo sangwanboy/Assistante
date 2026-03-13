@@ -85,10 +85,14 @@ class ModelManagerTool(BaseTool):
                 return f"Model '{model_id}' deleted successfully."
                 
             if action == "update":
-                if "provider" in params: model.provider = params["provider"]
-                if "name" in params: model.name = params["name"]
-                if "context_window" in params: model.context_window = params["context_window"]
-                if "is_vision" in params: model.is_vision = params["is_vision"]
+                if "provider" in params:
+                    model.provider = params["provider"]
+                if "name" in params:
+                    model.name = params["name"]
+                if "context_window" in params:
+                    model.context_window = params["context_window"]
+                if "is_vision" in params:
+                    model.is_vision = params["is_vision"]
                 
                 await session.commit()
                 return f"Model '{model_id}' updated successfully."

@@ -100,7 +100,7 @@ async def resolve_mentions(
                 select(Agent)
                 .where(
                     func.lower(Agent.name) == lower_name,
-                    Agent.is_active == True,
+                    Agent.is_active,
                 )
             )
         else:
@@ -111,7 +111,7 @@ async def resolve_mentions(
                 .where(
                     ChannelAgent.channel_id == channel_id,
                     func.lower(Agent.name) == lower_name,
-                    Agent.is_active == True,
+                    Agent.is_active,
                 )
             )
 

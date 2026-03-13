@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict, Any
 
@@ -6,11 +6,11 @@ from app.db.engine import get_session
 from app.schemas.workflow import (
     WorkflowOut, WorkflowCreate, WorkflowGraph,
     NodeCreate, EdgeCreate,
-    WorkflowRunOut, WorkflowRunDetail,
+    WorkflowRunOut, WorkflowRunDetail, WorkflowMemoryOut
 )
+
 from app.services.workflow_service import WorkflowService
 from app.services.workflow_engine import WorkflowEngine
-from app.services.workflow_status import manager as workflow_ws_manager
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
 
@@ -125,3 +125,24 @@ async def get_run(
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+@router.get("/{workflow_id}/memory", response_model=WorkflowMemoryOut)
+async def get_workflow_memory(
+    workflow_id: str,
+    agent_id: Optional[str] = Query(None),
+    channel_id: Optional[str] = Query(None),
+    service: WorkflowService = Depends(get_workflow_service),
+):
+    """Get persistent memory for a workflow bounded by agent or channel."""
+    memory = await service.get_workflow_memory(workflow_id, agent_id, channel_id)
+    if not memory:
+        # Return an empty dummy object instead of 404 to satisfy UI easily
+        return WorkflowMemoryOut(
+            id="empty",
+            workflow_id=workflow_id,
+            agent_id=agent_id,
+            channel_id=channel_id,
+            memory_json="{}"
+        )
+    return memory
+

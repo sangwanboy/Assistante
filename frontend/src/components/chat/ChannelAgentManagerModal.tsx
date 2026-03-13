@@ -47,20 +47,20 @@ export function ChannelAgentManagerModal({ channel, isOpen, onClose }: ChannelAg
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+            <div className="bg-[#0e0e1c] border border-[#1c1c30] rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-[#1c1c30] bg-[#141426]">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
                             <Users className="w-4 h-4" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-semibold text-gray-900">Manage Agents</h3>
-                            <p className="text-[11px] text-gray-500">{channel.name}</p>
+                            <h3 className="text-lg font-semibold text-white">Manage Agents</h3>
+                            <p className="text-[11px] text-gray-400">{channel.name}</p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                        className="p-2 text-gray-500 hover:text-white hover:bg-white/10 rounded-full transition-colors"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -76,17 +76,17 @@ export function ChannelAgentManagerModal({ channel, isOpen, onClose }: ChannelAg
                                 const isUpdating = isProcessing[agent.id];
 
                                 return (
-                                    <div key={agent.id} className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                    <div key={agent.id} className="flex items-center justify-between p-3 border border-[#1c1c30] rounded-xl hover:bg-white/5 transition-colors">
                                         <div className="flex items-center gap-3">
                                             <div className="relative">
                                                 <img
                                                     src={`https://ui-avatars.com/api/?name=${encodeURIComponent(agent.name)}&background=random&color=fff`}
                                                     alt={agent.name}
-                                                    className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-gray-200"
+                                                    className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-[#2a2a45]"
                                                 />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-semibold text-gray-900 truncate">{agent.name}</div>
+                                                <div className="text-sm font-semibold text-white truncate">{agent.name}</div>
                                                 {agent.description && (
                                                     <div className="text-[11px] text-gray-400 truncate max-w-[200px]">{agent.description}</div>
                                                 )}
@@ -97,8 +97,8 @@ export function ChannelAgentManagerModal({ channel, isOpen, onClose }: ChannelAg
                                             onClick={() => toggleAgent(agent.id, isAdded)}
                                             disabled={isUpdating}
                                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 min-w-[80px] justify-center ${isAdded
-                                                ? 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200'
-                                                : 'bg-white text-gray-600 border border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                                                ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30'
+                                                : 'bg-white/5 text-gray-300 border border-[#2a2a45] hover:border-indigo-500/50 hover:text-indigo-400 hover:bg-indigo-500/10'
                                                 } disabled:opacity-50 disabled:cursor-not-allowed`}
                                         >
                                             {isUpdating ? (
@@ -119,10 +119,10 @@ export function ChannelAgentManagerModal({ channel, isOpen, onClose }: ChannelAg
                     )}
                 </div>
 
-                <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+                <div className="p-4 border-t border-[#1c1c30] bg-[#141426] flex justify-end">
                     <button
                         onClick={onClose}
-                        className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                        className="px-5 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
                     >
                         Done
                     </button>

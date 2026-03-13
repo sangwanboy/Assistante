@@ -105,7 +105,6 @@ class AgentDelegationTool(BaseTool):
 
                 # Use ChatService to delegate — this persists work in the agent's conversation
                 from app.services.chat_service import ChatService
-                from app.providers.registry import ProviderRegistry
 
                 service = ChatService(
                     provider_registry=self._provider_registry,

@@ -45,6 +45,7 @@ export interface WorkflowRun {
     error: string | null;
     started_at: string | null;
     ended_at: string | null;
+    context_json?: string;
 }
 
 export interface NodeExecution {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Play, Pause, Clock, Bot, AlarmClock, X } from 'lucide-react';
 import { api } from '../../services/api';
 import type { AgentSchedule, Agent } from '../../types';
+import { SystemHealthPanel } from './SystemHealthPanel';
 
 export function HeartbeatView() {
   const [schedules, setSchedules] = useState<AgentSchedule[]>([]);
@@ -55,8 +56,8 @@ export function HeartbeatView() {
       setShowForm(false);
       await load();
       showToast('Schedule created.');
-    } catch (e: any) {
-      showToast(e.message || 'Failed to create schedule.');
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Failed to create schedule.');
     }
   };
 
@@ -113,7 +114,11 @@ export function HeartbeatView() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* System Health Dashboard */}
+        <SystemHealthPanel />
+
+        {/* Schedules */}
         {loading ? (
           <div className="flex items-center justify-center h-40 text-gray-500 text-sm">Loading schedules...</div>
         ) : schedules.length === 0 ? (

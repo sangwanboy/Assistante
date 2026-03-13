@@ -1,6 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional
+
 
 class AgentBase(BaseModel):
     name: str
@@ -9,6 +10,11 @@ class AgentBase(BaseModel):
     model: str
     system_prompt: Optional[str] = None
     is_active: bool = True
+    # Lifecycle state (active | idle | paused | deleted)
+    status: str = "active"
+    # Identity
+    role: Optional[str] = None
+    groups: Optional[str] = None                 # JSON list
     # Soul
     personality_tone: Optional[str] = None
     personality_traits: Optional[str] = None        # JSON list
@@ -20,11 +26,17 @@ class AgentBase(BaseModel):
     # Memory
     memory_context: Optional[str] = None
     memory_instructions: Optional[str] = None
+    context_window_tokens: Optional[int] = Field(default=256000, ge=60000, le=256000)
+    # Capability Registry (Section 3)
+    capabilities: Optional[str] = None              # JSON list: ["orchestration", "coding", "research"]
+    performance_metrics: Optional[str] = None       # JSON: {success_rate, tasks_completed, ...}
     # Per-agent API key
     api_key: Optional[str] = None
 
+
 class AgentCreate(AgentBase):
     pass
+
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
@@ -33,6 +45,10 @@ class AgentUpdate(BaseModel):
     model: Optional[str] = None
     system_prompt: Optional[str] = None
     is_active: Optional[bool] = None
+    status: Optional[str] = None  # active | idle | paused | deleted
+    # Identity
+    role: Optional[str] = None
+    groups: Optional[str] = None
     # Soul
     personality_tone: Optional[str] = None
     personality_traits: Optional[str] = None
@@ -44,12 +60,18 @@ class AgentUpdate(BaseModel):
     # Memory
     memory_context: Optional[str] = None
     memory_instructions: Optional[str] = None
+    context_window_tokens: Optional[int] = Field(default=None, ge=60000, le=256000)
+    # Capability Registry (Section 3)
+    capabilities: Optional[str] = None
+    performance_metrics: Optional[str] = None
     api_key: Optional[str] = None
+
 
 class AgentOut(AgentBase):
     id: str
     is_system: bool
     total_cost: float
+    failure_count: int = 0
     created_at: datetime
     updated_at: datetime
 

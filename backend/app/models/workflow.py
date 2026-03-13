@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -35,7 +35,7 @@ class Node(Base):
     sub_type = Column(String, nullable=False)     # webhook, schedule, agent_call, http_request, etc.
     label = Column(String, nullable=True)         # Human-readable display name
     config_json = Column(Text, default="{}")      # JSON string for configuration
-    
+
     # UI Positioning
     position_x = Column(String, default="0")
     position_y = Column(String, default="0")
@@ -59,11 +59,21 @@ class Edge(Base):
 class WorkflowRun(Base):
     """Tracks each execution of a workflow."""
     __tablename__ = "workflow_runs"
+    __table_args__ = (
+        Index("ix_workflow_runs_status", "status"),
+        Index("ix_workflow_runs_workflow_id", "workflow_id"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     workflow_id = Column(String, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
     status = Column(String, default="pending")       # pending, running, completed, failed, paused
     trigger_payload = Column(Text, default="{}")     # JSON of the triggering data
+    context_json = Column(Text, default="{}")        # JSON of the runtime execution context
+
+    # Checkpoint support for resuming paused runs
+    checkpoint_node_id = Column(String, nullable=True)
+    checkpoint_payload = Column(Text, nullable=True)
+
     error = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     ended_at = Column(DateTime(timezone=True), nullable=True)
@@ -87,3 +97,16 @@ class NodeExecution(Base):
     ended_at = Column(DateTime(timezone=True), nullable=True)
 
     run = relationship("WorkflowRun", back_populates="node_executions")
+
+
+class WorkflowMemory(Base):
+    """Persistent memory associated with a workflow, partitioned by agent or channel."""
+    __tablename__ = "workflow_memories"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    workflow_id = Column(String, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=True)
+    channel_id = Column(String, ForeignKey("channels.id", ondelete="CASCADE"), nullable=True)
+
+    memory_json = Column(Text, default="{}")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

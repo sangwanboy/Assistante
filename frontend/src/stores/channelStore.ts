@@ -30,8 +30,8 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
         try {
             const channels = await api.getChannels();
             set({ channels, isLoading: false });
-        } catch (err: any) {
-            set({ error: err.message, isLoading: false });
+        } catch (err: unknown) {
+            set({ error: err instanceof Error ? err.message : String(err), isLoading: false });
         }
     },
 
@@ -64,7 +64,7 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
                     [channelId]: agents
                 }
             }));
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to load channel agents:', err);
         }
     },

@@ -48,18 +48,24 @@ async def update_settings(req: SettingsUpdate, request: Request):
         if req.openai_api_key:
             from app.providers.openai_provider import OpenAIProvider
             request.app.state.provider_registry.add_provider("openai", OpenAIProvider(req.openai_api_key))
+        else:
+            request.app.state.provider_registry.remove_provider("openai")
 
     if req.anthropic_api_key is not None:
         settings.anthropic_api_key = req.anthropic_api_key
         if req.anthropic_api_key:
             from app.providers.anthropic_provider import AnthropicProvider
             request.app.state.provider_registry.add_provider("anthropic", AnthropicProvider(req.anthropic_api_key))
+        else:
+            request.app.state.provider_registry.remove_provider("anthropic")
 
     if req.gemini_api_key is not None:
         settings.gemini_api_key = req.gemini_api_key
         if req.gemini_api_key:
             from app.providers.gemini_provider import GeminiProvider
             request.app.state.provider_registry.add_provider("gemini", GeminiProvider(req.gemini_api_key))
+        else:
+            request.app.state.provider_registry.remove_provider("gemini")
 
     if req.ollama_base_url is not None:
         settings.ollama_base_url = req.ollama_base_url

@@ -77,11 +77,13 @@ class WorkflowRunOut(BaseModel):
     workflow_id: str
     status: str
     trigger_payload: Optional[str] = "{}"
+    context_json: Optional[str] = "{}"
     error: Optional[str] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
 
     class Config:
+
         from_attributes = True
 
 class NodeExecutionOut(BaseModel):
@@ -100,3 +102,15 @@ class NodeExecutionOut(BaseModel):
 
 class WorkflowRunDetail(WorkflowRunOut):
     node_executions: List[NodeExecutionOut]
+
+class WorkflowMemoryOut(BaseModel):
+    id: str
+    workflow_id: str
+    agent_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    memory_json: Optional[str] = "{}"
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+

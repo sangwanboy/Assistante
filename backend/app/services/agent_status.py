@@ -12,6 +12,9 @@ class AgentState(str, Enum):
     INITIALIZING = "initializing"
     IDLE = "idle"
     WORKING = "working"
+    LEARNING = "learning"
+    STALLED = "stalled"
+    RECOVERING = "recovering"
     ERROR = "error"
 
 
@@ -64,7 +67,7 @@ class AgentStatusManager:
         from sqlalchemy import select
         from app.models.agent import Agent
         result = await session.execute(
-            select(Agent).where(Agent.is_active == True)
+            select(Agent).where(Agent.is_active)
         )
         agents = result.scalars().all()
         for agent in agents:
