@@ -5,7 +5,25 @@
 
 ## Session Update (2026-03-13)
 
-### Phase 7: Dynamic Model-Specific Rate Limiting & Adaptive Throttling ✅ COMPLETED & CLEANED
+### Phase 9: Orchestration Silence & Heartbeat Context Debugging 🚧 IN-PROGRESS
+
+#### Current Objectives
+- Resolve "Test Channel" silence in autonomous orchestration mode.
+- Fix the `agent_id not provided in execution context` error for the `manage_schedules` (heart-beat) tool.
+
+#### Technical Progress
+- **Janny Model Correction**: Identified that the System Agent was configured with a preview model ID (`3.1-flash-lite-preview`) which was invalid/unavailable in the current provider registry. Manually updated Janny to `gemini/gemini-2.5-flash` via `fix_janny_model.py`.
+- **Orchestration Resiliency**: Refactored `OrchestrationEngine._ask_system_agent` to use centralized model/provider resolution logic (`_resolve_provider_and_model`) with explicit fallbacks and error handling.
+- **Tool Tracing**: Added persistent logging and keyword extraction tracing to `heartbeat_tool.py` to diagnose why `agent_id` is not being correctly merged from the `ChatService` execution context.
+- **Heartbeat Standardization**: Updated `heartbeat_tool.py` to accept both `_agent_id` (system context) and `agent_id` (tool params) to increase robustness.
+
+#### Remaining Issues
+- **Context Injection**: The `agent_id` remains missing in the tool's `kwargs` during execution, suggesting a break in the `ChatService._execute_tool_calls` parameter merging logic or the `inspect.signature` detection.
+- **Orchestration Silence**: Even with valid models, the "Test Channel" is not consistently responding to messages in autonomous mode.
+
+---
+
+### Phase 8: Heartbeat Transparency, Autonomous Scheduling & Brave Search ✅ COMPLETED
 
 #### Final Status
 The system has been fully verified, cleaned, and is now in a production-ready state. All development servers have been terminated, and the codebase has been purged of temporary verification scripts and debug logging.

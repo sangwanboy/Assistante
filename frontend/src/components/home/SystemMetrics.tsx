@@ -27,7 +27,7 @@ export function SystemMetrics() {
             }
         };
         fetchMetrics();
-        const intId = setInterval(fetchMetrics, 5000); // 5s refresh
+        const intId = setInterval(fetchMetrics, 5000);
         return () => {
             isMounted = false;
             clearInterval(intId);
@@ -39,14 +39,15 @@ export function SystemMetrics() {
         if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
         return num.toString();
     };
+
     const metrics = [
         {
             id: 'active_agents',
             label: 'Autonomous Agents',
             value: data.active_agents.toString(),
             total: data.total_agents.toString(),
-            icon: <Cpu className="w-4 h-4 text-indigo-400" />,
-            color: 'bg-indigo-500',
+            icon: <Cpu className="w-4 h-4" />,
+            color: '#6366f1',
             percent: data.total_agents > 0 ? (data.active_agents / data.total_agents) * 100 : 0,
         },
         {
@@ -54,8 +55,8 @@ export function SystemMetrics() {
             label: 'Global RPM Load',
             value: formatNumber(data.global_rpm),
             total: formatNumber(data.total_rpm_limit),
-            icon: <Activity className="w-4 h-4 text-emerald-400" />,
-            color: 'bg-emerald-500',
+            icon: <Activity className="w-4 h-4" />,
+            color: '#10b981',
             percent: data.total_rpm_limit > 0 ? (data.global_rpm / data.total_rpm_limit) * 100 : 0,
         },
         {
@@ -63,8 +64,8 @@ export function SystemMetrics() {
             label: 'Current TPM Burn',
             value: formatNumber(data.global_tpm),
             total: formatNumber(data.total_tpm_limit),
-            icon: <Zap className="w-4 h-4 text-amber-400" />,
-            color: 'bg-amber-500',
+            icon: <Zap className="w-4 h-4" />,
+            color: '#f59e0b',
             percent: data.total_tpm_limit > 0 ? (data.global_tpm / data.total_tpm_limit) * 100 : 0,
         },
         {
@@ -72,58 +73,58 @@ export function SystemMetrics() {
             label: 'Rate Limit Blocks',
             value: data.rate_limit_blocks.toString(),
             total: '100',
-            icon: <ShieldAlert className="w-4 h-4 text-red-400" />,
-            color: 'bg-red-500',
+            icon: <ShieldAlert className="w-4 h-4" />,
+            color: '#f43f5e',
             percent: Math.min(data.rate_limit_blocks, 100),
         }
     ];
 
     return (
-        <div className="bg-[#0c0c1a] border border-[#1c1c30] rounded-xl overflow-hidden flex flex-col">
-            <div className="px-5 py-4 border-b border-[#1c1c30] flex items-center justify-between bg-[#141426]">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-emerald-400" />
+        <section className="liquid-panel overflow-hidden flex flex-col">
+            <div className="px-5 py-4 flex items-center justify-between">
+                <h3 className="text-[10px] font-semibold text-white/40 uppercase tracking-[1.5px]">
                     System Metrics
                 </h3>
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
-                    <span className="relative flex h-2 w-2">
+                <div className="flex items-center gap-1.5 text-[9px] font-semibold text-emerald-400/80 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/15">
+                    <span className="relative flex h-1.5 w-1.5">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                     </span>
-                    Gateway Active
+                    LIVE
                 </div>
             </div>
 
-            <div className="p-4 flex flex-col gap-4">
+            <div className="px-5 pb-5 flex flex-col gap-5">
                 {metrics.map((m, idx) => (
                     <motion.div
                         key={m.id}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.1 }}
+                        transition={{ delay: idx * 0.08 }}
                         className="flex flex-col gap-2"
                     >
-                        <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2 text-gray-300 font-medium">
-                                {m.icon}
-                                {m.label}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span style={{ color: m.color, opacity: 0.7 }}>{m.icon}</span>
+                                <span className="text-[11px] text-white/35 font-medium">{m.label}</span>
                             </div>
-                            <div className="font-mono text-white text-xs">
-                                {m.value} / <span className="text-gray-500">{m.total}</span>
+                            <div className="text-[11px] font-semibold text-white/70 tabular-nums">
+                                {m.value} <span className="text-white/15">/</span> {m.total}
                             </div>
                         </div>
                         {/* Progress Bar */}
-                        <div className="h-1.5 w-full bg-[#1c1c30] rounded-full overflow-hidden">
+                        <div className="h-1 w-full bg-white/[0.04] rounded-full overflow-hidden">
                             <motion.div
                                 initial={{ width: 0 }}
                                 animate={{ width: `${m.percent}%` }}
-                                transition={{ duration: 1, delay: 0.2 + (idx * 0.1), type: 'spring' }}
-                                className={`h-full ${m.color}`}
+                                transition={{ duration: 1.2, delay: 0.1 + (idx * 0.08), ease: [0.22, 1, 0.36, 1] }}
+                                className="h-full rounded-full"
+                                style={{ backgroundColor: m.color, boxShadow: `0 0 10px ${m.color}40` }}
                             />
                         </div>
                     </motion.div>
                 ))}
             </div>
-        </div>
+        </section>
     );
 }

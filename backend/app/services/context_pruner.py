@@ -42,7 +42,7 @@ ACTIVE_TRIGGER_RATIO    = 0.80   # summarise
 EMERGENCY_TRIGGER_RATIO = 0.99   # hard truncate
 
 # Dynamic recent window — token budget for the messages we always keep
-RECENT_TOKEN_BUDGET = 6_000
+RECENT_TOKEN_BUDGET = 10_000
 RECENT_FLOOR        = 3    # always keep at least 3 recent messages
 RECENT_CEILING      = 10   # never keep more than 10 for the "recent" window
 
@@ -235,22 +235,76 @@ class ContextPruner:
     # Dynamic recent window
     # ─────────────────────────────────────────────────────────
 
+    # ─────────────────────────────────────────────────────────
+    # Atomic block detection (Tool-safe pruning)
+    # ─────────────────────────────────────────────────────────
+
+    def _group_atomic_blocks(self, messages: list[ChatMessage], limit: int | None = None) -> list[list[ChatMessage]]:
+        """Group messages into atomic units, optionally limiting to the last N messages for performance.
+        
+        Tail-heavy optimization: If many messages exist, we only care about the end for pruning boundaries.
+        """
+        if limit and len(messages) > limit:
+            messages = messages[-limit:]
+            
+        blocks: list[list[ChatMessage]] = []
+        current_block: list[ChatMessage] = []
+        
+        for msg in messages:
+            if msg.role == "user":
+                if current_block:
+                    blocks.append(current_block)
+                current_block = [msg]
+            elif msg.role == "assistant":
+                # Start new block if not following a user or another assistant message
+                if not current_block or current_block[-1].role not in ["user", "assistant"]:
+                    if current_block:
+                        blocks.append(current_block)
+                    current_block = [msg]
+                else:
+                    current_block.append(msg)
+            elif msg.role == "tool":
+                # Tools MUST attach to the current block (the one that called them)
+                if not current_block:
+                    current_block = [msg] # Fallback for orphaned results
+                else:
+                    current_block.append(msg)
+            else:
+                if current_block:
+                    blocks.append(current_block)
+                blocks.append([msg])
+                current_block = []
+                
+        if current_block:
+            blocks.append(current_block)
+        return blocks
+
     def _calculate_keep_recent(self, messages: list[ChatMessage]) -> int:
         """Return how many trailing messages fit within RECENT_TOKEN_BUDGET.
-
-        Always between RECENT_FLOOR and RECENT_CEILING.
+        
+        Ensures we don't split an atomic block at the boundary.
+        Tail-optimized: only looks at the last 200 messages for boundary detection.
         """
-        kept = 0
+        # We only need to find a boundary within the RECENT_CEILING window
+        # RECENT_CEILING is 50. Processing last 100 messages is plenty.
+        blocks = self._group_atomic_blocks(messages, limit=100)
+        
+        kept_count = 0
         budget_used = 0
-        for msg in reversed(messages):
-            msg_tokens = self.estimate_tokens([msg])
-            if budget_used + msg_tokens > RECENT_TOKEN_BUDGET and kept >= RECENT_FLOOR:
+        
+        for block in reversed(blocks):
+            block_tokens = self.estimate_tokens(block)
+            
+            if budget_used + block_tokens > RECENT_TOKEN_BUDGET and kept_count >= RECENT_FLOOR:
                 break
-            budget_used += msg_tokens
-            kept += 1
-            if kept >= RECENT_CEILING:
+                
+            budget_used += block_tokens
+            kept_count += len(block)
+            
+            if kept_count >= RECENT_CEILING:
                 break
-        return max(RECENT_FLOOR, kept)
+                
+        return max(RECENT_FLOOR, kept_count)
 
     # ─────────────────────────────────────────────────────────
     # Active prune (summarise middle)
@@ -264,11 +318,7 @@ class ContextPruner:
         agent_name: str | None,
         delegation_history: list[str] | None,
     ) -> tuple[list[ChatMessage], int]:
-        """Summarise the middle messages and return the pruned list.
-
-        Returns (pruned_messages, summary_token_count).
-        """
-        # Separate system messages from conversation turns
+        """Summarise the middle messages and return the pruned list."""
         system_msgs: list[ChatMessage] = []
         remaining: list[ChatMessage] = []
         idx = 0
@@ -277,27 +327,29 @@ class ContextPruner:
             idx += 1
         remaining = messages[idx:]
 
-        # Refresh the first system message if a new prompt was supplied
         if refreshed_system_prompt:
             if system_msgs:
                 system_msgs[0] = ChatMessage(role="system", content=refreshed_system_prompt)
             else:
-                system_msgs.append(ChatMessage(role="system", content=refreshed_system_prompt))
+                system_msgs.insert(0, ChatMessage(role="system", content=refreshed_system_prompt))
 
         if prune_sync_note:
             system_msgs.append(ChatMessage(role="system", content=prune_sync_note))
 
-        # Dynamic window: how many recent messages to keep
         keep_recent = self._calculate_keep_recent(remaining)
 
         if len(remaining) <= keep_recent:
-            # Nothing to prune after accounting for the recent window
             return messages, 0
 
         middle_msgs = remaining[:-keep_recent]
         recent_msgs = remaining[-keep_recent:]
 
-        # Summarise using SummaryManager (multi-agent safe, drift-protected)
+        # Cap middle_msgs to avoid OOM or timeout during summarization if history is massive
+        # Only keep the last 500 messages for summarization if it's crazy long
+        if len(middle_msgs) > 500:
+            logger.warning("Context history too large (%d msgs), truncating middle before summary", len(middle_msgs))
+            middle_msgs = middle_msgs[-500:]
+
         from app.services.summary_manager import SummaryManager
         mgr = SummaryManager(self.providers)
         summary_text = await mgr.summarize(
@@ -306,9 +358,7 @@ class ContextPruner:
             delegation_history=delegation_history,
         )
 
-        summary_tokens = self.estimate_tokens(
-            [ChatMessage(role="system", content=summary_text)]
-        )
+        summary_tokens = self.estimate_tokens([ChatMessage(role="system", content=summary_text)])
 
         pruned: list[ChatMessage] = system_msgs.copy()
         pruned.append(ChatMessage(
@@ -328,7 +378,7 @@ class ContextPruner:
         refreshed_system_prompt: str | None,
         prune_sync_note: str | None,
     ) -> list[ChatMessage]:
-        """Keep system messages + last 3 conversation turns. No LLM call."""
+        """Keep system messages + latest atomic blocks. No LLM call."""
         system_msgs: list[ChatMessage] = []
         turns: list[ChatMessage] = []
         idx = 0
@@ -346,8 +396,16 @@ class ContextPruner:
 
         result.append(ChatMessage(
             role="system",
-            content="[EMERGENCY CONTEXT TRUNCATION]: Earlier conversation history was "
-                    "dropped to fit the context window. Only the most recent messages are shown.",
+            content="[EMERGENCY CONTEXT TRUNCATION]: History too large. Only latest messages kept.",
         ))
-        result.extend(turns[-3:])   # keep last 3 turns
+        
+        # Only look at the last 20 messages for emergency grouping
+        blocks = self._group_atomic_blocks(turns, limit=20)
+        kept_turns: list[ChatMessage] = []
+        # Keep last 1-2 blocks depending on size
+        target_blocks = blocks[-2:] if len(blocks) >= 2 else blocks
+        for block in reversed(target_blocks):
+            kept_turns = block + kept_turns
+            
+        result.extend(kept_turns)
         return result

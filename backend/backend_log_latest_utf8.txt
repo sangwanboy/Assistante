@@ -1,0 +1,100 @@
+﻿INFO:     127.0.0.1:52849 - "GET /api/channels HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52847 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61769 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61770 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60045 - "GET /api/channels HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60046 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54271 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59487 - "GET /api/channels HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54272 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51239 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54152 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53817 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61280 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60395 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53057 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59070 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64405 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58516 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:65403 - "WebSocket 
+/api-ws/agents/control" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:56195 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:60697 - "WebSocket 
+/api-ws/agents/control" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:52934 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:57494 - "WebSocket 
+/api-ws/agents/control" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:60471 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:50805 - "WebSocket 
+/api-ws/agents/control" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59557 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:63845 - "WebSocket 
+/api-ws/agents/control" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:53799 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53796 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53797 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53798 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64067 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64068 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52924 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52923 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52289 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54588 - "WebSocket 
+/api-ws/agents/control" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:61736 - "GET /api/conversations/c9754858-3512-4491-b0c3-81366a742f0b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60105 - "WebSocket 
+/ws/chat/c9754858-3512-4491-b0c3-81366a742f0b" [accepted]
+INFO:     connection open
+D:\Projects\Assitance\backend\app\tools\web_search.py:35: 
+RuntimeWarning: This package (`duckduckgo_search`) has been 
+renamed to `ddgs`! Use `pip install ddgs` instead.
+  with DDGS() as ddgs:
+D:\Projects\Assitance\backend\app\tools\web_search.py:35: 
+RuntimeWarning: This package (`duckduckgo_search`) has been 
+renamed to `ddgs`! Use `pip install ddgs` instead.
+  with DDGS() as ddgs:
+INFO:     127.0.0.1:51051 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57638 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50808 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52267 - "GET /api/workflows/7bcdd3cc-25d7-4dfd-a188-5d3de471f58b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49722 - "GET /api/workflows/7bcdd3cc-25d7-4dfd-a188-5d3de471f58b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62699 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61219 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51425 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59847 - "GET /api/workflows/7bcdd3cc-25d7-4dfd-a188-5d3de471f58b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50406 - "GET /api/workflows/7bcdd3cc-25d7-4dfd-a188-5d3de471f58b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58509 - "GET /api/channels HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58828 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58827 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60004 - "GET /api/channels HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64166 - "GET /api/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64167 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54090 - "GET /api/conversations/83400fba-a59b-4684-8740-f1355842a61c HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     127.0.0.1:49673 - "GET /api/channels/4bdb2ad5-afb9-4a40-b117-9198ee710142/agents HTTP/1.1" 200 OK
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+INFO:     127.0.0.1:56666 - "WebSocket 
+/ws/chat/83400fba-a59b-4684-8740-f1355842a61c" [accepted]
+INFO:     connection open

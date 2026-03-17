@@ -57,8 +57,8 @@ class AutonomousExecutionLoop:
         Yields streaming events (chunks, tool_calls, etc.) that can be piped
         to the WebSocket or to the orchestration event queue.
         """
-        max_steps = task.max_steps or 15
-        max_tool_calls = task.max_tool_calls or 20
+        max_steps = task.max_steps or 100
+        max_tool_calls = task.max_tool_calls or 50
         total_tool_calls = 0
 
         # Timeout protection
@@ -78,8 +78,9 @@ class AutonomousExecutionLoop:
             "max_steps": max_steps,
         }
 
-        task.status = "running"
+        task.status = "RUNNING"
         task.started_at = started_at
+        task.last_heartbeat_at = started_at
         await self.session.commit()
 
         # ── Create persistent workspace for this task ──
@@ -90,18 +91,26 @@ class AutonomousExecutionLoop:
 
         try:
             for step_num in range(1, max_steps + 1):
-                # ── CONVERSATION DEPTH CHECK ──
-                if step_num > 6:
+                # ── CANCELLATION CHECK ──
+                await self.session.refresh(task)
+                if task.cancel_requested:
+                    logger.info("Task %s: cancellation requested", task.id)
+                    task.status = "CANCELED"
+                    await self.session.commit()
+                    yield {"type": "autonomous_canceled", "agent_name": agent.name}
+                    break
+
+                # ── HEARTBEAT & STEP TRACKING ──
+                task.last_heartbeat_at = datetime.now(timezone.utc)
+                task.step_started_at = datetime.now(timezone.utc)
+                await self.session.commit()
+
+                # ── STEP: NOTIFY CONTINUATION PROGRESS ──
+                if step_num > 50:
                     logger.warning(
-                        "Task %s: conversation depth limit reached at step %d",
+                        "Task %s: very deep execution at step %d, auto-continuing...",
                         task.id, step_num,
                     )
-                    yield {
-                        "type": "autonomous_depth_limit",
-                        "agent_name": agent.name,
-                        "step": step_num,
-                    }
-                    break
 
                 # ── TIMEOUT CHECK ──
                 elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
@@ -110,6 +119,8 @@ class AutonomousExecutionLoop:
                         "Task %s timed out after %.1fs (limit: %ds)",
                         task.id, elapsed, max_runtime_seconds,
                     )
+                    task.status = "TIMED_OUT"
+                    await self.session.commit()
                     yield {
                         "type": "autonomous_timeout",
                         "agent_name": agent.name,
@@ -133,8 +144,6 @@ class AutonomousExecutionLoop:
                     break
 
                 # ── STEP 1: PLAN ──
-                # On first step, use original task prompt. On subsequent steps,
-                # inject reflection history so the agent knows what happened.
                 status_manager.set_status(
                     agent_id, AgentState.WORKING,
                     f"Autonomous step {step_num}/{max_steps}: Planning..."
@@ -179,9 +188,9 @@ class AutonomousExecutionLoop:
                         conversation_id, agent, temperature,
                         max_tool_iters=min(5, max_tool_calls - total_tool_calls),
                         is_group=True,
+                        task_id=str(task.id),
                     ):
                         yield event
-                        # Track output
                         if event.get("type") == "chunk" and event.get("delta"):
                             step_output += str(event.get("delta", ""))
                         if event.get("type") == "tool_call":
@@ -190,7 +199,7 @@ class AutonomousExecutionLoop:
 
                 total_tool_calls += step_tool_calls
 
-                # ── STEP 3: OBSERVE — Record what happened ──
+                # ── STEP 3: OBSERVE ──
                 observation = {
                     "step": step_num,
                     "output_preview": step_output[:500],
@@ -213,16 +222,14 @@ class AutonomousExecutionLoop:
                     "progress": task.progress,
                 }
 
-                # ── STEP 4: REFLECT — Check if the task is complete ──
+                # ── STEP 4: REFLECT ──
                 if not has_tool_calls:
-                    # Agent responded without using tools → likely done
                     logger.info(
                         "Task %s: agent responded without tools at step %d — treating as complete",
                         task.id, step_num,
                     )
                     break
 
-                # Ask the LLM if the task is done (cheap, fast check)
                 is_complete = await self._check_completion(
                     agent, task, step_history, step_output
                 )
@@ -230,10 +237,13 @@ class AutonomousExecutionLoop:
                     logger.info("Task %s: completion detected at step %d", task.id, step_num)
                     break
 
-            # ── TASK COMPLETED ──
-            task.status = "completed"
-            task.progress = 100
+            # ── TASK TERMINATION LOGIC ──
+            if task.status == "RUNNING":
+                task.status = "COMPLETED"
+                task.progress = 100
+            
             task.completed_at = datetime.now(timezone.utc)
+            task.last_heartbeat_at = datetime.now(timezone.utc)
             await self.session.commit()
 
             yield {
@@ -242,23 +252,37 @@ class AutonomousExecutionLoop:
             }
             
             # ── REFLECT on the task loop ──
-            from app.services.reflection_service import ReflectionService
-            reflector = ReflectionService(self.session, self.providers)
-            await reflector.reflect_on_task(agent, task, step_history)
-
-            status_manager.set_status(agent_id, AgentState.IDLE)
+            try:
+                from app.services.reflection_service import ReflectionService
+                reflector = ReflectionService(self.session, self.providers)
+                await reflector.reflect_on_task(agent, task, step_history)
+            except Exception as re_exc:
+                logger.warning(f"Reflection failed for task {task.id}: {re_exc}")
 
             yield {
                 "type": "autonomous_complete",
                 "agent_name": agent.name,
                 "steps_taken": task.step_count,
                 "tool_calls_total": total_tool_calls,
-                "status": "completed",
+                "status": task.status,
             }
+
+        except GeneratorExit:
+            logger.info("Task %s: generator closed (user stopped generation)", task.id)
+            task.status = "CANCELED"
+            task.completed_at = datetime.now(timezone.utc)
+            await self.session.commit()
+            
+            # Since we can't yield anymore (generator is closing), we just commit and exit.
+            # GeneratorExit is raised on 'await' or 'yield' when the generator is closed.
 
         except Exception as exc:
             logger.error("Autonomous loop for task %s failed: %s", task.id, exc, exc_info=True)
-            task.status = "failed"
+            if task.retry_count >= task.max_retries:
+                task.status = "DLQ"
+            else:
+                task.status = "FAILED"
+                
             task.completed_at = datetime.now(timezone.utc)
             await self.session.commit()
 
@@ -267,12 +291,12 @@ class AutonomousExecutionLoop:
                 "agent_name": agent.name,
             }
             
-            # ── REFLECT on the failure ──
-            from app.services.reflection_service import ReflectionService
-            reflector = ReflectionService(self.session, self.providers)
-            await reflector.reflect_on_task(agent, task, step_history)
-
-            status_manager.set_status(agent_id, AgentState.IDLE)
+            try:
+                from app.services.reflection_service import ReflectionService
+                reflector = ReflectionService(self.session, self.providers)
+                await reflector.reflect_on_task(agent, task, step_history)
+            except Exception:
+                pass
 
             yield {
                 "type": "autonomous_error",
@@ -280,6 +304,8 @@ class AutonomousExecutionLoop:
                 "error": str(exc),
                 "step": task.step_count,
             }
+        finally:
+            status_manager.set_status(agent_id, AgentState.IDLE)
 
     async def _check_completion(
         self,

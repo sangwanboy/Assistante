@@ -57,6 +57,7 @@ class AgentManagerTool(BaseTool):
                     "items": {"type": "string"},
                     "description": "List of group/team names the agent belongs to (e.g. ['data-team', 'engineering-team'])"
                 },
+                "api_key": {"type": "string", "description": "The API key for this agent (will be encrypted)"},
                 "search_role": {"type": "string", "description": "For discover: search by role"},
                 "search_tools": {"type": "string", "description": "For discover: search by tool name"},
                 "search_group": {"type": "string", "description": "For discover: search by group membership"},
@@ -114,8 +115,13 @@ class AgentManagerTool(BaseTool):
                     memory_instructions=params.get("memory_instructions", ""),
                     enabled_tools=json.dumps(params.get("enabled_tools", [])) if "enabled_tools" in params else "[]",
                     groups=json.dumps(params.get("groups", [])) if "groups" in params else "[]",
+                    api_key=params.get("api_key"),
                     is_active=True
                 )
+                if agent.api_key:
+                    from app.services.secret_manager import get_secret_manager
+                    agent.api_key = get_secret_manager().encrypt(agent.api_key)
+                
                 session.add(agent)
                 await session.commit()
                 return f"Agent '{agent.name}' created successfully with ID: {agent.id} (role: {agent.role})"
@@ -165,6 +171,9 @@ class AgentManagerTool(BaseTool):
                     agent.enabled_tools = json.dumps(params["enabled_tools"])
                 if "groups" in params:
                     agent.groups = json.dumps(params["groups"])
+                if "api_key" in params:
+                    from app.services.secret_manager import get_secret_manager
+                    agent.api_key = get_secret_manager().encrypt(params["api_key"])
                 
                 await session.commit()
                 return f"Agent '{agent.name}' updated successfully."

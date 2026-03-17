@@ -70,7 +70,14 @@ class ConversationService:
         tool_calls_json: str | None = None,
         tool_call_id: str | None = None,
         mentioned_agents_json: str | None = None,
-    ) -> Message:
+    ) -> Message | None:
+        # Block empty/whitespace-only assistant messages that don't have tool calls
+        if role == "assistant" and (not content or not str(content).strip()) and not tool_calls_json:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Blocked empty assistant message for conversation {conversation_id} (Agent: {agent_name})")
+            return None
+
         msg = Message(
             conversation_id=conversation_id,
             role=role,

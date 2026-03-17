@@ -1,8 +1,11 @@
 import json
+import logging
 import httpx
 from typing import AsyncIterator
 
 from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaProvider(BaseProvider):
@@ -40,9 +43,11 @@ class OllamaProvider(BaseProvider):
         tools: list[dict] | None = None,
         temperature: float = 0.7,
     ) -> ChatMessage:
+        formatted = self._format_messages(messages)
+        logger.info("Ollama complete: model=%s, messages=%d", model, len(formatted))
         payload = {
             "model": model,
-            "messages": self._format_messages(messages),
+            "messages": formatted,
             "stream": False,
             "options": {"temperature": temperature},
         }
@@ -77,9 +82,11 @@ class OllamaProvider(BaseProvider):
         tools: list[dict] | None = None,
         temperature: float = 0.7,
     ) -> AsyncIterator[StreamChunk]:
+        formatted = self._format_messages(messages)
+        logger.info("Ollama stream: model=%s, messages=%d", model, len(formatted))
         payload = {
             "model": model,
-            "messages": self._format_messages(messages),
+            "messages": formatted,
             "stream": True,
             "options": {"temperature": temperature},
         }

@@ -81,7 +81,7 @@ class TaskManager:
         return list(res.scalars().all())
 
     async def update_task_state(self, task_id: str, status: str, result: str = None, error_message: str = None):
-        """Update task status (pending -> running -> completed/failed) and emit standard events."""
+        """Update task status and emit standard events."""
         t = await self.get_task(task_id)
         if not t:
             return None
@@ -91,18 +91,19 @@ class TaskManager:
         
         event_type = "task_progress"
         
-        if status == "running" and not t.started_at:
+        if status == "RUNNING" and not t.started_at:
             t.started_at = datetime.now(timezone.utc)
+            t.last_heartbeat_at = datetime.now(timezone.utc)
             event_type = "task_started"
             
-        if status in ("completed", "failed"):
+        if status in ("COMPLETED", "FAILED", "TIMED_OUT", "CANCELED", "DLQ"):
             t.completed_at = datetime.now(timezone.utc)
-            t.progress = 100 if status == "completed" else t.progress
+            t.progress = 100 if status == "COMPLETED" else t.progress
             if result:
                 t.result = result
             if error_message:
                 t.error_message = error_message
-            event_type = f"task_{status}"
+            event_type = f"task_{status.lower()}"
             
         await self.session.commit()
         await self._publish_event(event_type, t)
@@ -118,9 +119,10 @@ class TaskManager:
         t.progress = min(max(percent, 0), 100) # Clamp 0-100
         t.updated_at = datetime.now(timezone.utc)
         
-        if t.status == "pending" and t.progress > 0:
-            t.status = "running"
+        if t.status == "QUEUED" and t.progress > 0:
+            t.status = "RUNNING"
             t.started_at = t.started_at or datetime.now(timezone.utc)
+            t.last_heartbeat_at = t.last_heartbeat_at or datetime.now(timezone.utc)
             await self._publish_event("task_started", t)
             
         await self.session.commit()

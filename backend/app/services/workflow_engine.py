@@ -121,6 +121,16 @@ class WorkflowEngine:
         exe = await self.service.create_node_execution(run_id, node.id, context)
         await self.service.update_node_execution(exe.id, "running")
         
+        # Register with heartbeat monitor
+        try:
+            from app.services.master_heartbeat import MasterHeartbeat
+            master = MasterHeartbeat.get_instance()
+            master.workflow_monitor.register_node_start(
+                workflow_id=node.workflow_id, run_id=run_id, node_id=node.id, node_type=node.type
+            )
+        except Exception:
+            pass
+
         from app.services.workflow_status import manager as workflow_ws_manager
         await workflow_ws_manager.broadcast_execution_update(
             workflow_id=node.workflow_id, run_id=run_id, node_id=node.id, status="running", data={}
@@ -149,6 +159,12 @@ class WorkflowEngine:
             await workflow_ws_manager.broadcast_execution_update(
                 workflow_id=node.workflow_id, run_id=run_id, node_id=node.id, status="completed", data=result.get("output", {})
             )
+            
+            # Register completion with heartbeat monitor
+            try:
+                master.workflow_monitor.register_node_complete(run_id, node.id)
+            except Exception:
+                pass
 
         except WorkflowPaused:
             await self.service.update_node_execution(exe.id, "completed", {"paused": True})

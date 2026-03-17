@@ -55,7 +55,7 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
         // Connect directly to backend port to bypass unstable Vite WS proxy
-        const backendPort = '8322';
+        const backendPort = '8321';
         const wsUrl = `${protocol}//${host}:${backendPort}/api-ws/agents/status`;
         console.debug('[AgentStatus WS] Connecting to:', wsUrl);
 

@@ -42,6 +42,19 @@ export function AgentsView() {
   const [availableSkills, setAvailableSkills] = useState<{ id: string; name: string; description: string }[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const isAllowedAgentModel = (modelId: string, provider: string) => {
+    if (provider !== 'gemini') return true;
+    return !/gemini\/(gemini-(1\.5|2\.0))|^gemini-(1\.5|2\.0)/.test(modelId);
+  };
+
+  const availableProviders = Array.from(
+    new Set(models.filter(m => isAllowedAgentModel(m.id, m.provider)).map(m => m.provider))
+  );
+
+  const availableAgentModels = models.filter(
+    m => m.provider === formData.provider && isAllowedAgentModel(m.id, m.provider)
+  );
+
   const TONE_OPTIONS = ['professional', 'friendly', 'sarcastic', 'empathetic', 'witty', 'serious', 'playful'];
   const STYLE_OPTIONS = ['formal', 'casual', 'technical', 'storytelling', 'concise', 'verbose'];
   const REASONING_OPTIONS = ['analytical', 'creative', 'balanced', 'step-by-step', 'intuitive'];
@@ -228,7 +241,8 @@ export function AgentsView() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ duration: 0.3, delay: index * 0.05 }}
-                      className="bg-[#0e0e1c] rounded-xl border border-[#1c1c30] p-6 hover:border-indigo-500/30 transition-all group shadow-lg hover:shadow-xl"
+                      onClick={() => handleOpenEdit(agent)}
+                      className="bg-[#0e0e1c] rounded-xl border border-[#1c1c30] p-6 hover:border-indigo-500/30 transition-all group shadow-lg hover:shadow-xl cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-5">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${agent.is_active
@@ -449,7 +463,7 @@ export function AgentsView() {
                               className={`${inputClass} appearance-none cursor-pointer`}
                             >
                               <option value="" disabled>Select Provider</option>
-                              {Array.from(new Set(models.map(m => m.provider))).map(p => (
+                              {availableProviders.map(p => (
                                 <option key={p} value={p}>{p}</option>
                               ))}
                             </select>
@@ -463,10 +477,15 @@ export function AgentsView() {
                               disabled={!formData.provider}
                             >
                               <option value="" disabled>Select Model</option>
-                              {models.filter(m => m.provider === formData.provider).map(m => (
+                              {availableAgentModels.map(m => (
                                 <option key={m.id} value={m.id}>{m.name}</option>
                               ))}
                             </select>
+                            {formData.provider === 'gemini' && (
+                              <p className="text-[11px] text-gray-500 mt-2">
+                                Minimum Gemini model for agents is Gemini 2.5 Flash.
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>

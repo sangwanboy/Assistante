@@ -1,0 +1,12 @@
+=== AGENTS ===
+('d1781a5b-6ab6-426e-8dec-0a2198a9d93a', 'Janny Coneon 🥥', 1, 1)
+('c45ea290-4aec-45dc-b58c-af26610b2dac', 'Research Specialist', 0, 1)
+('f5a94dea-1e53-44cb-b321-99ff28bb9fb0', 'Data Analyst', 0, 1)
+('05eb5fac-2cea-4ed4-80cf-ef97fb2dc63f', 'Content Creator', 0, 1)
+('aa5b9bae-9038-4578-a49b-cf02475c6278', 'Technical Assistant', 0, 1)
+('50f004fd-9983-454f-a5c8-61c79dede93c', 'Web Researcher', 0, 1)
+('2ec36d50-1599-40b5-8161-126131adc950', 'Fixer', 0, 1)
+
+=== SCHEDULES ===
+
+=== MESSAGE COUNTS PER CONVERSATION ===

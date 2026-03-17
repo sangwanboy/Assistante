@@ -243,7 +243,7 @@ class AgentHeartbeatService:
             # Find tasks assigned to the stalled agent
             stmt = select(Task).where(
                 Task.assigned_agent_id == agent_id,
-                Task.status.in_(["pending", "running", "queued"])
+                Task.status.in_(["QUEUED", "RUNNING", "WAITING_TOOL", "WAITING_CHILD"])
             )
             result = await session.execute(stmt)
             tasks = result.scalars().all()
@@ -291,7 +291,7 @@ class AgentHeartbeatService:
                         sys_agent = res.scalar_one_or_none()
                         if sys_agent:
                             task.assigned_agent_id = sys_agent.id
-                            task.status = "pending"
+                            task.status = "QUEUED"
                             task.retry_count = 0
                             task.prompt = f"[SYSTEM ESCALATION: Sub-agent '{agent.name}' failed repeatedly]\n\nOriginal Task:\n{task.prompt}"
                             await session.commit()
@@ -301,7 +301,7 @@ class AgentHeartbeatService:
                 if task_id:
                     task = await session.get(Task, task_id)
                     if task and task.retry_count < task.max_retries:
-                        task.status = "pending"
+                        task.status = "QUEUED"
                         task.retry_count += 1
                         await session.commit()
                         logger.info("Task %s requeued (retry %d/%d)", task_id, task.retry_count, task.max_retries)
@@ -326,7 +326,7 @@ class AgentHeartbeatService:
 
         async with async_session() as session:
             task = await session.get(Task, task_id)
-            if not task or task.status not in ("running", "pending"):
+            if not task or task.status not in ("RUNNING", "QUEUED"):
                 return False
 
             original_agent_id = task.assigned_agent_id
@@ -359,13 +359,13 @@ class AgentHeartbeatService:
 
         async with async_session() as session:
             run = await session.get(WorkflowRun, workflow_run_id)
-            if not run or run.status != "running":
+            if not run or run.status != "RUNNING":
                 return False
 
             # Find stuck node executions
             stmt = select(NodeExecution).where(
                 NodeExecution.run_id == workflow_run_id,
-                NodeExecution.status == "running",
+                NodeExecution.status == "RUNNING",
             )
             result = await session.execute(stmt)
             stuck_nodes = result.scalars().all()

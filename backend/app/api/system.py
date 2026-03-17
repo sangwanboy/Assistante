@@ -205,4 +205,8 @@ async def get_system_dashboard():
         },
         "rate_limits": rate_limit_info,
         "queue": queue_stats,
+        "heartbeat": {
+            "uptime_seconds": int((now - MasterHeartbeat.get_instance()._start_time).total_seconds()) if MasterHeartbeat.get_instance()._start_time else 0,
+            "last_tick": MasterHeartbeat.get_instance().get_metrics().get("timestamp", now.isoformat()),
+        }
     }

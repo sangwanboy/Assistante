@@ -18,9 +18,9 @@ class AgentMessageOut(BaseModel):
     to_agent_id: Optional[str]
     group_id: Optional[str]
     content: str
-    role: str = "agent"
+    role: Optional[str] = "agent"
     created_at: datetime
-    is_read: bool
+    is_read: Optional[bool] = False
 
     model_config = {"from_attributes": True}
 

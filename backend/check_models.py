@@ -1,16 +1,22 @@
-import asyncio
-from app.db.engine import async_session
-from app.models.model_registry import ModelCapability
-from sqlalchemy import select
 
-async def main():
-    async with async_session() as s:
-        stmt = select(ModelCapability)
-        res = await s.execute(stmt)
-        models = res.scalars().all()
-        print("Active Models in Registry:")
+import asyncio
+from app.providers.registry import ProviderRegistry
+from app.config import settings
+
+async def check_models():
+    registry = ProviderRegistry()
+    try:
+        gemini = registry.get("gemini")
+        if not gemini.is_available():
+            print("Gemini provider not available (missing key?)")
+            return
+        
+        models = await gemini.list_models()
+        print("--- Available Gemini Models ---")
         for m in models:
-            print(f"ID: {m.id}, Name: {m.model_name}, RPM: {m.rpm}, TPM: {m.tpm}")
+            print(f"ID: {m.id}, Name: {m.name}")
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(check_models())

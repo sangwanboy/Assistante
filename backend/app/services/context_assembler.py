@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 class TaskState:
     """Snapshot of active task / delegation state for context injection."""
     task_id: str | None = None
-    status: str | None = None             # pending | running | completed | failed
+    status: str | None = None             # QUEUED | RUNNING | WAITING_TOOL | WAITING_CHILD | COMPLETED | FAILED | TIMED_OUT | CANCELED | DLQ
     progress: int = 0                     # 0-100
     goal: str | None = None
     delegated_agents: list[str] | None = None   # names of sub-agents currently active
@@ -55,7 +55,7 @@ class TaskState:
         return cls(
             task_id=getattr(task, "id", None),
             status=getattr(task, "status", None),
-            progress=getattr(task, "progress", 0) or 0,
+            progress=getattr(task, "progress_percent", 0) or 0,
             goal=getattr(task, "goal", None),
         )
 

@@ -28,6 +28,23 @@ class CodeExecutorTool(BaseTool):
         }
 
     async def execute(self, code: str, **kwargs) -> str:
+        # Security: Block dangerous patterns and process termination
+        FORBIDDEN_PATTERNS = [
+            "os.kill", "os.setuid", "os.setgid", "os.chmod", "os.chown",
+            "signal.SIG", "signal.kill", "sys.exit", "quit()", "exit()",
+            "__import__('os').kill", "import os; os.kill",
+        ]
+        
+        # Check against backend PID (and other sensitive PIDs)
+        import os
+        backend_pid = os.getppid() # The parent PID is usually the uvicorn process
+        
+        code_no_space = code.lower().replace(" ", "").replace("\t", "").replace("\r", "").replace("\n", "")
+        for pattern in FORBIDDEN_PATTERNS:
+            pattern_no_space = pattern.lower().replace(" ", "")
+            if pattern_no_space in code_no_space:
+                return f"BLOCKED: Code contains restricted pattern '{pattern}'. Process termination or system modification is not allowed."
+
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".py", delete=False, encoding="utf-8"

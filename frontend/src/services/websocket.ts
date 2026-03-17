@@ -70,7 +70,7 @@ export class WebSocketClient {
     const hostname = window.location.hostname;
     // On Windows, localhost may resolve to ::1 while backend is bound on 127.0.0.1 only.
     const host = hostname === 'localhost' || hostname === '::1' ? '127.0.0.1' : hostname;
-    const wsUrl = `${protocol}//${host}:8322/ws/chat/${conversationId}`;
+    const wsUrl = `${protocol}//${host}:8321/ws/chat/${conversationId}`;
     console.log('[WS Chat] Connecting to:', wsUrl, `(attempt ${this.reconnectAttempts + 1}/${this.maxReconnects})`);
     this.ws = new WebSocket(wsUrl);
 

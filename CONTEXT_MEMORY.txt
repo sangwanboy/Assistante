@@ -9,6 +9,140 @@ Purpose: Persistent memory for Claude across sessions. Read this file at the
                          TASK COMPLETION SUMMARY
 ================================================================================
 
+### Phase 22: Final Sync, Secret Audit, and Push Preparation (2026-03-17)
+- **Scope**: Consolidated all in-flight backend/frontend updates into one final delivery cycle.
+- **Security Gate**: Performed pre-push secret scan against modified and untracked files for common key/token/private-key signatures (OpenAI/Anthropic/Gemini/GitHub/Slack + private key markers).
+- **Audit Result**: No API key patterns detected in scanned change set prior to push.
+- **Release Intent**: Push full current branch state after security check to preserve complete work history and latest runtime fixes.
+
+### Phase 21: Simple Query Stability Fix - Chat WebSocket Port Alignment (2026-03-17)
+- **Known Issue Addressed**: Fixed simple-query hangs/intermittent failures by correcting the chat WebSocket client target from backend port `8322` to `8321` in frontend runtime code.
+- **Root Cause**: Frontend chat stream client (`websocket.ts`) used a stale hardcoded backend port, causing chat-stream instability even while other paths were healthy.
+- **Fix Applied**: Updated chat WS endpoint construction to connect to `127.0.0.1:8321` for `/ws/chat/{conversation_id}` and restarted the frontend dev server.
+- **Verification**: Repeated simple-query probe (`What is 5 times 8?`) over streaming WebSocket completed successfully **5/5 runs**, each finishing in ~`1.8s–2.0s` with `done` events and no error events.
+- **Operational Note**: System now has aligned ports across API, status WS, and chat WS paths on backend `8321`.
+
+### Phase 20: Full UI/Feature Pass Confirmed, Simple-Query Latency Still Open (2026-03-17)
+- **Comprehensive Retest Result**: End-to-end UI and feature walkthrough passed across Dashboard, Chat, Agents, Knowledge Base, Tools & Skills, Workflows, Integrations, Heartbeat, and Settings with no visual regressions or interaction glitches.
+- **UI Quality Status**: Production-grade rendering and interaction quality confirmed (no layout breaks, no control dead-zones, no modal/tab/input failures, smooth navigation and rapid section switching).
+- **Functional Coverage**: Core flows remain operational, including workflow visualization/execution controls, agent management panels, settings/key surfaces, and heartbeat schedule visibility/state.
+- **Agent Execution Snapshot**: Complex/delegated tasks continue to complete successfully in practice.
+- **Outstanding Runtime Issue**: Simple direct prompts can still stall (`30s+`) and intermittently surface `API Error 500` during generation.
+- **Telemetry Caveat**: Worker Pool and some live token/rate widgets may not reflect real activity consistently; treat as potentially stale/partial observability until reconciled.
+- **Priority Follow-up**: Continue backend investigation on simple-query completion path and intermittent 500 generation failures while preserving the now-stable UI baseline.
+
+### Phase 19: Partial Agent Recovery - Complex Tasks Working, Simple Queries Still Unstable (2026-03-17)
+- **Retest Outcome**: Agents are now partially restored. Complex multi-step and delegated tasks complete successfully, but some simple direct queries still stall or surface `API Error 500` during generation.
+- **Confirmed Success Case**: `Janny Coneon` successfully delegated an `AI trends` search task to `Web Researcher`, and a full multi-section response was returned to the user.
+- **Confirmed Analysis Activity**: `Data Analyst` successfully executed a complex crypto market analysis flow using web search/tool results, indicating that the tool-driven execution path is functioning.
+- **Remaining Failure Pattern**: Simple direct prompts such as `What is 5 times 8?` can still remain in generating state for `30s+` without completion.
+- **Observed Runtime Signals**: Worker Pool still shows `0/3 active, Offline`; RPM/TPM/session-cost dashboard metrics may remain at `0` even when real work is occurring, so those telemetry widgets are currently not reliable indicators of actual agent execution.
+- **Current Assessment**: Platform is usable for complex workflow/delegation tasks, but not yet fully stable for low-latency direct-response scenarios. Investigate simple-query API 500 path, streaming completion edge cases, and metric/widget accuracy next.
+
+### Phase 18: Agent Response Path Restored - Gemini Model Resolution Fix (2026-03-17)
+- **Root Cause Confirmed**: Agent/chat failures were caused by stale Gemini model resolution, not by the Docker worker pool status. Bare model IDs like `gemini-2.5-flash` were being misparsed as OpenAI models, which triggered fallback to Gemini's first listed model (`gemini-2.0-flash`) and ultimately the retired API target `gemini-2.0-flash-001`.
+- **Primary Fixes Applied**: Updated chat model parsing to infer provider from bare model IDs; replaced deprecated Gemini alias mapping; updated Gemini model listing order/defaults to modern supported models; updated summarization fallback from `gemini-2.0-flash` to `gemini-2.5-flash`.
+- **Validation**: Direct `POST /api/chat` with `{"message":"What is 10 + 10?","model":"gemini-2.5-flash"}` now returns a successful response (`"10 + 10 is 20."`).
+- **Agent Path Validation**: Created an agent-bound conversation for `Technical Assistant` and verified `POST /api/chat` on that conversation returns a correct assistant response (`"20"`).
+- **Operational Clarification**: `Worker Pool: 0/3 active` reflects Docker code-execution container availability and is not required for normal LLM chat completions.
+- **Debug Helper Fix**: Corrected `tmp_dump_db.py` to point at the live SQLite file `backend/data/assistance.db`; the typo path `assitance.db` exists but is empty and should not be used for diagnostics.
+
+### Phase 17: UI Stability Confirmed, Agent Response Regression Detected (2026-03-17)
+- **UI Stability Result**: Frontend performance validated as excellent under rapid navigation, rapid agent switching, scrolling, modal usage, and general interaction; no lag, stutter, or UI freezes observed.
+- **Critical Regression**: Agent responses for simple queries stalled indefinitely or exceeded acceptable latency (`15-25s+` with no reply) despite agents appearing online in the UI.
+- **Observed Symptoms**: Worker Pool displayed `0/3 active` and offline; RPM/TPM metrics remained at `0`; session cost remained `$0.0000`; agents stayed in generating state without completing responses.
+- **User Impact**: Frontend remains production-ready from a responsiveness perspective, but end-to-end agent task execution is currently blocked and should be treated as a critical backend integration failure.
+- **Likely Investigation Areas**: Worker/container pool startup, backend execution path, provider/API key validity, queue or DB wiring, and backend logs for silent task execution failures.
+- **Regression Note**: This phase supersedes the earlier all-green validation as the latest known runtime behavior; compare against Phase 15/16 to isolate what changed after the stable baseline.
+
+### Phase 16: Context Sync - Stable Runtime Snapshot (2026-03-17)
+- **Context Updated On Request**: Memory synchronized after full platform QA pass to preserve a clean handoff baseline.
+- **Runtime Ports (Authoritative)**: Frontend dev server `127.0.0.1:5173`; backend API `127.0.0.1:8321`.
+- **Proxy/WS Alignment Confirmed**: Frontend API proxy and agent status WebSocket must target backend port `8321` (not `8322`) to avoid repeated API error toasts and missing live agent status.
+- **Current Health Baseline**: Core API paths reachable (`/api/agents`, `/api/system/dashboard`, `/api/system/metrics`, `/api/tools`, `/api/workflows`) via frontend proxy.
+- **Known Environment Note**: Redis may be unavailable locally; backend runs in in-memory fallback mode and remains operational for UI workflows.
+
+### Phase 15: Full Platform QA Pass - Production Readiness Validation (2026-03-17)
+- **Overall Result**: Full end-to-end feature validation completed with **PASS** status across Dashboard, Chat, Agents, Knowledge Base, Tools & Skills, Workflows, Integrations, Heartbeat, and Settings.
+- **Agents Confirmed Operational**: All 8 registered agents verified online and functional (`Content Creator`, `Data Analyst`, `Fixer`, `Janny Coneon`, `Research Specialist`, `Sentinel`, `Technical Assistant`, `Web Researcher`).
+- **Core CRUD + Execution Verified**: Agent creation/editing, skill create/edit/delete/install, workflow create/edit/save/execute paths, and heartbeat schedule creation all validated in UI.
+- **System Telemetry Verified**: Real-time dashboards, metrics panels, status indicators, and heartbeat health widgets rendered and updated correctly during test session.
+- **Navigation + Persistence Verified**: Channel/DM navigation stable; per-agent conversation history retained correctly.
+- **Port Alignment Stabilized**: Runtime proxy and WS alignment fixed for backend `127.0.0.1:8321` and frontend `127.0.0.1:5173`, eliminating recurring API 500 flood behavior observed before this validation cycle.
+- **Operational Baseline**: Treat this phase as current known-good baseline for future regressions; compare new failures against this validated state first.
+
+### Phase 14: Backend Crash Recovery & Workflow Memory Verification (2026-03-16)
+- **Crash Root Cause Corrected**: Restored `backend/app/services/chat_service.py` after parse errors in the file header and `_run_agent_turn` prevented the backend from starting.
+- **Workflow Memory Verified**: Confirmed the earlier `/api/workflows/{id}/memory` failure was stale runtime evidence; on a clean process the route now returns a valid empty payload instead of `500`.
+- **Runtime Restored**: Restarted FastAPI on `127.0.0.1:8321`, matching the frontend proxy expectation.
+- **Verification**: `GET /api/workflows` returns `200 OK`; `GET /api/workflows/d4f10afd-c3ed-4d4f-bcfd-88e8b1a8bea3/memory` returns `{ "memory_json": "{}" }`.
+
+### Phase 12: Logo Restoration (2026-03-16)
+- **Logo Restoration**: Reverted sidebar logo to previous "Zap" icon. Unified branding across `AnimatedSidebar.tsx` and `Sidebar.tsx` to use "Assistance" name and "System OS" subtitle, consistent with the application's favicon and "liquid" aesthetic.
+
+### Phase 13: UI System Wiring & Streaming Indicator Polish (2026-03-16)
+- **Shared Visual System Wired**: Implemented the missing `glass-*`, `liquid-*`, `custom-scrollbar`, and `liquid-mesh` styles in `frontend/src/index.css`, allowing the new chat/dashboard/sidebar layout to render with the intended glass/liquid treatment instead of falling back to mostly unstyled utility-only output.
+- **Dancing Dots Removed**: Replaced the old bouncing-dot idle streaming state in `frontend/src/components/chat/StreamingMessage.tsx` with a compact equalizer-style `Responding` indicator for a cleaner live-response feel.
+- **Streaming Card Polish**: Upgraded the live streaming message shell and tool-call cards with rounded glass surfaces and more consistent spacing/shadow treatment.
+- **Verification**: Editor diagnostics report no frontend errors after the CSS and streaming component updates.
+
+### Phase 11: Backend Stabilization & GeneratorExit Fixes (2026-03-16)
+- **Resolved "Stopped" Issue**: Fixed `RuntimeError: async generator ignored GeneratorExit` in `ChatService.py` by moving `yield` statements out of `finally` blocks and handling `GeneratorExit` explicitly.
+- **Implemented "Kill" Button**: Added UI functionality to stop agent generation via WebSocket disconnection.
+- **Performance Optimization**: Optimized frontend rendering with `React.memo` and fixed `MessageInput` layout stability issues.
+- **Verified Stability**: Log analysis shows `GeneratorExit` crashes resolved after applying the fix.
+
+### Phase 10: UI Fixes & Performance Optimization (2026-03-16)
+STATUS: COMPLETED
+PURPOSE: Fix text input bar usability, add "Kill" (Stop) button functionality, and optimize UI rendering.
+
+DELIVERABLES:
+  Kill Button Functionality  Send button now transforms into a Stop button (Square icon) during streaming, triggering `stopGeneration`.
+  Input Bar Stability       Fixed layout by changing `liquid-pill` to `min-h-[52px]` and improving `textarea` growth logic.
+  UI Rendering Optimization Wrapped `MessageBubble` and `StreamingMessage` in `React.memo` to prevent unnecessary re-renders.
+  Store Integration         Updated `ChatView` to properly pass `isStreaming` and `stopGeneration` to `MessageInput`.
+
+[2026-03-13] Phase 9: Orchestration Silence & Heartbeat Context Debugging
+STATUS: IN-PROGRESS (Fixes deployed, verification pending)
+PURPOSE: Resolve silent orchestration failures and fix "agent_id missing" error in heartbeat scheduling.
+
+DELIVERABLES:
+  Janny Model Fix        Updated System Agent (Janny) from invalid '3.1-flash-lite-preview' to '2.5-flash'.
+  Orchestration Patch    Refactored `orchestration.py` with robust model resolution and fallback logic.
+  Context Standardization Modified `heartbeat_tool.py` to accept multiple agent context keys.
+  Execution Logging      Instrumented `ChatService` and `ScheduleTool` with execution traces.
+
+STATUS OF FIXES:
+  - Janny Model: FIXED (Updated via `fix_janny_model.py`).
+  - Orchestration Silence: UNRESOLVED (Channel still silent in auto-mode).
+  - ScheduleTool agent_id: UNRESOLVED (Error persists despite context patch; suspect `_execute_tool_calls` loop).
+
+[2026-03-13] Phase 8: Heartbeat Transparency, Autonomous Scheduling & Brave Search
+PURPOSE: Enhance system observability, enable agent-led recurring task management, and integrate premium search capability.
+
+DELIVERABLES:
+  Heartbeat HUD Fix      Restructured Sidebar UI to display live Uptime and Last Tick data correctly.
+  ScheduleTool           New `manage_schedules` tool allowing agents to create/list/delete recurring tasks.
+  Universal Tool Access  Modified `ChatService` to ensure `manage_schedules` and `brave_search` are always available.
+  Brave Search           Integrated `BraveSearchTool` with `SecretManager` for secure API key retrieval.
+  SecretManager          New service providing Fernet-encrypted vault for API keys (Brave, OpenAI, etc.).
+  SystemConfigTool       New built-in tool allowing agents (Janny) to save user-provided keys to the vault.
+  Agent Key Encryption  Enhanced `AgentManagerTool` to encrypt `api_key` before database persistence.
+  Collapsible Results  Implemented UI toggle in `MessageBubble.tsx` to hide/show long tool outputs.
+  UI Standardization     Updated metrics aesthetic (RPM/TPM/Blocks) to a unified, premium dark/glass theme.
+
+MODIFIED FILES:
+  backend/app/services/master_heartbeat.py   — Added `_start_time` for uptime tracking.
+  backend/app/api/system.py                  — Exposed heartbeat stats in `/api/system/dashboard`.
+  backend/app/services/chat_service.py       — Universal tool injection logic for scheduling/search.
+  backend/app/tools/registry.py              — Registered `ScheduleTool` and `SystemConfigTool` as defaults.
+  backend/app/services/secret_manager.py     — Core encryption service for sensitive credentials.
+  backend/app/tools/system_config_tool.py    — Tool for managing vault-based secrets in-chat.
+  frontend/src/components/chat/ChatSidebarDashboard.tsx — Redesigned session metrics & fixed data binding.
+
+NEW FILES:
+  backend/app/tools/heartbeat_tool.py        — Implementation of the `ScheduleTool` (`manage_schedules`).
+
 [2026-03-13] Phase 7: Dynamic Model-Specific Rate Limiting & Adaptive Throttling
 STATUS: COMPLETED, TESTED & CLEANED
 PURPOSE: Implementation of centralized model resolution, block tracking, and sidebar HUD integration.
@@ -207,6 +341,19 @@ TEST RESULTS (10/10 PASS):
                     HISTORICAL SESSION NOTES
 ================================================================================
 
+[2026-03-13] Heartbeat Transparency, Autonomous Scheduling & Brave Search:
+  - Fixed Heartbeat visibility in sidebar; unified data binding for Uptime/Ticks.
+  - Implemented `ScheduleTool` for autonomous agent-led recurring task management.
+  - Modified `ChatService` to bypass tool filtering for mission-critical tools (scheduling, search).
+  - Integrated Brave Search API as a premium search provider.
+  - Verified stability across multi-agent orchestration turns.
+
+[2026-03-13] Orchestration Silence & Heartbeat Context Debugging:
+  - Identified and corrected invalid model ID for System Agent (Janny) in DB.
+  - Refactored `OrchestrationEngine` to use centralized model resolution with fallbacks.
+  - Investigated `agent_id` propagation failure in `ChatService._execute_tool_calls`.
+  - Added tracing to `heartbeat_tool.py` to isolate keyword argument injection issues.
+
 [2026-03-13] Dynamic Rate Limiting, HUD Refinement & Final Cleanup:
   - Implemented `ModelRegistryService` and dynamic `LLMGateway` rate-limit enforcement.
   - Refactored `TaskExecutionMonitor` to dock into the sidebar.
@@ -309,6 +456,8 @@ HOW TO RUN:
 - app/tools/knowledge_base_tool.py -> KnowledgeBaseTool: searches ChromaDB vector store for RAG
 - app/tools/tool_creator.py -> ToolCreatorTool: built-in tool that lets agents create/update/list/delete custom tools
 - app/tools/skill_creator.py -> SkillCreatorTool: built-in tool that lets agents create/update/list/delete/import skills
+- app/tools/heartbeat_tool.py -> ScheduleTool: lets agents manage recurring heartbeat tasks (create/list/delete)
+- app/tools/brave_search.py -> BraveSearchTool: integrated search using Brave API
 
 [2026-02-28] ToolRegistry Live Registration & Agent Chat Integration:
   - Fixed ToolCreatorTool to register/unregister DynamicTool instances in the live ToolRegistry

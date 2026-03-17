@@ -8,11 +8,11 @@ interface TaskMonitorPanelProps {
 
 export const TaskMonitorPanel: React.FC<TaskMonitorPanelProps> = ({ agentId }) => {
     const statuses = useAgentStatusStore(state => state.statuses);
-    const agentStore = useAgentStore();
+    const agents = useAgentStore(state => state.agents);
 
     // We can show telemetry for the active agent, or the currently selected agent
     const activeStatus = agentId ? statuses[agentId] : Object.values(statuses).find(s => s.state === 'working');
-    const matchedAgent = agentId ? agentStore.agents.find(a => a.id === agentId) : undefined;
+    const matchedAgent = agentId ? agents.find(a => a.id === agentId) : undefined;
 
     if (!activeStatus || activeStatus.state !== 'working') return null;
 

@@ -3,6 +3,28 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional
 
 
+MIN_AGENT_GEMINI_MODEL = "gemini-2.5-flash"
+
+
+def _extract_model_id(model: str) -> str:
+    return model.split("/", 1)[1] if "/" in model else model
+
+
+def _is_disallowed_agent_model(model: str) -> bool:
+    model_id = _extract_model_id(model).lower()
+    return model_id.startswith("gemini-1.5") or model_id.startswith("gemini-2.0")
+
+
+def _validate_agent_model_floor(model: str | None) -> str | None:
+    if model is None:
+        return None
+    if _is_disallowed_agent_model(model):
+        raise ValueError(
+            f"Agent model must be {MIN_AGENT_GEMINI_MODEL} or stronger. Gemini 1.5 and 2.0 models are not allowed for agents."
+        )
+    return model
+
+
 class AgentBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -35,7 +57,10 @@ class AgentBase(BaseModel):
 
 
 class AgentCreate(AgentBase):
-    pass
+    @field_validator("model")
+    @classmethod
+    def validate_model_floor(cls, v: str) -> str:
+        return _validate_agent_model_floor(v) or v
 
 
 class AgentUpdate(BaseModel):
@@ -65,6 +90,11 @@ class AgentUpdate(BaseModel):
     capabilities: Optional[str] = None
     performance_metrics: Optional[str] = None
     api_key: Optional[str] = None
+
+    @field_validator("model")
+    @classmethod
+    def validate_model_floor(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_agent_model_floor(v)
 
 
 class AgentOut(AgentBase):

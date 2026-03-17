@@ -1,9 +1,12 @@
 import json
+import logging
 from typing import AsyncIterator
 
 from anthropic import AsyncAnthropic
 
 from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropicProvider(BaseProvider):
@@ -82,6 +85,7 @@ class AnthropicProvider(BaseProvider):
         temperature: float = 0.7,
     ) -> ChatMessage:
         system, formatted = self._format_messages(messages)
+        logger.info("Anthropic complete: model=%s, messages=%d", model, len(formatted))
 
         kwargs = {
             "model": model,
@@ -135,6 +139,7 @@ class AnthropicProvider(BaseProvider):
         temperature: float = 0.7,
     ) -> AsyncIterator[StreamChunk]:
         system, formatted = self._format_messages(messages)
+        logger.info("Anthropic stream: model=%s, messages=%d", model, len(formatted))
 
         kwargs = {
             "model": model,

@@ -1,0 +1,100 @@
+﻿second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:55108 - "WebSocket 
+/ws/chat/5795cc1b-662d-4c32-8074-fb7009c42cd9" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:56785 - "WebSocket 
+/ws/chat/5795cc1b-662d-4c32-8074-fb7009c42cd9" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:59170 - "WebSocket 
+/ws/chat/5795cc1b-662d-4c32-8074-fb7009c42cd9" [accepted]
+[32mINFO[0m:     connection open
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:64326 - "WebSocket 
+/api-ws/agents/status" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:65417 - "WebSocket 
+/api-ws/agents/control" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:52914 - "WebSocket 
+/api-ws/agents/status" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:61998 - "WebSocket 
+/api-ws/agents/control" [accepted]
+[32mINFO[0m:     connection open
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:63583 - "WebSocket 
+/ws/chat/b04fc737-9132-4e0c-ba5e-c86caaa3e757" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:54585 - "WebSocket 
+/ws/chat/b04fc737-9132-4e0c-ba5e-c86caaa3e757" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:64822 - "WebSocket 
+/ws/chat/b04fc737-9132-4e0c-ba5e-c86caaa3e757" [accepted]
+[32mINFO[0m:     connection open
+D:\Projects\Assitance\backend\.venv\Lib\site-packages\websoc
+kets\legacy\server.py:1178: DeprecationWarning: remove 
+second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", 
+DeprecationWarning)
+[32mINFO[0m:     127.0.0.1:54111 - "WebSocket 
+/ws/chat/b04fc737-9132-4e0c-ba5e-c86caaa3e757" [accepted]
+[32mINFO[0m:     connection open
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed
+[32mINFO[0m:     connection closed

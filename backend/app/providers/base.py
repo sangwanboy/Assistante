@@ -72,6 +72,7 @@ class BaseProvider(ABC):
         model: str,
         tools: list[dict] | None = None,
         temperature: float = 0.7,
+        **kwargs,
     ) -> ChatMessage:
         """Non-streaming completion. Returns a single assistant message."""
         ...
@@ -83,6 +84,7 @@ class BaseProvider(ABC):
         model: str,
         tools: list[dict] | None = None,
         temperature: float = 0.7,
+        **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         """Streaming completion. Yields text chunks as they arrive."""
         ...

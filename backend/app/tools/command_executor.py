@@ -37,11 +37,15 @@ class CommandExecutorTool(BaseTool):
             "rm -rf /", "rm -rf /*", "del /s /q", "format c:",
             "mkfs.", ":(){:|:&};:", "dd if=/dev/zero",
             "chmod -R 777 /", "chown -R", "> /dev/sda",
+            "kill ", "taskkill", "tskill", "stop-process", "stop-service",
+            "net stop", "sc stop", "shutdown", "reboot", "os.kill",
         ]
         cmd_lower = command.lower().strip() if isinstance(command, str) else str(command).lower()
+        cmd_no_space = cmd_lower.replace(" ", "")
         for pattern in BLOCKED_PATTERNS:
-            if pattern in cmd_lower:
-                return f"BLOCKED: Command contains dangerous pattern '{pattern}'. This operation is not allowed."
+            pattern_no_space = pattern.lower().replace(" ", "")
+            if pattern_no_space in cmd_no_space:
+                return f"BLOCKED: Command contains restricted pattern '{pattern}'. Operation not allowed for stability and security."
 
         try:
             # Run powershell non-interactive to prevent hanging on prompts

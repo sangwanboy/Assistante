@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { User, Bot, Wrench, Volume2, Loader2 } from 'lucide-react';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
+import { motion, AnimatePresence } from 'framer-motion';
 import { audioApi } from '../../services/audio';
+import { useUIStore } from '../../stores/uiStore';
 import type { Message } from '../../types';
 
 function highlightMentions(text: string): React.ReactNode[] {
@@ -22,8 +24,9 @@ interface Props {
   message: Message;
 }
 
-export function MessageBubble({ message }: Props) {
+export const MessageBubble = memo(function MessageBubble({ message }: Props) {
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const allToolsCollapsed = useUIStore(state => state.allToolsCollapsed);
 
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
@@ -41,17 +44,53 @@ export function MessageBubble({ message }: Props) {
     }
   };
 
+  const formatTime = (dateString?: string) => {
+    if (!dateString) return '';
+    try {
+      const d = new Date(dateString);
+      // Check for valid date
+      if (isNaN(d.getTime())) return '';
+      return new Intl.DateTimeFormat('default', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(d);
+    } catch {
+      return '';
+    }
+  };
+
+  const timeDisplay = formatTime(message.created_at);
+
   if (isTool) {
     return (
-      <div className="flex gap-3 px-4 py-3 border-l-2 border-purple-500/40 bg-purple-500/5 mx-4 my-1 rounded-r-xl">
-        <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
+      <div className="flex gap-3 px-4 py-3 border-l-2 border-purple-500/40 bg-purple-500/5 mx-4 my-1 rounded-r-xl group transition-all font-sans">
+        <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-purple-500/15 border border-purple-500/20 flex items-center justify-center mt-0.5">
           <Wrench className="w-3.5 h-3.5 text-purple-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-semibold text-purple-400 mb-1.5 uppercase tracking-wider">Tool Result</div>
-          <pre className="text-xs text-gray-400 whitespace-pre-wrap break-words font-mono bg-[#0a0a14] border border-[#1c1c30] rounded-lg p-2.5 overflow-x-auto">
-            {message.content}
-          </pre>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider">
+              Tool Result {timeDisplay && <span className="ml-1 text-purple-500/60 lowercase font-normal">{timeDisplay}</span>}
+            </div>
+          </div>
+          
+          <AnimatePresence initial={false}>
+            {!allToolsCollapsed && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="overflow-hidden"
+              >
+                <div className="pt-1">
+                  <pre className="text-xs text-gray-400 whitespace-pre-wrap break-words font-mono bg-[#0a0a14] border border-[#1c1c30] rounded-lg p-2.5 overflow-x-auto max-h-[400px] custom-scrollbar">
+                    {message.content}
+                  </pre>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     );
@@ -64,7 +103,10 @@ export function MessageBubble({ message }: Props) {
           <div className="bg-indigo-600/15 border border-indigo-500/15 rounded-2xl rounded-tr-sm px-4 py-3">
             <p className="text-[15px] text-gray-200 whitespace-pre-wrap break-words leading-relaxed">{highlightMentions(message.content)}</p>
           </div>
-          <div className="text-[10px] text-gray-600 mt-1 text-right font-medium">You</div>
+          <div className="text-[10px] text-gray-600 mt-1 text-right font-medium">
+             {timeDisplay && <span className="mr-1.5 text-gray-600/60">{timeDisplay}</span>}
+             You
+          </div>
         </div>
         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
           <User className="w-4 h-4 text-white" />
@@ -94,8 +136,9 @@ export function MessageBubble({ message }: Props) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1.5">
-          <div className={`text-[10px] font-semibold uppercase tracking-wider ${isUser ? 'text-indigo-400' : 'text-emerald-400'}`}>
+          <div className={`text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 ${isUser ? 'text-indigo-400' : 'text-emerald-400'}`}>
             {displayName}
+            {timeDisplay && <span className={`lowercase font-normal ${isUser ? 'text-indigo-400/60' : 'text-emerald-400/60'}`}>{timeDisplay}</span>}
           </div>
           {!isUser && !isTool && message.content && (
             <button
@@ -122,5 +165,5 @@ export function MessageBubble({ message }: Props) {
       </div>
     </div>
   );
-}
+});
 

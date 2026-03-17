@@ -196,7 +196,7 @@ class MemoryCompactor:
         prompt = f"""Extract key semantic memories from this conversation excerpt.
 Return a JSON array. Each element must have:
   "memory_type": one of "fact" | "decision" | "summary"
-  "topic": short topic label (e.g. "user_preferences", "task_outcome")
+  "topic": short topic label (e.g. "user_preferences", "task_outcome", "status_change")
   "summary": concise single-sentence memory (max 120 chars)
 
 Conversation:

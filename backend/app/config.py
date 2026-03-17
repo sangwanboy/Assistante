@@ -18,12 +18,13 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     gemini_api_key: str | None = None
+    brave_search_api_key: str | None = None
     
     # Gemini Customizable Rate Limits
     gemini_context_window: int = 1048576
     gemini_tpm: int | None = 4000000
     gemini_rpm: int | None = 1000
-    gemini_rpd: int | None = None
+    gemini_rpd: int | None = 2000
 
     ollama_base_url: str = "http://localhost:11434"
     

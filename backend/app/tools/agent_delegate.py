@@ -44,7 +44,7 @@ class AgentDelegationTool(BaseTool):
                         "Either agent_name or agent_id must be provided."
                     )
                 },
-                "agent_id": {
+                "target_agent_id": {
                     "type": "string",
                     "description": "The UUID of the target agent. Use agent_name instead if you know the name."
                 },
@@ -62,21 +62,21 @@ class AgentDelegationTool(BaseTool):
 
     async def execute(self, **params: Any) -> str:
         agent_name = params.get("agent_name")
-        agent_id = params.get("agent_id")
+        target_agent_id = params.get("target_agent_id")
         task = params.get("task")
 
         if not task:
             return "Error: 'task' parameter is required."
 
-        if not agent_name and not agent_id:
-            return "Error: Either 'agent_name' or 'agent_id' must be provided."
+        if not agent_name and not target_agent_id:
+            return "Error: Either 'agent_name' or 'target_agent_id' must be provided."
 
         try:
             async with async_session() as session:
                 # Resolve agent by name or ID
                 target_agent = None
-                if agent_id:
-                    target_agent = await session.get(Agent, agent_id)
+                if target_agent_id:
+                    target_agent = await session.get(Agent, target_agent_id)
                 elif agent_name:
                     # Case-insensitive name lookup
                     stmt = select(Agent).where(
@@ -86,7 +86,7 @@ class AgentDelegationTool(BaseTool):
                     target_agent = result.scalar_one_or_none()
 
                 if not target_agent:
-                    identifier = agent_name or agent_id
+                    identifier = agent_name or target_agent_id
                     # List available agents so the LLM can self-correct
                     all_stmt = select(Agent.id, Agent.name, Agent.description)
                     all_result = await session.execute(all_stmt)
@@ -99,9 +99,16 @@ class AgentDelegationTool(BaseTool):
                         f"Available agents:\n{json.dumps(available, indent=2)}"
                     )
 
+                # 1. Determine origin agent (the one calling the tool)
+                origin_agent_id = params.get("_agent_id") or params.get("agent_id")
+
                 # Prevent self-delegation
-                if getattr(target_agent, "is_system", False):
-                    return "Error: Cannot delegate tasks to the system orchestrator (yourself)."
+                if target_agent.id == origin_agent_id:
+                    return f"Error: You attempted to delegate to '{target_agent.name}', which is yourself. You are already handling this conversation. Please delegate to a DIFFERENT specialized agent instead (e.g., 'Web Researcher', 'Data Analyst', 'Research Specialist', 'Technical Assistant', 'Content Creator')."
+
+                if getattr(target_agent, "is_system", False) and origin_agent_id != target_agent.id:
+                    # Allow delegation to system only if not self
+                    pass 
 
                 # Use ChatService to delegate — this persists work in the agent's conversation
                 from app.services.chat_service import ChatService
@@ -119,9 +126,12 @@ class AgentDelegationTool(BaseTool):
                 )
 
                 return (
-                    f"✅ Task completed by {target_agent.name}.\n\n"
-                    f"**Response:**\n{response_text}\n\n"
-                    f"(Work history saved in {target_agent.name}'s conversation: {conv_id})"
+                    f"### ✅ Delegation Success\n"
+                    f"**Target Agent:** {target_agent.name}\n"
+                    f"**Task Description:** {task[:100]}{'...' if len(task) > 100 else ''}\n"
+                    f"**Agent Response:**\n\n{response_text}\n\n"
+                    f"---\n"
+                    f"*Work history for this task is stored in [{target_agent.name}'s conversation](file:///chat/{conv_id}).*"
                 )
 
         except Exception as e:

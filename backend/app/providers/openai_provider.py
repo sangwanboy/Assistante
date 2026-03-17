@@ -1,8 +1,11 @@
+import logging
 from typing import AsyncIterator
 
 from openai import AsyncOpenAI
 
 from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIProvider(BaseProvider):
@@ -50,9 +53,11 @@ class OpenAIProvider(BaseProvider):
         tools: list[dict] | None = None,
         temperature: float = 0.7,
     ) -> ChatMessage:
+        formatted_messages = self._format_messages(messages)
+        logger.info("OpenAI complete: model=%s, messages=%d", model, len(formatted_messages))
         kwargs = {
             "model": model,
-            "messages": self._format_messages(messages),
+            "messages": formatted_messages,
             "temperature": temperature,
         }
         formatted_tools = self._format_tools(tools)
@@ -98,9 +103,11 @@ class OpenAIProvider(BaseProvider):
         tools: list[dict] | None = None,
         temperature: float = 0.7,
     ) -> AsyncIterator[StreamChunk]:
+        formatted_messages = self._format_messages(messages)
+        logger.info("OpenAI stream: model=%s, messages=%d", model, len(formatted_messages))
         kwargs = {
             "model": model,
-            "messages": self._format_messages(messages),
+            "messages": formatted_messages,
             "temperature": temperature,
             "stream": True,
             "stream_options": {"include_usage": True},

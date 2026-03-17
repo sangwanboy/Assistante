@@ -32,38 +32,13 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
   } = useChatStore();
 
   const { agents } = useAgentStore();
-
   const { selectedModel } = useSettingsStore();
 
   const quickActions = [
-    {
-      icon: FileText,
-      label: 'Summarize PDF',
-      border: 'border-blue-500/20',
-      iconColor: 'text-blue-400',
-      prompt: 'Please summarize the key points of the attached document.',
-    },
-    {
-      icon: Edit3,
-      label: 'Draft Response',
-      border: 'border-purple-500/20',
-      iconColor: 'text-purple-400',
-      prompt: 'Help me draft a professional response to an email.',
-    },
-    {
-      icon: Search,
-      label: 'Find Information',
-      border: 'border-emerald-500/20',
-      iconColor: 'text-emerald-400',
-      prompt: 'I need to find some specific information. Can you search the web for me?',
-    },
-    {
-      icon: Settings,
-      label: 'Automate Task',
-      border: 'border-orange-500/20',
-      iconColor: 'text-orange-400',
-      prompt: 'I would like to automate a repetitive task. Can you write a Python script for it?',
-    },
+    { icon: FileText, label: 'Summarize PDF', color: 'text-blue-400', prompt: 'Please summarize the key points of the attached document.' },
+    { icon: Edit3, label: 'Draft Response', color: 'text-violet-400', prompt: 'Help me draft a professional response to an email.' },
+    { icon: Search, label: 'Find Information', color: 'text-emerald-400', prompt: 'I need to find some specific information. Can you search the web for me?' },
+    { icon: Settings, label: 'Automate Task', color: 'text-amber-400', prompt: 'I would like to automate a repetitive task. Can you write a Python script for it?' },
   ];
 
   useEffect(() => {
@@ -104,63 +79,57 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
   };
 
   return (
-    <div className="bg-[#0a0a18] border border-[#1a1a30] overflow-hidden flex flex-col h-full relative">
-      {/* Header */}
-      <div className="flex items-center justify-between py-6 border-b border-[#1a1a30] shrink-0 relative min-h-[60px]" style={{ paddingLeft: '32px', paddingRight: '32px' }}>
-        {/* Left: Title */}
-        <div className="flex items-center">
-          <h2 className="text-[15px] font-bold text-gray-100 tracking-tight">Active Dialogue</h2>
-        </div>
+    <div className="liquid-panel h-full overflow-hidden flex flex-col relative">
+      {/* Header — spacious, minimal */}
+      <div className="flex items-center justify-between px-7 py-5 shrink-0">
+        <h2 className="text-[15px] font-semibold text-white/90 tracking-tight">Active Dialogue</h2>
 
-        {/* Center: Toggle Button */}
-        <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-[#0a0a14] rounded-full p-1 border border-[#1a1a30] shadow-lg gap-1" style={{ padding: '8px' }}>
+        {/* Center Toggle */}
+        <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/[0.04] rounded-full p-1 border border-white/[0.06]">
           <button
             onClick={() => setActiveTab('chat')}
-            className={`relative flex items-center gap-2.5 px-5 py-2.5 rounded-full text-[12px] font-semibold transition-all duration-300 min-w-[100px] justify-center ${activeTab === 'chat'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/40'
-              : 'text-gray-400 hover:text-gray-200'
+            className={`flex items-center gap-2 px-5 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-wider transition-all ${activeTab === 'chat'
+              ? 'bg-[var(--accent-liquid)] text-white shadow-[0_0_20px_rgba(99,102,241,0.3)]'
+              : 'text-white/30 hover:text-white/60'
               }`}
-            style={{ padding: '8px' }}
           >
-            <MessageSquare className={`w-4 h-4 ${activeTab === 'chat' ? 'text-white' : 'text-gray-400'}`} />
-            <span>Chat</span>
+            <MessageSquare className="w-3 h-3" />
+            Chat
           </button>
           <button
             onClick={() => setActiveTab('workspace')}
-            className={`relative flex items-center gap-2.5 px-5 py-2.5 rounded-full text-[12px] font-semibold transition-all duration-300 min-w-[100px] justify-center ${activeTab === 'workspace'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/40'
-              : 'text-gray-400 hover:text-gray-200'
+            className={`flex items-center gap-2 px-5 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-wider transition-all ${activeTab === 'workspace'
+              ? 'bg-[var(--accent-liquid)] text-white shadow-[0_0_20px_rgba(99,102,241,0.3)]'
+              : 'text-white/30 hover:text-white/60'
               }`}
-            style={{ padding: '8px' }}
           >
-            <LayoutTemplate className={`w-4 h-4 ${activeTab === 'workspace' ? 'text-white' : 'text-gray-400'}`} />
-            <span>Workspace</span>
+            <LayoutTemplate className="w-3 h-3" />
+            Workspace
           </button>
         </div>
 
-        {/* Right: Action Buttons */}
-        <div className="flex items-center gap-1">
+        {/* Right Actions */}
+        <div className="flex items-center gap-1.5">
           {!activeConversationId && (
             <button
               onClick={() => {
                 setIsGroupMode(!isGroupMode);
                 onAction(isGroupMode ? 'Group mode disabled' : 'Group mode enabled');
               }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all border ${isGroupMode
-                ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/30'
-                : 'hover:bg-white/5 text-gray-500 border-transparent'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all ${isGroupMode
+                ? 'bg-[var(--accent-liquid)] text-white shadow-[0_0_16px_rgba(99,102,241,0.3)]'
+                : 'hover:bg-white/[0.04] text-white/30 hover:text-white/60'
                 }`}
-              style={{ padding: '8px' }}
             >
-              <Users className="w-3.5 h-3.5" />
+              <Users className="w-3 h-3" />
               Group
             </button>
           )}
           <button
             onClick={() => onAction('Options')}
-            className="p-1.5 hover:bg-white/5 rounded-lg transition-colors"
+            className="w-8 h-8 flex items-center justify-center hover:bg-white/[0.04] rounded-lg transition-all text-white/20 hover:text-white/50"
           >
-            <MoreVertical className="w-4 h-4 text-gray-600 hover:text-gray-400" />
+            <MoreVertical className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -171,38 +140,37 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
           <WorkspaceView onAction={onAction} />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+        <div className="flex-1 overflow-y-auto px-7 py-4 flex flex-col gap-4 custom-scrollbar">
           {messages.length === 0 && !isStreaming ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-4">
+            <div className="flex flex-col items-center justify-center h-full gap-5">
               <div className="relative">
-                <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                  <MessageSquare className="w-7 h-7 text-indigo-500/70" />
+                <div className="w-14 h-14 rounded-2xl bg-[var(--accent-liquid)]/10 border border-[var(--accent-liquid)]/20 flex items-center justify-center">
+                  <MessageSquare className="w-6 h-6 text-[var(--accent-liquid)]/60" />
                 </div>
-                <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 </div>
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-500">Start a new conversation</p>
-                <p className="text-xs text-gray-700 mt-1">Ask anything or press <kbd className="px-1.5 py-0.5 text-[10px] rounded bg-white/5 border border-white/10 font-mono">/</kbd> for workflows</p>
+                <p className="text-sm font-medium text-white/50">Start a new conversation</p>
+                <p className="text-xs text-white/25 mt-1">Ask anything or use a quick action below</p>
               </div>
 
               {/* Quick Actions */}
-              <div className="w-full max-w-[500px] mt-6">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 text-center" style={{ marginBottom: '10px' }}>Quick-Actions</h3>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="w-full max-w-md mt-4">
+                <div className="grid grid-cols-2 gap-2.5">
                   {quickActions.map((action, index) => {
                     const Icon = action.icon;
                     return (
                       <button
                         key={index}
-                        className={`flex items-center gap-2.5 p-3 rounded-md border ${action.border} bg-linear-to-br from-[#0e0e1c] to-[#0a0a14] hover:brightness-110 transition-all text-left group`}
+                        className="liquid-card flex items-center gap-3 p-3.5 text-left group"
                         onClick={() => handleQuickAction(action.label, action.prompt)}
                       >
-                        <div className="w-7 h-7 rounded-lg bg-[#0e0e1c] flex items-center justify-center shrink-0">
-                          <Icon className={`w-3.5 h-3.5 ${action.iconColor}`} />
+                        <div className="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
+                          <Icon className={`w-4 h-4 ${action.color}`} />
                         </div>
-                        <span className="text-[11px] font-medium text-gray-300">{action.label}</span>
+                        <span className="text-[12px] font-medium text-white/50 group-hover:text-white/80 transition-colors">{action.label}</span>
                       </button>
                     );
                   })}
@@ -231,10 +199,10 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
 
       {/* Stop Generation */}
       {isStreaming && (
-        <div className="absolute bottom-[76px] left-0 right-0 flex justify-center z-10 pointer-events-none">
+        <div className="absolute bottom-[90px] left-0 right-0 flex justify-center z-10 pointer-events-none">
           <button
             onClick={() => stopGeneration()}
-            className="flex items-center gap-2 px-4 py-2 bg-[#1a1a2e] rounded-full border border-[#2a2a45] text-gray-400 hover:text-red-400 hover:border-red-500/30 font-semibold text-xs pointer-events-auto transition-all shadow-xl"
+            className="flex items-center gap-2 px-4 py-2 liquid-card !rounded-full text-white/50 hover:text-red-400 font-medium text-xs pointer-events-auto transition-all"
           >
             <Square className="w-3 h-3" fill="currentColor" />
             Stop Generating
@@ -242,42 +210,46 @@ export function ActiveDialogue({ onAction }: ActiveDialogueProps) {
         </div>
       )}
 
-      {/* Input Bar */}
-      <div className="px-6 py-5 bg-[#080812] border-t border-[#1a1a30] shrink-0">
-        <div className="flex items-center gap-4 bg-[#0e0e1e] border border-[#1e1e35] focus-within:border-indigo-500/50 focus-within:shadow-[0_0_0_4px_rgba(99,102,241,0.15),0_0_30px_rgba(99,102,241,0.1)]  px-5 py-4 transition-all duration-300" style={{ padding: '10px' }}>
-          <input
-            type="text"
-            placeholder="Ask CrossClaw, or press / for workflows..."
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            className="flex-1 bg-transparent text-base text-gray-200 placeholder:text-gray-500 focus:outline-none leading-relaxed"
-          />
-          <div className="flex items-center gap-2">
+      {/* Floating Command Bar */}
+      <div className="px-7 pb-6 pt-3 shrink-0">
+        <div className="liquid-pill h-[52px] px-4 flex items-center gap-2">
+          <button
+            className="p-2 hover:bg-white/[0.06] rounded-lg transition-all"
+            onClick={() => onAction('Voice')}
+          >
+            <Mic className="w-[18px] h-[18px] text-white/25 hover:text-white/60 transition-colors" />
+          </button>
+
+          <div className="flex-1 min-w-0 flex items-center h-full">
+            <input
+              type="text"
+              placeholder="Message System Agent..."
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              className="w-full bg-transparent text-white placeholder:text-white/20 focus:outline-none text-[14px] font-medium px-2"
+            />
+          </div>
+
+          <div className="flex gap-1.5 items-center">
             <button
-              className="p-2.5 hover:bg-white/5 rounded-xl transition-all duration-200 hover:scale-105"
-              onClick={() => onAction('Voice')}
-            >
-              <Mic className="w-5 h-5 text-gray-500 hover:text-gray-300 transition-colors" />
-            </button>
-            <button
-              className="p-2.5 hover:bg-white/5 rounded-xl transition-all duration-200 hover:scale-105"
+              className="p-2 hover:bg-white/[0.06] rounded-lg transition-all"
               onClick={() => onAction('Attach')}
             >
-              <Paperclip className="w-5 h-5 text-gray-500 hover:text-gray-300 transition-colors" />
+              <Paperclip className="w-[18px] h-[18px] text-white/25 hover:text-white/60 transition-colors" />
             </button>
-            <div className="w-px h-6 bg-white/10 mx-1"></div>
+
             <button
               onClick={handleSend}
               disabled={!draft.trim() || isStreaming}
-              className="flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 disabled:opacity-30 bg-indigo-600 hover:bg-indigo-500 disabled:bg-white/5 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 hover:scale-105 disabled:hover:scale-100"
+              className="flex items-center justify-center w-9 h-9 rounded-xl transition-all disabled:opacity-20 bg-[var(--accent-liquid)] shadow-[0_0_20px_rgba(99,102,241,0.35)] active:scale-90"
             >
-              <SendHorizonal className="w-5 h-5 text-white" />
+              <SendHorizonal className="w-[17px] h-[17px] text-white" />
             </button>
           </div>
         </div>

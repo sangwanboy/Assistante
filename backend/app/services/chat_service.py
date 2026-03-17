@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,8 @@ from app.services.context_assembler import ContextAssembler
 from app.providers.base import TokenUsage
 from app.services.llm_gateway import get_gateway
 import uuid
+
+logger = logging.getLogger(__name__)
 
 # Storm prevention: max agents responding simultaneously
 MAX_SIMULTANEOUS_RESPONDING_AGENTS = 3
@@ -93,11 +96,10 @@ class ChatService:
             semantic_memory = await self.compactor.retrieve_for_context(
                 agent.id, self.session, limit=20
             )
-            # Trim to char budget if over
             if len(semantic_memory) > char_budget:
                 semantic_memory = semantic_memory[:char_budget] + "\n[...memory truncated for budget]"
         except Exception:
-            pass  # Non-critical — proceed without semantic memory
+            pass
 
         if not semantic_memory:
             return messages
@@ -122,6 +124,14 @@ class ChatService:
         if "/" in model_string:
             provider, model = model_string.split("/", 1)
             return provider, model
+        if model_string.startswith("gemini-"):
+            return "gemini", model_string
+        if model_string.startswith("gpt-") or model_string.startswith("o1") or model_string.startswith("o3"):
+            return "openai", model_string
+        if model_string.startswith("claude-"):
+            return "anthropic", model_string
+        if model_string.startswith("llama") or model_string.startswith("qwen") or model_string.startswith("mistral"):
+            return "ollama", model_string
         return "openai", model_string
 
     async def _resolve_provider_and_model(self, model_string: str) -> tuple[str, str, object, str | None]:
@@ -135,8 +145,8 @@ class ChatService:
             available = []
             for name in registered:
                 try:
-                    p = self.providers.get(name)
-                    if p.is_available():
+                    provider = self.providers.get(name)
+                    if provider.is_available():
                         available.append(name)
                 except Exception:
                     continue
@@ -280,7 +290,9 @@ class ChatService:
                 if not enabled:
                     filtered = all_tools
                 else:
-                    filtered = [t for t in all_tools if t["name"] in enabled]
+                    # Always include these essential tools even if not in agent's explicit list
+                    universal = {"manage_schedules", "brave_search", "image_gen", "video_gen", "system_logs_tool"}
+                    filtered = [t for t in all_tools if t["name"] in enabled or t["name"] in universal]
             except (json.JSONDecodeError, TypeError):
                 filtered = all_tools
 
@@ -350,8 +362,9 @@ class ChatService:
         if agent.enabled_tools:
             try:
                 enabled = set(json.loads(agent.enabled_tools or "[]"))
+                universal = {"manage_schedules", "brave_search", "image_gen", "video_gen"}
                 if enabled:
-                    tools = [t for t in tools if t.get("name") in enabled]
+                    tools = [t for t in tools if t.get("name") in enabled or t.get("name") in universal]
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -387,6 +400,112 @@ class ChatService:
         response_parts.append("Tell me your task in one line, and I will either solve it directly or delegate it with a clear plan.")
         return "\n".join(response_parts)
 
+    async def _execute_tool_calls(
+        self,
+        tool_calls: list[dict],
+        conversation_id: str,
+        agent_id: str = None,
+        task_id: str = None,
+    ) -> list[ChatMessage]:
+        """Execute tool calls and return tool result messages with full context and monitoring."""
+        import inspect
+        import traceback
+        import asyncio
+        results = []
+        hitl_manager = HITLManager.get_instance()
+
+        for tc in tool_calls:
+            tc_id = tc.get("id", "")
+            func = tc.get("function", {})
+            tool_name = func.get("name", "")
+            args_str = func.get("arguments", "{}")
+
+            try:
+                args = json.loads(args_str) if isinstance(args_str, str) else args_str
+            except json.JSONDecodeError:
+                args = {}
+
+            # ── HITL Check for sensitive tools ──
+            # command_executor is considered sensitive.
+            sensitive_tools = ["command_executor"]
+            if tool_name in sensitive_tools:
+                try:
+                    approved = await hitl_manager.request_approval(tc_id, tool_name, args)
+                except Exception:
+                    approved = False  # Auto-deny if HITL service is unreachable
+                
+                if not approved:
+                    results.append(ChatMessage(
+                        role="tool",
+                        content="Execution denied by user via HITL.",
+                        tool_call_id=tc_id
+                    ))
+                    continue
+
+            images = None
+            try:
+                tool = self.tools.get(tool_name)
+                
+                # ── Context Injection Logic ──
+                sig = inspect.signature(tool.execute)
+                params = sig.parameters
+                has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+                extra_kwargs = {}
+                context_map = {
+                    "conversation_id": conversation_id,
+                    "_session": self.session,
+                    "agent_id": agent_id,
+                    "_agent_id": agent_id,
+                    "task_id": task_id,
+                    "_task_id": task_id,
+                }
+
+                for param_name, value in context_map.items():
+                    if param_name in params or has_var_keyword:
+                        extra_kwargs[param_name] = value
+                
+                # Safely merge args and extra_kwargs, giving priority to args provided by the LLM
+                # This prevents "TypeError: got multiple values for keyword argument" when **args, **extra_kwargs have overlap.
+                exec_kwargs = {**extra_kwargs, **args}
+
+                logger.info(f"Executing tool '{tool_name}' for agent_id='{agent_id}', task_id='{task_id}'. Final keys: {list(exec_kwargs.keys())}")
+
+                # ── Execution with Timeout ──
+                result_raw = await asyncio.wait_for(
+                    tool.execute(**exec_kwargs),
+                    timeout=180.0
+                )
+                result_str = str(result_raw)
+                
+                # ── Visual Content Extraction (Phase 6) ──
+                try:
+                    parsed_result = json.loads(result_str)
+                    if isinstance(parsed_result, dict) and "image_base64" in parsed_result:
+                        images = [parsed_result.pop("image_base64")]
+                        result_str = json.dumps(parsed_result)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            except asyncio.TimeoutError:
+                result_str = f"Tool '{tool_name}' timed out after 180 seconds."
+            except Exception as e:
+                error_trace = traceback.format_exc()
+                logger.error(f"Tool '{tool_name}' failed: {e}", exc_info=True)
+                result_str = (
+                    f"Tool '{tool_name}' failed with error: {str(e)}\n\n"
+                    f"Traceback:\n{error_trace}"
+                )
+
+            results.append(ChatMessage(
+                role="tool",
+                content=result_str,
+                tool_call_id=tc_id,
+                images=images,
+            ))
+
+        return results
+
     def _db_messages_to_chat(self, db_messages, system_prompt: str | None = None) -> list[ChatMessage]:
         messages = []
         if system_prompt:
@@ -409,100 +528,6 @@ class ChatService:
 
         return messages
 
-    async def _execute_tool_calls(self, tool_calls: list[dict], conversation_id: str | None = None, agent_id: str | None = None, task_id: str | None = None) -> list[ChatMessage]:
-        """Execute tool calls and return tool result messages."""
-        import inspect
-        results = []
-        hitl_manager = HITLManager.get_instance()
-
-        for tc in tool_calls:
-            func = tc.get("function", {})
-            tool_name = func.get("name", "")
-            args_str = func.get("arguments", "{}")
-
-            try:
-                args = json.loads(args_str) if isinstance(args_str, str) else args_str
-            except json.JSONDecodeError:
-                args = {}
-
-            # HITL Check for sensitive tools - only enabled for command_executor per user request
-            sensitive_tools = ["command_executor"]
-            if tool_name in sensitive_tools:
-                task_id_hitl = tc.get("id", str(uuid.uuid4()))
-                try:
-                    approved = await hitl_manager.request_approval(task_id_hitl, tool_name, args)
-                except Exception:
-                    # If HITL itself fails (e.g. no control WS connected), auto-deny
-                    approved = False
-                if not approved:
-                    results.append(ChatMessage(
-                        role="tool",
-                        content="Execution denied by user.",
-                        tool_call_id=tc.get("id", "")
-                    ))
-                    continue
-
-            images = None
-            try:
-                tool = self.tools.get(tool_name)
-                sig = inspect.signature(tool.execute)
-                params = sig.parameters
-                has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
-
-                # Build extra context kwargs for tools that accept them
-                extra_kwargs = {}
-                if has_var_keyword or 'conversation_id' in params:
-                    if conversation_id:
-                        extra_kwargs['conversation_id'] = conversation_id
-                if has_var_keyword or '_agent_id' in params:
-                    if agent_id:
-                        extra_kwargs['_agent_id'] = agent_id
-                if has_var_keyword or '_session' in params:
-                    extra_kwargs['_session'] = self.session
-                if has_var_keyword or '_task_id' in params:
-                    if task_id:
-                        extra_kwargs['_task_id'] = task_id
-
-                import asyncio
-                # Enforce a 60-second execution timeout on all tools
-                result_raw = await asyncio.wait_for(
-                    tool.execute(**args, **extra_kwargs),
-                    timeout=180.0
-                )
-                result_str = str(result_raw)
-                
-                # Check if result is a JSON string that might contain an image payload
-                try:
-                    parsed_result = json.loads(result_str)
-                    if isinstance(parsed_result, dict) and "image_base64" in parsed_result:
-                        images = [parsed_result.pop("image_base64")]
-                        # Format the remaining properties nicely to pass back to the LLM
-                        result_str = json.dumps(parsed_result)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            except asyncio.TimeoutError:
-                result_str = (
-                    f"Tool '{tool_name}' timed out after 60 seconds.\n"
-                    f"Please try again with a narrower scope or a different approach."
-                )
-            except Exception as e:
-                import traceback
-                error_trace = traceback.format_exc()
-                result_str = (
-                    f"Tool '{tool_name}' failed with error:\n{str(e)}\n\n"
-                    f"Traceback:\n{error_trace}\n"
-                    f"Analyze the error carefully and try a different approach or fix your parameters."
-                )
-
-            results.append(ChatMessage(
-                role="tool",
-                content=result_str,
-                tool_call_id=tc.get("id", ""),
-                images=images,
-            ))
-
-        return results
-
     def _calculate_cost(self, provider_name: str, model_id: str, usage: TokenUsage) -> float:
         """Calculate estimated cost based on token usage."""
         if not usage:
@@ -521,9 +546,11 @@ class ChatService:
         self,
         conversation_id: str,
         user_message: str,
-        model_string: str,
-        system_prompt: str | None = None,
+        model_string: str = None,
+        system_prompt: str = None,
         temperature: float = 0.7,
+        agent_id: str = None,
+        task_id: str = None,
     ) -> str:
         """Non-streaming chat. Returns the assistant response text."""
         # Ensure conversation exists
@@ -608,23 +635,26 @@ class ChatService:
         # Inject Tier-2 semantic memories into layered context (Section 9 — Memory Retrieval)
         messages = await self._build_context_with_memory(agent, prompt, messages, context_window_tokens)
 
-        agent_id = agent.id if agent else "assistant"
+        # Resolve agent_id for status updates and tool execution
+        status_manager = await AgentStatusManager.get_instance()
+        if not agent_id:
+            if agent:
+                agent_id = agent.id
+            else:
+                # Fallback: find the system orchestrator
+                system_agent = await self._get_system_agent()
+                if system_agent:
+                    agent_id = system_agent.id
+                    agent = system_agent # Also update agent for prompt building
+                else:
+                    agent_id = "assistant"
+        elif not agent:
+            # If agent_id provided but agent not loaded
+            agent = await self.session.get(Agent, agent_id)
 
-        # Three-threshold context pruning: soft warning → active prune → emergency truncate.
-        messages = await self.pruner.prune_context_if_needed(
-            messages,
-            context_window_tokens,
-            agent_id,
-            soft_trigger_ratio=CONTEXT_SOFT_TRIGGER_RATIO,
-            prune_trigger_ratio=CONTEXT_PRUNE_TRIGGER_RATIO,
-            emergency_trigger_ratio=CONTEXT_EMERGENCY_TRIGGER_RATIO,
-            refreshed_system_prompt=prompt if agent else None,
-            prune_sync_note=self._build_pruned_context_sync_note() if agent else None,
-            agent_name=agent.name if agent else None,
-        )
-        max_iterations = 40
-        max_tool_calls = 12
-        max_tokens_per_task = 200000
+        max_iterations = 50
+        max_tool_calls = 50
+        max_tokens_per_task = 1000000
         
         tool_calls_total = 0
         tokens_used_total = 0
@@ -635,8 +665,22 @@ class ChatService:
         status_manager.set_status(agent_id, AgentState.WORKING, "Generating response...")
 
         try:
-            gateway = await get_gateway()
+            gateway = await get_gateway(self.providers)
             for step in range(max_iterations):
+                # Three-threshold context pruning: soft warning → active prune → emergency truncate.
+                # Performed inside the loop to account for tool call results.
+                messages = await self.pruner.prune_context_if_needed(
+                    messages,
+                    context_window_tokens,
+                    agent_id,
+                    soft_trigger_ratio=CONTEXT_SOFT_TRIGGER_RATIO,
+                    prune_trigger_ratio=CONTEXT_PRUNE_TRIGGER_RATIO,
+                    emergency_trigger_ratio=CONTEXT_EMERGENCY_TRIGGER_RATIO,
+                    refreshed_system_prompt=prompt if agent else None,
+                    prune_sync_note=self._build_pruned_context_sync_note() if agent else None,
+                    agent_name=agent.name if agent else None,
+                )
+
                 result = await gateway.complete(provider, messages, model_id, agent_id, self.session, tools=tool_schemas, temperature=temperature)
 
                 if hasattr(result, "usage") and result.usage:
@@ -671,7 +715,7 @@ class ChatService:
                     if tool_calls_total >= max_tool_calls:
                         messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum tool calls reached. You must immediately provide your final answer without any further tools."))
                     
-                    tool_results = await self._execute_tool_calls(result.tool_calls, conversation_id=conversation_id, agent_id=agent_id)
+                    tool_results = await self._execute_tool_calls(result.tool_calls, conversation_id=conversation_id, agent_id=agent_id, task_id=task_id)
                     status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
                     
                     for tr in tool_results:
@@ -701,22 +745,24 @@ class ChatService:
                     await self.conv_service.add_message(
                         conversation_id, "assistant", response_text, agent_name=agent_name
                     )
-                    status_manager.set_status(agent_id, AgentState.IDLE)
                     return response_text
 
-            status_manager.set_status(agent_id, AgentState.IDLE)
             return "Max tool iterations reached."
         except Exception as e:
-            status_manager.set_status(agent_id, AgentState.IDLE)
+            logger.exception(f"Exception in ChatService.chat (agent_id={agent_id}, conversation_id={conversation_id}): {e}")
             raise e
+        finally:
+            status_manager.set_status(agent_id, AgentState.IDLE)
 
     async def stream_chat(
         self,
         conversation_id: str,
         user_message: str,
-        model_string: str,
-        system_prompt: str | None = None,
+        model_string: str = None,
+        system_prompt: str = None,
         temperature: float = 0.7,
+        agent_id: str = None,
+        task_id: str = None,
     ) -> AsyncIterator[dict]:
         """Streaming chat. Yields event dicts for the WebSocket."""
         # Ensure conversation exists
@@ -751,16 +797,22 @@ class ChatService:
                 )
                 yield {"type": "agent_turn_start", "agent_name": agent.name}
                 yield {"type": "chunk", "delta": capability_reply}
-                yield {
-                    "type": "agent_turn_end",
-                    "agent_name": agent.name,
-                    "message_id": msg.id,
-                }
-                yield {
-                    "type": "done",
-                    "message_id": msg.id,
-                    "conversation_id": conversation_id,
-                }
+                if msg:
+                    yield {
+                        "type": "agent_turn_end",
+                        "agent_name": agent.name,
+                        "message_id": msg.id,
+                    }
+                    try:
+                        yield {
+                            "type": "done",
+                            "message_id": msg.id,
+                            "conversation_id": conversation_id,
+                        }
+                    except GeneratorExit:
+                        pass
+                else:
+                    yield {"type": "agent_turn_end", "agent_name": agent.name}
                 return
 
             contribution_reply = await self._maybe_handle_delegation_contribution_query(
@@ -776,16 +828,22 @@ class ChatService:
                 )
                 yield {"type": "agent_turn_start", "agent_name": agent.name}
                 yield {"type": "chunk", "delta": contribution_reply}
-                yield {
-                    "type": "agent_turn_end",
-                    "agent_name": agent.name,
-                    "message_id": msg.id,
-                }
-                yield {
-                    "type": "done",
-                    "message_id": msg.id,
-                    "conversation_id": conversation_id,
-                }
+                if msg:
+                    yield {
+                        "type": "agent_turn_end",
+                        "agent_name": agent.name,
+                        "message_id": msg.id,
+                    }
+                    try:
+                        yield {
+                            "type": "done",
+                            "message_id": msg.id,
+                            "conversation_id": conversation_id,
+                        }
+                    except GeneratorExit:
+                        pass
+                else:
+                    yield {"type": "agent_turn_end", "agent_name": agent.name}
                 return
 
         # Deterministic delegation path for explicit orchestrator requests.
@@ -804,16 +862,22 @@ class ChatService:
                 )
                 yield {"type": "agent_turn_start", "agent_name": agent.name}
                 yield {"type": "chunk", "delta": delegated_reply}
-                yield {
-                    "type": "agent_turn_end",
-                    "agent_name": agent.name,
-                    "message_id": msg.id,
-                }
-                yield {
-                    "type": "done",
-                    "message_id": msg.id,
-                    "conversation_id": conversation_id,
-                }
+                if msg:
+                    yield {
+                        "type": "agent_turn_end",
+                        "agent_name": agent.name,
+                        "message_id": msg.id,
+                    }
+                    try:
+                        yield {
+                            "type": "done",
+                            "message_id": msg.id,
+                            "conversation_id": conversation_id,
+                        }
+                    except GeneratorExit:
+                        pass
+                else:
+                    yield {"type": "agent_turn_end", "agent_name": agent.name}
                 return
         
         if agent:
@@ -841,20 +905,22 @@ class ChatService:
         # Inject Tier-2 semantic memories into layered context (Section 9 — Memory Retrieval)
         messages = await self._build_context_with_memory(agent, prompt, messages, context_window_tokens)
 
-        # Resolve agent_id for status updates
+        # Resolve agent_id for status updates and tool execution
         status_manager = await AgentStatusManager.get_instance()
-        agent_id = None
-        if agent:
-            agent_id = agent.id
-        else:
-            # Fallback: try to find the system orchestrator agent id
-            stmt = select(Agent).where(Agent.is_system)
-            res = await self.session.execute(stmt)
-            system_agent = res.scalar_one_or_none()
-            if system_agent:
-                agent_id = system_agent.id
+        if not agent_id:
+            if agent:
+                agent_id = agent.id
             else:
-                agent_id = "assistant" # Last resort
+                # Fallback: find the system orchestrator
+                system_agent = await self._get_system_agent()
+                if system_agent:
+                    agent_id = system_agent.id
+                    agent = system_agent # Also update agent for prompt building
+                else:
+                    agent_id = "assistant"
+        elif not agent:
+            # If agent_id provided but agent not loaded
+            agent = await self.session.get(Agent, agent_id)
                 
         # Three-threshold context pruning: soft warning → active prune → emergency truncate.
         messages = await self.pruner.prune_context_if_needed(
@@ -870,135 +936,208 @@ class ChatService:
         )
 
         # Agentic loop with streaming
-        max_iterations = 40
-        max_tool_calls = 12
-        max_tokens_per_task = 200000
+        max_iterations = 50
+        max_tool_calls = 50
+        max_tokens_per_task = 1000000
         
         tool_calls_total = 0
         tokens_used_total = 0
         
         governor = ToolGovernor(max_consecutive=3, reflection_interval=3)
 
-        for step in range(max_iterations):
-            full_response = ""
-            final_tool_calls = None
+        try:
+            for step in range(max_iterations):
+                # Three-threshold context pruning: soft warning → active prune → emergency truncate.
+                # Performed inside the loop to account for tool call results.
+                messages = await self.pruner.prune_context_if_needed(
+                    messages,
+                    context_window_tokens,
+                    agent_id,
+                    soft_trigger_ratio=CONTEXT_SOFT_TRIGGER_RATIO,
+                    prune_trigger_ratio=CONTEXT_PRUNE_TRIGGER_RATIO,
+                    emergency_trigger_ratio=CONTEXT_EMERGENCY_TRIGGER_RATIO,
+                    refreshed_system_prompt=prompt if agent else None,
+                    prune_sync_note=self._build_pruned_context_sync_note() if agent else None,
+                    agent_name=agent.name if agent else None,
+                )
 
-            status_manager.set_status(agent_id, AgentState.WORKING, f"Generating response (Step {step + 1}/{max_iterations})...")
-            yield {"type": "agent_turn_start", "agent_name": agent_name}
+                full_response = ""
+                final_tool_calls = None
 
-            try:
-                final_usage = None
-                gateway = await get_gateway()
-                async for chunk in gateway.stream(provider, messages, model_id, agent_id, self.session, tools=tool_schemas, temperature=temperature):
-                    if chunk.error:
-                        yield {"type": "error", "error": chunk.error}
-                        break
+                status_manager.set_status(agent_id, AgentState.WORKING, f"Generating response (Step {step + 1}/{max_iterations})...")
+                yield {"type": "agent_turn_start", "agent_name": agent_name}
 
-                    if hasattr(chunk, "usage") and chunk.usage:
-                        final_usage = chunk.usage
-                        
-                    if chunk.delta:
-                        full_response += str(chunk.delta)
-                        yield {"type": "chunk", "delta": chunk.delta}
-
-                    if chunk.tool_calls:
-                        if final_tool_calls is None:
-                            final_tool_calls = []
-                        final_tool_calls.extend(chunk.tool_calls)
-
-                if final_usage:
-                    tokens_used_total += getattr(final_usage, 'total_tokens', 0)
-                    if getattr(agent, "id", None):
-                        cost = self._calculate_cost(provider.name, model_id, final_usage)
-                        if cost > 0:
-                            agent.total_cost = getattr(agent, 'total_cost', 0) + cost
-                            await self.session.commit()
-                            await status_manager.emit_event({"type": "TOKEN_UPDATE", "agent_id": agent.id, "cost_added": cost, "total_cost": agent.total_cost})
-                
-                # Check Token Burn Limits
-                if tokens_used_total >= max_tokens_per_task:
-                    messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum token budget reached. You must immediately summarize your work, provide the best final answer you can, and STOP using tools."))
-
-                if final_tool_calls:
-                    # Save assistant message with tool calls
-                    await self.conv_service.add_message(
-                        conversation_id, "assistant", full_response,
-                        agent_name=agent_name,
-                        tool_calls_json=json.dumps(final_tool_calls),
-                    )
-                    messages.append(ChatMessage(
-                        role="assistant", content=full_response, tool_calls=final_tool_calls,
-                    ))
-
-                    # Execute tools and stream results
-                    for tc in final_tool_calls:
-                        tool_calls_total += 1
-                        func = tc.get("function", {})
-                        tool_name = func.get("name", "")
-
-                        status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
-                        yield {
-                            "type": "tool_call",
-                            "tool_call_id": tc.get("id", ""),
-                            "tool_name": tool_name,
-                            "tool_args": json.loads(func.get("arguments", "{}")),
-                        }
-                    
-                    if tool_calls_total >= max_tool_calls:
-                        messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum tool calls reached. You must immediately provide your final answer without any further tools."))
-                        yield {"type": "chunk", "delta": "\n[System]: Hard limit reached. Summarizing and wrapping up.\n", "agent_name": "Governor"}
-
-                    tool_results = await self._execute_tool_calls(final_tool_calls, conversation_id=conversation_id, agent_id=agent_id)
-                    for tr in tool_results:
-                        await self.conv_service.add_message(
-                            conversation_id, "tool", tr.content,
-                            tool_call_id=tr.tool_call_id,
-                        )
-                        messages.append(tr)
-                        yield {
-                            "type": "tool_result",
-                            "tool_call_id": tr.tool_call_id,
-                            "tool_name": "",
-                            "tool_result": tr.content,
-                        }
-
-                    for tc in final_tool_calls:
-                        func = tc.get("function", {})
-                        t_name = func.get("name", "")
-                        t_args = func.get("arguments", "{}")
-                        intervention = governor.record_and_check(t_name, t_args)
-                        if intervention:
-                            messages.append(ChatMessage(role="user", content=intervention))
-                            yield {"type": "chunk", "delta": "\n[System]: " + intervention + "\n", "agent_name": "Governor"}
+                try:
+                    final_usage = None
+                    gateway = await get_gateway(self.providers)
+                    async for chunk in gateway.stream(provider, messages, model_id, agent_id, self.session, tools=tool_schemas, temperature=temperature):
+                        if chunk.error:
+                            yield {"type": "error", "error": chunk.error}
                             break
-                    
-                    reflection = governor.should_reflect()
-                    if reflection:
-                        messages.append(ChatMessage(role="user", content=reflection))
-                else:
-                    # Final response
-                    msg = await self.conv_service.add_message(
-                        conversation_id, "assistant", full_response, agent_name=agent_name
-                    )
-                    
-                    status_manager.set_status(agent_id, AgentState.IDLE)
-                    yield {
-                        "type": "agent_turn_end",
-                        "agent_name": agent_name,
-                        "message_id": msg.id,
-                    }
-                    yield {
-                        "type": "done",
-                        "message_id": msg.id,
-                        "conversation_id": conversation_id,
-                    }
-                    return
-            except Exception as e:
-                status_manager.set_status(agent_id, AgentState.IDLE)
-                raise e
 
-        status_manager.set_status(agent_id, AgentState.IDLE)
-        yield {"type": "done", "conversation_id": conversation_id}
+                        if hasattr(chunk, "usage") and chunk.usage:
+                            final_usage = chunk.usage
+                            
+                        if chunk.delta:
+                            full_response += str(chunk.delta)
+                            yield {"type": "chunk", "delta": chunk.delta}
+
+                        if chunk.tool_calls:
+                            if final_tool_calls is None:
+                                final_tool_calls = []
+                            final_tool_calls.extend(chunk.tool_calls)
+
+                    if final_usage:
+                        tokens_used_total += getattr(final_usage, 'total_tokens', 0)
+                        if getattr(agent, "id", None):
+                            cost = self._calculate_cost(provider.name, model_id, final_usage)
+                            if cost > 0:
+                                agent.total_cost = getattr(agent, 'total_cost', 0) + cost
+                                await self.session.commit()
+                                await status_manager.emit_event({"type": "TOKEN_UPDATE", "agent_id": agent.id, "cost_added": cost, "total_cost": agent.total_cost})
+                    
+                    # Check Token Burn Limits
+                    if tokens_used_total >= max_tokens_per_task:
+                        messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum token budget reached. You must immediately summarize your work, provide the best final answer you can, and STOP using tools."))
+
+                    if final_tool_calls:
+                        # Save assistant message with tool calls
+                        msg_record = await self.conv_service.add_message(
+                            conversation_id, "assistant", full_response,
+                            agent_name=agent_name,
+                            tool_calls_json=json.dumps(final_tool_calls),
+                        )
+                        messages.append(ChatMessage(
+                            role="assistant", content=full_response, tool_calls=final_tool_calls,
+                        ))
+
+                        # Execute tools and stream results
+                        for tc in final_tool_calls:
+                            tool_calls_total += 1
+                            func = tc.get("function", {})
+                            tool_name = func.get("name", "")
+
+                            status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
+                            yield {
+                                "type": "tool_call",
+                                "tool_call_id": tc.get("id", ""),
+                                "tool_name": tool_name,
+                                "tool_args": json.loads(func.get("arguments", "{}")),
+                            }
+                        
+                        if tool_calls_total >= max_tool_calls:
+                            messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum tool calls reached. You must immediately provide your final answer without any further tools."))
+                            yield {"type": "chunk", "delta": "\n[System]: Hard limit reached. Summarizing and wrapping up.\n", "agent_name": "Governor"}
+
+                        tool_results = await self._execute_tool_calls(
+                            final_tool_calls, 
+                            conversation_id=conversation_id, 
+                            agent_id=agent_id,
+                            task_id=task_id
+                        )
+                        for tr in tool_results:
+                            msg = await self.conv_service.add_message(
+                                conversation_id, "tool", tr.content,
+                                tool_call_id=tr.tool_call_id,
+                            )
+                            messages.append(tr)
+                            yield {
+                                "type": "message_add",
+                                "message": {
+                                    "id": msg.id,
+                                    "role": "tool",
+                                    "content": msg.content,
+                                    "agent_name": agent_name,
+                                    "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                                }
+                            }
+                            yield {
+                                "type": "tool_result",
+                                "tool_call_id": tr.tool_call_id,
+                                "tool_name": "",
+                                "tool_result": tr.content,
+                            }
+
+                        # SIGNAL END OF TURN STEP: This ensures messages are committed to the UI
+                        usage_info = {
+                            "total_tokens": getattr(final_usage, 'total_tokens', 0) if final_usage else 0,
+                            "prompt_tokens": getattr(final_usage, 'prompt_tokens', 0) if final_usage else 0,
+                            "completion_tokens": getattr(final_usage, 'completion_tokens', 0) if final_usage else 0,
+                            "total_cost": self._calculate_cost(provider.name, model_id, final_usage) if final_usage else 0.0,
+                        }
+                        if msg_record:
+                            yield {
+                                "type": "agent_turn_end",
+                                "agent_name": agent_name,
+                                "message_id": msg_record.id,
+                                "usage": usage_info,
+                            }
+                        else:
+                            yield {
+                                "type": "agent_turn_end",
+                                "agent_name": agent_name,
+                                "usage": usage_info,
+                            }
+
+                        for tc in final_tool_calls:
+                            func = tc.get("function", {})
+                            t_name = func.get("name", "")
+                            t_args = func.get("arguments", "{}")
+                            intervention = governor.record_and_check(t_name, t_args)
+                            if intervention:
+                                messages.append(ChatMessage(role="user", content=intervention))
+                                yield {"type": "chunk", "delta": "\n[System]: " + intervention + "\n", "agent_name": "Governor"}
+                                break
+                        
+                        reflection = governor.should_reflect()
+                        if reflection:
+                            messages.append(ChatMessage(role="user", content=reflection))
+                    else:
+                        # Final response
+                        msg = await self.conv_service.add_message(
+                            conversation_id, "assistant", full_response, agent_name=agent_name
+                        )
+                        
+                        if msg:
+                            yield {
+                                "type": "agent_turn_end",
+                                "agent_name": agent_name,
+                                "message_id": msg.id,
+                            }
+                            try:
+                                yield {
+                                    "type": "done",
+                                    "message_id": msg.id,
+                                    "conversation_id": conversation_id,
+                                }
+                            except GeneratorExit:
+                                pass
+                        else:
+                            yield {
+                                "type": "agent_turn_end",
+                                "agent_name": agent_name,
+                            }
+                        return
+                except GeneratorExit:
+                    # Re-raise to ensure the generator closes properly
+                    raise
+                except Exception as e:
+                    logger.exception(f"Exception in ChatService.stream_chat loop (agent_id={agent_id}, conversation_id={conversation_id}, step={step}): {e}")
+                    yield {"type": "error", "error": f"Internal agent error: {str(e)}"}
+                    break
+            
+            try:
+                yield {"type": "done", "conversation_id": conversation_id}
+            except GeneratorExit:
+                pass
+        except GeneratorExit:
+            # Re-raise to ensure the generator closes properly
+            raise
+        except Exception as e:
+            logger.exception(f"Exception in ChatService.stream_chat loop (agent_id={agent_id}, conversation_id={conversation_id}, step={step}): {e}")
+            yield {"type": "error", "error": f"Internal agent error: {str(e)}"}
+        finally:
+            status_manager.set_status(agent_id, AgentState.IDLE)
 
     async def stream_group_chat(
         self,
@@ -1080,7 +1219,12 @@ class ChatService:
             for resolved in responding:
                 agent = await self.session.get(Agent, resolved.agent_id)
                 if agent:
-                    async for event in self._run_agent_turn(conversation_id, agent, temperature, is_group=True):
+                    async for event in self._run_agent_turn(
+                        conversation_id=conversation_id, 
+                        agent=agent, 
+                        temperature=temperature, 
+                        is_group=True
+                    ):
                         yield event
         elif orchestration_mode == "autonomous":
             # ── AUTO-ORCHESTRATION: System Agent plans and delegates ──
@@ -1096,7 +1240,12 @@ class ChatService:
             # ── MANUAL MODE: System Agent responds directly ──
             system_agent = await self._get_system_agent()
             if system_agent:
-                async for event in self._run_agent_turn(conversation_id, system_agent, temperature, is_group=True):
+                async for event in self._run_agent_turn(
+                    conversation_id=conversation_id, 
+                    agent=system_agent, 
+                    temperature=temperature, 
+                    is_group=True
+                ):
                     yield event
             else:
                 yield {"type": "error", "content": "No system agent found."}
@@ -1114,6 +1263,7 @@ class ChatService:
         temperature: float = 0.7,
         max_tool_iters: int = 5,
         is_group: bool = False,
+        task_id: str = None,
     ) -> AsyncIterator[dict]:
         """Run a single agent's streaming turn with tool loop.
 
@@ -1212,17 +1362,6 @@ class ChatService:
         except Exception:
             pass  # Non-critical
 
-        agent_msgs = await self.pruner.prune_context_if_needed(
-            agent_msgs,
-            self._resolve_context_window_tokens(agent),
-            agent_id,
-            soft_trigger_ratio=CONTEXT_SOFT_TRIGGER_RATIO,
-            prune_trigger_ratio=CONTEXT_PRUNE_TRIGGER_RATIO,
-            emergency_trigger_ratio=CONTEXT_EMERGENCY_TRIGGER_RATIO,
-            refreshed_system_prompt=agent_prompt,
-            prune_sync_note=self._build_pruned_context_sync_note(),
-            agent_name=agent.name,
-        )
 
         # Filter tools
         agent_tools = self._filter_tools_for_agent(agent, is_group_context=is_group)
@@ -1232,102 +1371,193 @@ class ChatService:
         msg_record = None
         status_manager = await AgentStatusManager.get_instance()
         governor = ToolGovernor(max_consecutive=3, reflection_interval=3)
+        history_responses = [] # Track text responses to detect loops
 
-        # Agentic tool loop
-        for step in range(max_tool_iters):
-            full_response = ""
-            final_tool_calls = None
+        try:
+            # Agentic tool loop
+            for step in range(max_tool_iters):
+                # Three-threshold context pruning: soft warning → active prune → emergency truncate.
+                # Performed inside the loop to account for tool call results.
+                agent_msgs = await self.pruner.prune_context_if_needed(
+                    agent_msgs,
+                    self._resolve_context_window_tokens(agent),
+                    agent_id,
+                    soft_trigger_ratio=CONTEXT_SOFT_TRIGGER_RATIO,
+                    prune_trigger_ratio=CONTEXT_PRUNE_TRIGGER_RATIO,
+                    emergency_trigger_ratio=CONTEXT_EMERGENCY_TRIGGER_RATIO,
+                    refreshed_system_prompt=agent_prompt,
+                    prune_sync_note=self._build_pruned_context_sync_note(),
+                    agent_name=agent.name,
+                )
 
-            status_manager.set_status(agent_id, AgentState.WORKING, f"Generating response (Step {step + 1}/{max_tool_iters})...")
+                full_response = ""
+                final_tool_calls = None
 
-            try:
-                final_usage = None
-                gateway = await get_gateway()
-                async for chunk in gateway.stream(provider, agent_msgs, model_id, agent_id, self.session, tools=agent_tools, temperature=temperature):
-                    if hasattr(chunk, "usage") and chunk.usage:
-                        final_usage = chunk.usage
-                    if chunk.delta:
-                        full_response += str(chunk.delta)
-                        yield {"type": "chunk", "delta": chunk.delta, "agent_name": agent.name}
-                    if chunk.tool_calls:
-                        if final_tool_calls is None:
-                            final_tool_calls = []
-                        final_tool_calls.extend(chunk.tool_calls)
+                status_manager.set_status(agent_id, AgentState.WORKING, f"Generating response (Step {step + 1}/{max_tool_iters})...")
 
-                if final_usage and agent.id:
-                    cost = self._calculate_cost(provider.name, model_id, final_usage)
-                    if cost > 0:
-                        agent.total_cost = getattr(agent, "total_cost", 0) + cost
-                        await self.session.commit()
-                        await status_manager.emit_event({
-                            "type": "TOKEN_UPDATE",
-                            "agent_id": agent.id,
-                            "cost_added": cost,
-                            "total_cost": agent.total_cost,
-                        })
+                try:
+                    final_usage = None
+                    gateway = await get_gateway(self.providers)
+                    async for chunk in gateway.stream(provider, agent_msgs, model_id, agent_id, self.session, tools=agent_tools, temperature=temperature):
+                        if hasattr(chunk, "usage") and chunk.usage:
+                            final_usage = chunk.usage
+                        if chunk.delta:
+                            full_response += str(chunk.delta)
+                            yield {"type": "chunk", "delta": chunk.delta, "agent_name": agent.name}
+                        if chunk.tool_calls:
+                            if final_tool_calls is None:
+                                final_tool_calls = []
+                            final_tool_calls.extend(chunk.tool_calls)
 
-                if final_tool_calls:
-                    msg_record = await self.conv_service.add_message(
-                        conversation_id, "assistant", full_response,
-                        agent_name=agent.name,
-                        tool_calls_json=json.dumps(final_tool_calls),
-                    )
-                    agent_msgs.append(ChatMessage(
-                        role="assistant", content=full_response, tool_calls=final_tool_calls,
-                    ))
+                    if final_usage and agent.id:
+                        cost = self._calculate_cost(provider.name, model_id, final_usage)
+                        if cost > 0:
+                            agent.total_cost = getattr(agent, "total_cost", 0) + cost
+                            await self.session.commit()
+                            await status_manager.emit_event({
+                                "type": "TOKEN_UPDATE",
+                                "agent_id": agent.id,
+                                "cost_added": cost,
+                                "total_cost": agent.total_cost,
+                            })
 
-                    for tc in final_tool_calls:
-                        func = tc.get("function", {})
-                        tool_name = func.get("name", "")
-                        args_raw = func.get("arguments", "{}")
-                        status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
+                    if final_tool_calls:
+                        msg_record = await self.conv_service.add_message(
+                            conversation_id, "assistant", full_response,
+                            agent_name=agent.name,
+                            tool_calls_json=json.dumps(final_tool_calls),
+                        )
+                        agent_msgs.append(ChatMessage(
+                            role="assistant", content=full_response, tool_calls=final_tool_calls,
+                        ))
+
+                        for tc in final_tool_calls:
+                            func = tc.get("function", {})
+                            tool_name = func.get("name", "")
+                            args_raw = func.get("arguments", "{}")
+                            status_manager.set_status(agent_id, AgentState.WORKING, f"Using tool: {tool_name}...")
+                            yield {
+                                "type": "tool_call",
+                                "tool_name": tool_name,
+                                "tool_args": json.loads(args_raw) if isinstance(args_raw, str) else args_raw,
+                            }
+
+                        tool_results = await self._execute_tool_calls(
+                            final_tool_calls, 
+                            conversation_id=conversation_id, 
+                            agent_id=agent_id,
+                            task_id=task_id
+                        )
+                        status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
+                        
+                        # Tool Governor Reflection & Halts
+                        for tr in tool_results:
+                            msg = await self.conv_service.add_message(
+                                conversation_id, "tool", tr.content, tool_call_id=tr.tool_call_id,
+                            )
+                            agent_msgs.append(tr)
+                            yield {
+                                "type": "message_add",
+                                "message": {
+                                    "id": msg.id,
+                                    "role": "tool",
+                                    "content": msg.content,
+                                    "agent_name": agent.name,
+                                    "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                                }
+                            }
+                            yield {"type": "tool_result", "tool_name": "", "tool_result": tr.content}
+
+                        # SIGNAL END OF TURN STEP: Ensures tool results are committed to UI
+                        usage_info = {
+                            "total_tokens": getattr(final_usage, 'total_tokens', 0) if final_usage else 0,
+                            "prompt_tokens": getattr(final_usage, 'prompt_tokens', 0) if final_usage else 0,
+                            "completion_tokens": getattr(final_usage, 'completion_tokens', 0) if final_usage else 0,
+                            "total_cost": self._calculate_cost(provider.name, model_id, final_usage) if final_usage else 0.0,
+                        }
                         yield {
-                            "type": "tool_call",
-                            "tool_name": tool_name,
-                            "tool_args": json.loads(args_raw) if isinstance(args_raw, str) else args_raw,
+                            "type": "agent_turn_end",
+                            "agent_name": agent.name,
+                            "message_id": msg_record.id,
+                            "usage": usage_info,
                         }
 
-                    tool_results = await self._execute_tool_calls(final_tool_calls, conversation_id=conversation_id, agent_id=agent_id)
-                    status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
-                    
-                    # Tool Governor Reflection & Halts
-                    for tr in tool_results:
-                        await self.conv_service.add_message(
-                            conversation_id, "tool", tr.content, tool_call_id=tr.tool_call_id,
-                        )
-                        agent_msgs.append(tr)
-                        yield {"type": "tool_result", "tool_name": "", "tool_result": tr.content}
+                        for tc in final_tool_calls:
+                            func = tc.get("function", {})
+                            t_name = func.get("name", "")
+                            t_args = func.get("arguments", "{}")
+                            intervention = governor.record_and_check(t_name, t_args)
+                            if intervention:
+                                agent_msgs.append(ChatMessage(role="user", content=intervention))
+                                yield {"type": "chunk", "delta": "\n[System]: " + intervention + "\n", "agent_name": "Governor"}
+                                break
+                        
+                        reflection = governor.should_reflect()
+                        if reflection:
+                            agent_msgs.append(ChatMessage(role="user", content=reflection))
+                        # Safeguard: Prevent saving empty assistant messages and break loops
+                        content_clean = full_response.strip()
+                        
+                        # Text Repetition Detection
+                        if content_clean:
+                            if content_clean in history_responses:
+                                logger.warning("Agent %s repeated its own previous response. Forces termination.", agent.name)
+                                yield {"type": "notification", "message": f"[{agent.name} repeated a previous response. Breaking loop.]"}
+                                break
+                            history_responses.append(content_clean)
+                            if len(history_responses) > 3:
+                                history_responses.pop(0)
 
-                    for tc in final_tool_calls:
-                        func = tc.get("function", {})
-                        t_name = func.get("name", "")
-                        t_args = func.get("arguments", "{}")
-                        intervention = governor.record_and_check(t_name, t_args)
-                        if intervention:
-                            agent_msgs.append(ChatMessage(role="user", content=intervention))
-                            yield {"type": "chunk", "delta": "\n[System]: " + intervention + "\n", "agent_name": "Governor"}
+                        if not content_clean and not final_tool_calls:
+                            logger.warning("Agent %s returned empty response in turn. Forces termination.", agent.name)
+                            yield {"type": "notification", "message": f"[{agent.name} provided no content. Breaking loop.]"}
                             break
-                    
-                    reflection = governor.should_reflect()
-                    if reflection:
-                        agent_msgs.append(ChatMessage(role="user", content=reflection))
-                else:
-                    msg_record = await self.conv_service.add_message(
-                        conversation_id, "assistant", full_response, agent_name=agent.name,
-                    )
-                    status_manager.set_status(agent_id, AgentState.IDLE)
-                    break  # Finished turn
-            except Exception as e:
-                status_manager.set_status(agent_id, AgentState.IDLE)
-                raise e
 
-        status_manager.set_status(agent_id, AgentState.IDLE)
+                        # Repetition Check: Look at recent messages in the conversation
+                        from app.models.conversation import Message
+                        from sqlalchemy import select
+                        
+                        recent_stmt = (
+                            select(Message)
+                            .where(Message.conversation_id == conversation_id, Message.role == "assistant")
+                            .order_by(Message.created_at.desc())
+                            .limit(2)
+                        )
+                        recent_res = await self.session.execute(recent_stmt)
+                        recent_msgs = recent_res.scalars().all()
+                        
+                        if any(m.content.strip() == content_clean for m in recent_msgs if m.content):
+                            logger.warning("Agent %s is repeating content exactly. Terminating to avoid loop.", agent.name)
+                            yield {"type": "notification", "message": f"[{agent.name} is repeating content. Breaking potential loop.]"}
+                            break
 
-        yield {
-            "type": "agent_turn_end",
-            "agent_name": agent.name,
-            "message_id": msg_record.id if msg_record else None,
-        }
+                        msg_record = await self.conv_service.add_message(
+                            conversation_id, "assistant", full_response, agent_name=agent.name,
+                        )
+                        break  # Finished turn
+                except Exception:
+                    continue
+        except GeneratorExit:
+            raise
+        except Exception as e:
+            logger.exception(f"Error in _run_agent_turn for {agent.name}: {e}")
+            yield {"type": "error", "error": str(e)}
+        finally:
+            status_manager.set_status(agent_id, AgentState.IDLE)
+
+        # Final terminal events for the turn
+        if msg_record:
+            yield {
+                "type": "agent_turn_end",
+                "agent_name": agent.name,
+                "message_id": msg_record.id,
+            }
+        else:
+            yield {
+                "type": "agent_turn_end",
+                "agent_name": agent.name,
+                "message_id": None,
+            }
 
     # ──────────────────────────────────────────────────────────────────
     # Helpers
@@ -1395,6 +1625,7 @@ class ChatService:
         target_agent_id: str,
         prompt: str,
         delegated_by: str = "Main Agent",
+        task_id: str = None,
     ) -> tuple[str, str]:
         """
         Delegate a task to a target agent.
@@ -1435,6 +1666,7 @@ class ChatService:
             user_message=delegation_prompt,
             model_string=target_agent.model,
             temperature=0.7,
+            task_id=task_id,
         )
 
         return response_text, conversation.id

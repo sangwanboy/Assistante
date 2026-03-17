@@ -1,0 +1,6 @@
+Agent: Janny Coneon 🥥, id: d1781a5b-6ab6-426e-8dec-0a2198a9d93a, is_system: True
+Agent: Research Specialist, id: c45ea290-4aec-45dc-b58c-af26610b2dac, is_system: False
+Agent: Data Analyst, id: f5a94dea-1e53-44cb-b321-99ff28bb9fb0, is_system: False
+Agent: Content Creator, id: 05eb5fac-2cea-4ed4-80cf-ef97fb2dc63f, is_system: False
+Agent: Technical Assistant, id: aa5b9bae-9038-4578-a49b-cf02475c6278, is_system: False
+Agent: Web Researcher, id: 50f004fd-9983-454f-a5c8-61c79dede93c, is_system: False

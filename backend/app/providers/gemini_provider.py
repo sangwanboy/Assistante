@@ -4,9 +4,12 @@ from typing import AsyncIterator
 
 from google import genai
 from google.genai import types
+import logging
 import base64
 
 from app.providers.base import BaseProvider, ChatMessage, StreamChunk, ModelInfo, TokenUsage
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiProvider(BaseProvider):
@@ -101,19 +104,38 @@ class GeminiProvider(BaseProvider):
             elif msg.role == "tool":
                 # Use the actual function name so Gemini can match the result to its call
                 func_name = tool_call_id_to_name.get(msg.tool_call_id or "", "tool_response")
-                parts = [types.Part.from_function_response(
+                tool_part = types.Part.from_function_response(
                     name=func_name,
                     response={"result": msg.content},
-                )]
+                )
+                
+                # Gemini requirement: tool response MUST follow model turn.
+                # If the last content was 'user' (which we use for tool responses), append to its parts.
+                # Otherwise start a new 'user' content. 
+                # Note: The 'model' turn containing the call should be immediately before.
+                if contents and contents[-1].role == "user":
+                    contents[-1].parts.append(tool_part)
+                else:
+                    contents.append(types.Content(role="user", parts=[tool_part]))
+                
                 if msg.images:
+                    target = contents[-1]
                     for b64 in msg.images:
-                        parts.append(types.Part.from_bytes(
+                        target.parts.append(types.Part.from_bytes(
                             data=base64.b64decode(b64),
                             mime_type="image/jpeg",
                         ))
-                contents.append(types.Content(role="user", parts=parts))
 
+        logger.info(f"Gemini contents built: {[f'{c.role}:{len(c.parts)}' for c in contents]}")
         return contents, system_instruction
+    def _map_model_id(self, model_id: str) -> str:
+        mapping = {
+            "gemini-2.0-flash": "gemini-2.5-flash",
+            "gemini-1.5-flash": "gemini-1.5-flash",
+            "gemini-1.5-pro": "gemini-1.5-pro",
+            "gemini-3.1-flash-lite": "gemini-2.5-flash-lite-preview-06-17",
+        }
+        return mapping.get(model_id, model_id)
 
     async def complete(
         self,
@@ -121,22 +143,36 @@ class GeminiProvider(BaseProvider):
         model: str,
         tools: list[dict] | None = None,
         temperature: float = 0.7,
+        **kwargs,
     ) -> ChatMessage:
         contents, system_instruction = self._build_contents(messages)
         gemini_tools = self._format_tools(tools)
+        mapped_model = self._map_model_id(model)
 
         if not contents:
             raise ValueError(f"No user/assistant messages to send to Gemini (got {len(messages)} messages total)")
 
-        config = types.GenerateContentConfig(
-            temperature=temperature,
-            tools=gemini_tools,
-        )
+        config_kwargs = {
+            "temperature": temperature,
+            "tools": gemini_tools,
+        }
+        
+        # Handle structured output
+        if "response_format" in kwargs:
+            fmt = kwargs["response_format"]
+            if isinstance(fmt, dict) and fmt.get("type") == "json_object":
+                config_kwargs["response_mime_type"] = "application/json"
+                if "response_schema" in kwargs:
+                    config_kwargs["response_schema"] = kwargs["response_schema"]
+            elif hasattr(fmt, "type") and getattr(fmt, "type") == "json_object":
+                config_kwargs["response_mime_type"] = "application/json"
+
+        config = types.GenerateContentConfig(**config_kwargs)
         if system_instruction:
             config.system_instruction = system_instruction
 
         response = self.client.models.generate_content(
-            model=model,
+            model=mapped_model,
             contents=contents,
             config=config,
         )
@@ -183,22 +219,34 @@ class GeminiProvider(BaseProvider):
         model: str,
         tools: list[dict] | None = None,
         temperature: float = 0.7,
+        **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         contents, system_instruction = self._build_contents(messages)
         gemini_tools = self._format_tools(tools)
+        mapped_model = self._map_model_id(model)
 
         if not contents:
             raise ValueError(f"No user/assistant messages to send to Gemini (got {len(messages)} messages total)")
 
-        config = types.GenerateContentConfig(
-            temperature=temperature,
-            tools=gemini_tools,
-        )
+        config_kwargs = {
+            "temperature": temperature,
+            "tools": gemini_tools,
+        }
+        
+        # Handle structured output (note: Gemini stream also supports this)
+        if "response_format" in kwargs:
+            fmt = kwargs["response_format"]
+            if isinstance(fmt, dict) and fmt.get("type") == "json_object":
+                config_kwargs["response_mime_type"] = "application/json"
+                if "response_schema" in kwargs:
+                    config_kwargs["response_schema"] = kwargs["response_schema"]
+
+        config = types.GenerateContentConfig(**config_kwargs)
         if system_instruction:
             config.system_instruction = system_instruction
 
         response = self.client.models.generate_content_stream(
-            model=model,
+            model=mapped_model,
             contents=contents,
             config=config,
         )
@@ -264,11 +312,11 @@ class GeminiProvider(BaseProvider):
         rpd = settings.gemini_rpd
         return [
             ModelInfo(id="gemini-2.5-flash", name="Gemini 2.5 Flash", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-2.5-flash-lite-preview-06-17", name="Gemini Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-2.5-pro", name="Gemini 2.5 Pro", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3-flash-preview", name="Gemini 3 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3-pro-preview", name="Gemini 3 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3.1-flash-lite", name="Gemini 3.1 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-3.1-flash-preview", name="Gemini 3.1 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3.1-flash-lite-preview", name="Gemini 3.1 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-3.1-pro-preview", name="Gemini 3.1 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-1.5-flash", name="Gemini 1.5 Flash", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-1.5-pro", name="Gemini 1.5 Pro", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
         ]

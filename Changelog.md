@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-03-17 — Runtime Stability Snapshot: Phase 16
+
+### Context Sync
+- Synchronized project context memory after full platform QA pass to preserve a clean handoff baseline.
+
+### Authoritative Runtime Ports
+- Frontend dev server: `127.0.0.1:5173`
+- Backend API server: `127.0.0.1:8321`
+
+### Proxy and WebSocket Alignment
+- Confirmed frontend API proxy and agent-status WebSocket must target backend port `8321` (not `8322`).
+- This alignment resolves repeated API error toast floods and missing live agent status updates.
+
+### Health Baseline
+- Verified core API paths are reachable via frontend proxy:
+  - `/api/agents`
+  - `/api/system/dashboard`
+  - `/api/system/metrics`
+  - `/api/tools`
+  - `/api/workflows`
+
+### Environment Note
+- Redis may be unavailable locally; backend runs in in-memory fallback mode and remains operational for UI workflows.
+
 ## 2026-03-13 — Observability & Rate Limit Calibration: Phase 6 Completion
 
 ### Live Chat Dashboards

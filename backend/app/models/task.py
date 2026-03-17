@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import uuid
 
-from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Index
+from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Index, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -44,8 +44,9 @@ class Task(Base):
     expected_output_schema: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Status & Results
-    status: Mapped[str] = mapped_column(String, default="pending", index=True)
-    lifecycle_stage: Mapped[str] = mapped_column(String, default="pending")  # pending, queued, running, review, done, failed
+    # Run Status Union: "QUEUED" | "RUNNING" | "WAITING_TOOL" | "WAITING_CHILD" | "COMPLETED" | "FAILED" | "TIMED_OUT" | "CANCELED" | "DLQ"
+    status: Mapped[str] = mapped_column(String, default="QUEUED", index=True)
+    lifecycle_stage: Mapped[str] = mapped_column(String, default="QUEUED")
     prompt: Mapped[str] = mapped_column(Text, default="")
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -63,13 +64,22 @@ class Task(Base):
     checkpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timeout & retry
-    timeout_seconds: Mapped[int] = mapped_column(Integer, default=900)  # 15 minutes
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=600)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     max_retries: Mapped[int] = mapped_column(Integer, default=3)
 
+    # Execution Heartbeats & Timeouts
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    step_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    # Cancellation & Control
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    lock_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    step_idempotent: Mapped[bool] = mapped_column(Boolean, default=True)
+
     # autonomous limits & trackers
-    max_steps: Mapped[int] = mapped_column(Integer, default=40)
-    max_tool_calls: Mapped[int] = mapped_column(Integer, default=12)
+    max_steps: Mapped[int] = mapped_column(Integer, default=100)
+    max_tool_calls: Mapped[int] = mapped_column(Integer, default=50)
     max_tokens: Mapped[int] = mapped_column(Integer, default=200000)
     step_count: Mapped[int] = mapped_column(Integer, default=0)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)

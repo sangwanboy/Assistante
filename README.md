@@ -4,7 +4,12 @@ Assitance is a multi-purpose AI assistant platform offering flexible support for
 
 ## Latest Updates (2026-03-13)
 
-### Phase 7: Dynamic Model-Specific Rate Limiting ✅ COMPLETED & CLEANED
+### Phase 9: Orchestration Silence & Heartbeat Context Debugging 🚧 IN-PROGRESS
+- **Janny Model Correction**: Updated the System Agent (Janny) from an invalid preview model to a stable Gemini 2.5 Flash ID in the database.
+- **Orchestration Resiliency**: Refactored `OrchestrationEngine` with centralized model resolution and robust error handling for delegation turns.
+- **Tool Context Debugging**: Investigating `agent_id` propagation issues in `ChatService` and adding execution tracing to `ScheduleTool`.
+
+### Phase 8: Heartbeat Transparency, Autonomous Scheduling & Brave Search ✅ COMPLETED
 - **Centralized Resolution**: `ModelRegistryService` ensures limits are linked to canonical models via DB lookups.
 - **Dynamic Enforcement**: `LLMGateway` puls RPM/TPM/RPD limits per-request with adaptive 5s retry loops.
 - **HUD & Sidebar Overhaul**: Redesigned the `ChatSidebarDashboard` to match the premium aesthetics of the main system dashboard, including real-time progress bars and pulsing status indicators.

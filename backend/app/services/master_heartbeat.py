@@ -57,6 +57,7 @@ class MasterHeartbeat:
         self._tick_count = 0
         self._last_run: dict[str, datetime] = {}
         self._metrics: dict = {}
+        self._start_time: datetime | None = None
 
         # Sub-monitors (lazy-initialized)
         self._workflow_monitor = None
@@ -111,6 +112,7 @@ class MasterHeartbeat:
         if self._running:
             return
         self._running = True
+        self._start_time = datetime.now(timezone.utc)
         self._task = asyncio.create_task(self._loop())
         logger.info(
             "[MasterHeartbeat] Started (tick=%.0fs, monitors: %s)",
@@ -265,7 +267,7 @@ class MasterHeartbeat:
         from app.models.task import Task
 
         async with self._session_factory() as session:
-            stmt = select(Task).where(Task.status.in_(["running", "pending"]))
+            stmt = select(Task).where(Task.status.in_(["RUNNING", "QUEUED", "WAITING_TOOL", "WAITING_CHILD"]))
             result = await session.execute(stmt)
             tasks = result.scalars().all()
 
@@ -275,7 +277,7 @@ class MasterHeartbeat:
             timed_out = 0
 
             for task in tasks:
-                if task.status == "running":
+                if task.status == "RUNNING":
                     active += 1
                     # Check for progress stall (60s no update)
                     if task.updated_at:
@@ -368,47 +370,7 @@ class MasterHeartbeat:
             return {"active": active, "stalled": stalled}
 
     async def _execution_watchdog(self) -> dict | None:
-        """Check for agent tasks exceeding max execution time."""
-        if not self._session_factory:
-            return None
-
-        from sqlalchemy import select
-        from app.models.task import Task
-
-        async with self._session_factory() as session:
-            stmt = select(Task).where(Task.status == "running")
-            result = await session.execute(stmt)
-            running_tasks = result.scalars().all()
-
-            now = datetime.now(timezone.utc)
-            killed = 0
-
-            for task in running_tasks:
-                if not task.started_at:
-                    continue
-                started = task.started_at
-                if started.tzinfo is None:
-                    started = started.replace(tzinfo=timezone.utc)
-                elapsed = (now - started).total_seconds()
-
-                if elapsed > self.MAX_AGENT_EXECUTION_TIME:
-                    task.status = "failed"
-                    task.completed_at = now
-                    task.result = (
-                        f"[WATCHDOG] Terminated after {elapsed:.0f}s "
-                        f"(max={self.MAX_AGENT_EXECUTION_TIME}s). "
-                        f"Progress: {task.progress}%, Steps: {task.step_count}"
-                    )
-                    killed += 1
-                    logger.warning(
-                        "[Watchdog] Task %s killed after %.0fs (agent: %s)",
-                        task.id, elapsed, task.assigned_agent_id
-                    )
-
-            if killed > 0:
-                await session.commit()
-                return {"killed": killed}
-
+        """DEPRECATED: Now handled by the Supervisor service."""
         return None
 
     async def _broadcast_metrics(self, metrics: dict):

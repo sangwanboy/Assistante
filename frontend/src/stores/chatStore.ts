@@ -29,6 +29,7 @@ interface ChatState {
 
   // UI state
   isStreaming: boolean;
+  busyThreads: Record<string, boolean>;
   streamingContent: string;
   streamingToolCalls: { id?: string; name: string; args?: Record<string, unknown>; result?: string }[];
   streamingAgentName: string | null;
@@ -76,6 +77,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   models: [],
   isStreaming: false,
+  busyThreads: {},
   streamingContent: '',
   streamingToolCalls: [],
   streamingAgentName: null,
@@ -98,6 +100,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const conversations = await api.getConversations();
       set({ conversations });
+      
+      // Auto-restore last session or find default system agent chat
+      const savedId = localStorage.getItem('chat_active_conv_id');
+      if (savedId && conversations.some(c => c.id === savedId)) {
+        get().selectConversation(savedId);
+      } else if (conversations.length > 0) {
+        // Fallback: leave it for the user to select
+      }
     } catch (e: unknown) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -120,8 +130,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({
         activeConversationId: id,
         messages: conv.messages || [],
+        isStreaming: false,
+        streamingContent: '',
+        streamingToolCalls: [],
+        streamingAgentName: null,
         error: null,
       });
+      localStorage.setItem('chat_active_conv_id', id);
       get().connectWebSocket(id);
     } catch (e: unknown) {
       console.error('[ChatStore] selectConversation error:', e);
@@ -240,26 +255,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     _pendingContent: '',
                     _throttleTimeout: null
                   }));
-                }, 40); // 40ms = ~25fps, plenty for smooth text but saves 90% of renders
+                }, 40);
               }
-              return { isStreaming: true };
+              const threadId = get().activeConversationId;
+              const newBusy = { ...state.busyThreads };
+              if (threadId) newBusy[threadId] = true;
+
+              return { isStreaming: true, busyThreads: newBusy };
             });
             break;
 
           case 'agent_turn_start':
             if (get()._throttleTimeout) clearTimeout(get()._throttleTimeout!);
-            set({
+            set((state) => ({
               streamingAgentName: event.agent_name || null,
               streamingContent: '',
               streamingToolCalls: [],
               _pendingContent: '',
               _throttleTimeout: null,
-            });
+              isStreaming: true,
+              busyThreads: state.activeConversationId ? { ...state.busyThreads, [state.activeConversationId]: true } : state.busyThreads
+            }));
             break;
 
-          case 'agent_turn_end':
+            case 'agent_turn_end':
             set((state) => {
-              // Flush any remaining content
               if (state._throttleTimeout) clearTimeout(state._throttleTimeout);
               const finalContent = state.streamingContent + state._pendingContent;
 
@@ -268,30 +288,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 role: 'assistant',
                 content: finalContent,
                 agent_name: state.streamingAgentName,
+                created_at: new Date().toISOString(),
               };
 
-              const toolMessages: Message[] = state.streamingToolCalls.map(tc => ({
-                id: tc.id || (Date.now() + Math.floor(Math.random() * 1000000)),
-                role: 'tool',
-                content: `${tc.name}\n${JSON.stringify(tc.args || {}, null, 2)}\n\nResult:\n${tc.result || 'No result'}`,
-                agent_name: state.streamingAgentName,
-              }));
-
-              const defaultCostPer1k = 0.002; // Average fallback cost over various models
+              const defaultCostPer1k = 0.002;
               const increment = (event.usage?.total_tokens || 0);
+              const costIncrement = event.usage?.total_cost ?? (increment / 1000) * defaultCostPer1k;
+              
               const newTokens = state.sessionTokens + increment;
-              const newCost = state.sessionCost + (increment / 1000) * defaultCostPer1k;
+              const newCost = state.sessionCost + costIncrement;
+
+              const newBusy = { ...state.busyThreads };
+              if (state.activeConversationId) newBusy[state.activeConversationId] = false;
 
               return {
-                messages: [...state.messages, ...toolMessages, agentMsg],
+                messages: finalContent.trim() ? [...state.messages, agentMsg] : state.messages,
                 streamingContent: '',
                 _pendingContent: '',
                 _throttleTimeout: null,
                 streamingToolCalls: [],
                 streamingAgentName: null,
-                isStreaming: false,
                 sessionTokens: newTokens,
                 sessionCost: newCost,
+                busyThreads: newBusy,
+              };
+            });
+            break;
+
+          case 'message_add':
+            set((state) => {
+              if (!event.message) return state;
+              if (state.messages.some(m => m.id === event.message?.id)) return state;
+              return {
+                messages: [...state.messages, event.message]
               };
             });
             break;
@@ -394,23 +423,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
             break;
 
           case 'done':
-            set(() => ({
-              isStreaming: false,
-              streamingContent: '',
-              streamingToolCalls: [],
-              streamingAgentName: null,
-            }));
+            set((state) => {
+              const newBusy = { ...state.busyThreads };
+              if (state.activeConversationId) newBusy[state.activeConversationId] = false;
+              return {
+                isStreaming: false,
+                streamingContent: '',
+                streamingToolCalls: [],
+                streamingAgentName: null,
+                busyThreads: newBusy,
+              };
+            });
             // Refresh conversation list to update timestamps
             get().loadConversations();
             break;
 
           case 'error':
-            set({
-              error: normalizeStreamError(event.error),
-              isStreaming: false,
-              streamingContent: '',
-              streamingToolCalls: [],
-              streamingAgentName: null,
+            set((state) => {
+              const newBusy = { ...state.busyThreads };
+              if (state.activeConversationId) newBusy[state.activeConversationId] = false;
+              return {
+                error: normalizeStreamError(event.error),
+                isStreaming: false,
+                streamingContent: '',
+                streamingToolCalls: [],
+                streamingAgentName: null,
+                busyThreads: newBusy,
+              };
             });
             break;
         }
@@ -434,6 +473,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const userMsg: Message = {
       role: 'user',
       content,
+      created_at: new Date().toISOString(),
     };
 
     set((state) => ({
@@ -443,6 +483,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingToolCalls: [],
       streamingAgentName: null,
       error: null,
+      busyThreads: activeConversationId ? { ...state.busyThreads, [activeConversationId]: true } : state.busyThreads
     }));
 
     const conv = get().conversations.find((c: Conversation) => c.id === activeConversationId);
@@ -458,7 +499,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     wsClient.disconnect();
 
     // Commit whatever partial response we had to the message list
-    set({
+    set((state) => ({
       messages: [
         ...messages,
         {
@@ -466,13 +507,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
           role: 'assistant',
           content: streamingContent + ' *(Stopped by user)*',
           agent_name: streamingAgentName,
+          created_at: new Date().toISOString(),
         } as Message
       ],
       isStreaming: false,
       streamingContent: '',
       streamingToolCalls: [],
       streamingAgentName: null,
-    });
+      busyThreads: activeConversationId ? { ...state.busyThreads, [activeConversationId]: false } : state.busyThreads
+    }));
 
     // Reconnect so the user can immediately send another message
     get().connectWebSocket(activeConversationId);

@@ -1,0 +1,50 @@
+﻿uv : INFO:     Started server process [43960]
+At line:1 char:139
++ ... -Seconds 2; uv run uvicorn app.main:app --host 
+127.0.0.1 --port 8321  ...
++                 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (INFO:     Star 
+   ted server process [43960]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+INFO:     Waiting for application startup.
+Redis unavailable (Error 22 connecting to localhost:6379. 
+The remote computer refused the network connection.) ù 
+falling back to in-memory.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8321 (Press 
+CTRL+C to quit)
+INFO:     127.0.0.1:53487 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:52557 - "WebSocket 
+/api-ws/agents/status" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:53489 - "GET /api/workflows/7bcdd3cc-25d7-4dfd-a188-5d3de471f58b/memory HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "D:\Projects\Assitance\backend\.venv\Lib\site-package
+s\uvicorn\protocols\http\httptools_impl.py", line 416, in 
+run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Projects\Assitance\backend\.venv\Lib\site-package
+s\uvicorn\middleware\proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Projects\Assitance\backend\.venv\Lib\site-package
+s\fastapi\applications.py", line 1160, in __call__
+    await super().__call__(scope, receive, send)
+  File "D:\Projects\Assitance\backend\.venv\Lib\site-package
+s\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "D:\Projects\Assitance\backend\.venv\Lib\site-package
+s\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "D:\Projects\Assitance\backend\.venv\Lib\site-package
+s\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "D:\Projects\Assitance\backend\.venv\Lib\site-package
+s\starlette\middleware\cors.py", line 87, in __call__
+    await self.app(scope, receive, send)

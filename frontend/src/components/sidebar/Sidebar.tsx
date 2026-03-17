@@ -1,4 +1,4 @@
-import { Home, MessageSquare, BookOpen, Workflow, Users, Settings, Wrench, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, MessageSquare, BookOpen, Workflow, Users, Settings, Wrench, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 import * as Collapsible from '@radix-ui/react-collapsible';
 
 interface SidebarProps {
@@ -31,24 +31,20 @@ export function Sidebar({ activeView, onViewChange, isCollapsed, onToggleCollaps
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <Collapsible.Content className="data-[state=closed]:hidden">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <img
-                    src="/brand/logo_full.png"
-                    alt="CrossClaw"
-                    className="h-10 w-auto object-contain flex-shrink-0"
-                  />
+                  <div className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center border border-white/[0.08]">
+                    <Zap className="h-5 w-5 text-indigo-400" />
+                  </div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-bold text-white leading-tight">CrossClaw</span>
-                    <span className="text-xs text-gray-400 leading-tight">Enterprise</span>
+                    <span className="text-sm font-bold text-white leading-tight">Assistance</span>
+                    <span className="text-xs text-gray-400 leading-tight">System OS</span>
                   </div>
                 </div>
               </Collapsible.Content>
               <Collapsible.Content className="data-[state=open]:hidden">
                 <div className="flex items-center justify-center">
-                  <img
-                    src="/brand/logo.png"
-                    alt="CrossClaw"
-                    className="h-8 w-8 object-contain"
-                  />
+                  <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center border border-white/[0.08]">
+                    <Zap className="h-4 h-4 text-indigo-400" />
+                  </div>
                 </div>
               </Collapsible.Content>
             </div>

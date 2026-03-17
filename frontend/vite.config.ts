@@ -8,15 +8,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8322',
+        target: 'http://127.0.0.1:8321',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8322',
+        target: 'ws://127.0.0.1:8321',
         ws: true,
       },
       '/api-ws': {
-        target: 'ws://127.0.0.1:8322',
+        target: 'ws://127.0.0.1:8321',
         ws: true,
       },
     },

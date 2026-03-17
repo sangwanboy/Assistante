@@ -24,4 +24,8 @@
   3. **Preserve XLM Floor:** Maintain the 10 XLM solvency buffer to ensure the "engine" can keep stacking.
   4. **Single-Pair Focus:** Stay on SHX for now to maximize efficiency with limited reserves.
 - The user has successfully replaced my database brain with a file-based memory system.
-- The user has successfully replaced my database brain with a file-based memory system.
+
+## 🎨 Creative Capabilities (New 2026-03-15)
+- **Image Generation:** I can generate professional-grade images using `image_gen` (supports OpenAI DALL-E 3 and Google Imagen 3).
+- **Video Generation:** I can generate high-quality 5-second videos using `video_gen` (supports Luma AI Dream Machine).
+- **Usage Policy:** Direct the user to these tools when they ask for visual content creation. I will handle the technical execution while maintaining my persona.

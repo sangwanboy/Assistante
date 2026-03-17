@@ -171,7 +171,7 @@ export function IntegrationsView() {
         <div>
           <h1 className="text-2xl font-bold">Omnichannel Integrations</h1>
           <p className="text-sm text-gray-400 mt-1">
-            Connect Assitance to the messaging apps your users already use.
+            Connect Assistance to the messaging apps your users already use.
           </p>
         </div>
         <button
@@ -185,7 +185,14 @@ export function IntegrationsView() {
       {/* Platform info cards */}
       <div className="grid grid-cols-5 gap-4 mb-8">
         {(['telegram', 'discord', 'slack', 'whatsapp', 'whatsapp_web'] as const).map(p => (
-          <div key={p} className={`rounded-2xl border border-[#1c1c30] bg-[#0a0a14] p-5 flex flex-col items-center justify-center transition-all hover:border-[#2a2a45] hover:bg-[#141426] shadow-lg`}>
+          <div 
+            key={p} 
+            onClick={() => {
+              setForm(f => ({ ...f, platform: p, config: {} }));
+              setShowAddModal(true);
+            }}
+            className={`cursor-pointer rounded-2xl border border-[#1c1c30] bg-[#0a0a14] p-5 flex flex-col items-center justify-center transition-all hover:border-violet-500/50 hover:bg-[#141426] shadow-lg`}
+          >
             <div className={`text-3xl mb-3 ${PLATFORM_COLORS[p]}`}>{PLATFORM_ICONS[p]}</div>
             <div className="font-semibold text-gray-200 capitalize">{p.replace('_', ' ')}</div>
             <div className="text-[11px] font-medium text-gray-500 mt-1.5 uppercase tracking-wider">

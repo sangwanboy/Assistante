@@ -17,7 +17,7 @@ if settings.is_sqlite:
     DATABASE_PATH = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
         "data",
-        "assitance.db",
+        "assistance.db",
     )
     DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 else:

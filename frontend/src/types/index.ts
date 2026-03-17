@@ -55,16 +55,23 @@ export interface StreamEvent {
   type: 'chunk' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'agent_turn_start' | 'agent_turn_end'
   | 'chain_start' | 'chain_update' | 'chain_complete' | 'orchestration_plan' | 'task_progress'
   | 'autonomous_start' | 'autonomous_step_start' | 'autonomous_step_end'
-  | 'autonomous_complete' | 'autonomous_timeout' | 'autonomous_budget_exceeded' | 'autonomous_error';
+  | 'autonomous_complete' | 'autonomous_timeout' | 'autonomous_budget_exceeded' | 'autonomous_error' | 'message_add';
   delta?: string;
   tool_name?: string;
   tool_call_id?: string;
   tool_args?: Record<string, unknown>;
   tool_result?: string;
-  message_id?: number;
+  message_id?: number | string;
   conversation_id?: string;
   agent_name?: string;
   error?: string;
+  message?: Message;
+  usage?: {
+    total_tokens: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_cost?: number;
+  };
   // Chain/orchestration fields
   chain_id?: string;
   chain_state?: string;
@@ -83,14 +90,13 @@ export interface StreamEvent {
   max_steps?: number;
   total_tool_calls?: number;
   tool_calls_used?: number;
-  // Usage tracking
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
 export interface AppSettings {
   openai_api_key_set: boolean;
   anthropic_api_key_set: boolean;
   gemini_api_key_set: boolean;
+  brave_search_api_key_set: boolean;
   ollama_base_url: string;
   default_model: string;
   default_temperature: number;

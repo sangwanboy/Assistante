@@ -68,6 +68,12 @@ class ToolRegistry:
             CheckTaskStatusTool, GetTaskTreeStatusTool, GetSubtaskResultsTool
         )
         from app.tools.agent_progress import UpdateTaskProgressTool
+        from app.tools.brave_search import BraveSearchTool
+        from app.tools.heartbeat_tool import ScheduleTool
+        from app.tools.system_config_tool import SystemConfigTool
+        from app.tools.image_gen import ImageGenerationTool
+        from app.tools.video_gen import VideoGenerationTool
+        from app.tools.system_logs_tool import SystemLogsTool
 
         for tool in [
             WebSearchTool(), FileManagerTool(), CodeExecutorTool(), CommandExecutorTool(),
@@ -94,7 +100,13 @@ class ToolRegistry:
             GetTaskTreeStatusTool(),
             GetSubtaskResultsTool(),
             UpdateTaskProgressTool(),
+            BraveSearchTool(),
+            ScheduleTool(),
+            SystemConfigTool(),
             SessionStatusTool(),
+            ImageGenerationTool(),
+            VideoGenerationTool(),
+            SystemLogsTool(),
         ]:
             self.register(tool)
             self._builtin_names.add(tool.name)

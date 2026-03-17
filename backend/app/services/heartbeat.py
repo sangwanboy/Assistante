@@ -121,34 +121,40 @@ class HeartbeatService:
             session=session,
         )
 
-        # Find or create a dedicated heartbeat conversation for this agent
-        from app.models.conversation import Conversation
-        conv_result = await session.execute(
-            select(Conversation).where(
-                Conversation.agent_id == sched.agent_id,
-                Conversation.title == f"__heartbeat_{sched.id}__",
+        target_conv_id = task_config.get("conversation_id")
+
+        # Find or create a dedicated heartbeat conversation for this agent as a fallback
+        if target_conv_id:
+            conv_id = target_conv_id
+        else:
+            from app.models.conversation import Conversation
+            conv_result = await session.execute(
+                select(Conversation).where(
+                    Conversation.agent_id == sched.agent_id,
+                    Conversation.title == f"__heartbeat_{sched.id}__",
+                )
             )
-        )
-        conv = conv_result.scalar_one_or_none()
-        if conv is None:
-            import uuid
-            from app.models.conversation import Conversation as Conv
-            conv = Conv(
-                id=str(uuid.uuid4()),
-                title=f"__heartbeat_{sched.id}__",
-                agent_id=sched.agent_id,
-                model=agent.model or "gemini/gemini-2.5-flash",
-            )
-            session.add(conv)
-            await session.commit()
-            await session.refresh(conv)
+            conv = conv_result.scalar_one_or_none()
+            if conv is None:
+                import uuid
+                from app.models.conversation import Conversation as Conv
+                conv = Conv(
+                    id=str(uuid.uuid4()),
+                    title=f"__heartbeat_{sched.id}__",
+                    agent_id=sched.agent_id,
+                    model=agent.model or "gemini/gemini-2.5-flash",
+                )
+                session.add(conv)
+                await session.commit()
+                await session.refresh(conv)
+            conv_id = conv.id
 
         # Run as a non-streaming chat call
         try:
             await chat_svc.chat(
-                conversation_id=conv.id,
+                conversation_id=conv_id,
                 user_message=prompt,
-                model=agent.model or "gemini/gemini-2.5-flash",
+                model_string=agent.model or "gemini/gemini-2.5-flash",
             )
         except Exception as exc:
             logger.error("Heartbeat task failed for agent %s: %s", agent.name, exc)

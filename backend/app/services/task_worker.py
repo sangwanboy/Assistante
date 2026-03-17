@@ -128,7 +128,7 @@ class TaskWorker:
                     return
 
                 # Update task status via TaskManager (fires task_started)
-                await tm.update_task_state(task_id, "running")
+                await tm.update_task_state(task_id, "RUNNING")
 
             # Execute the agent task via the autonomous loop or direct chat
             result = await self._run_agent_task(agent_id, task_id, prompt)
@@ -137,7 +137,7 @@ class TaskWorker:
                 tm = TaskManager(session)
                 task = await tm.get_task(task_id)
                 if task:
-                    await tm.update_task_state(task_id, "completed", result=result)
+                    await tm.update_task_state(task_id, "COMPLETED", result=result)
 
             elapsed = time.time() - start_time
             logger.info("Task %s completed in %.1fs", task_id, elapsed)
@@ -154,7 +154,7 @@ class TaskWorker:
             logger.error("Task %s execution failed: %s", task_id, e)
             async with async_session() as session:
                 tm = TaskManager(session)
-                await tm.update_task_state(task_id, "failed", error_message=str(e))
+                await tm.update_task_state(task_id, "FAILED", error_message=str(e))
             await self._handle_task_failure(task_data, str(e))
 
         finally:
@@ -246,7 +246,7 @@ class TaskWorker:
             if task.retry_count < task.max_retries:
                 # Retry with exponential backoff
                 backoff = min(2 ** task.retry_count * 5, 60)  # 5s, 10s, 20s, max 60s
-                task.status = "retrying"
+                task.status = "QUEUED" # Mark as QUEUED for retry
                 await session.commit()
 
                 logger.info("Retrying task %s in %ds (attempt %d/%d)",
@@ -264,7 +264,7 @@ class TaskWorker:
                     logger.error("Failed to re-enqueue task %s: %s", task_id, e)
             else:
                 # Move to dead-letter queue
-                task.status = "failed"
+                task.status = "DLQ" # Max retries hit, move to DLQ status
                 task.result = f"Failed after {task.max_retries} retries: {error}"
                 await session.commit()
                 await self._move_to_dead_letter(task_data, error)

@@ -25,8 +25,9 @@ from app.models.workflow import Workflow, Node, Edge, WorkflowRun
 from app.providers.base import ChatMessage
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
-from app.services.agent_status import AgentStatusManager
+from app.services.agent_status import AgentStatusManager, AgentState
 from app.services.capability_registry import CapabilityRegistry
+from app.schemas.orchestration import OrchestrationPlan
 
 logger = logging.getLogger(__name__)
 
@@ -41,28 +42,7 @@ def check_depth(current_depth: int, max_depth: int) -> bool:
     return current_depth >= max_depth
 
 
-def _extract_json_from_text(text: str) -> dict | None:
-    """Try to extract a JSON object from LLM text output."""
-    # Try the whole text first
-    try:
-        return json.loads(text.strip())
-    except (json.JSONDecodeError, ValueError):
-        pass
-    # Try to find JSON block in markdown code fence
-    match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1).strip())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    # Try to find first { ... } block
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except (json.JSONDecodeError, ValueError):
-            pass
-    return None
+# Removed _extract_json_from_text as we now use strictly typed structured outputs.
 
 
 class OrchestrationEngine:
@@ -111,7 +91,22 @@ class OrchestrationEngine:
 
         logger.info("Chain %s started for conversation %s", chain.id, conversation_id)
 
-        await AgentStatusManager.get_instance()
+        status_manager = await AgentStatusManager.get_instance()
+        
+        # Create the parent task early to track orchestration progress
+        from app.services.task_manager import TaskManager
+        tm = TaskManager(self.session)
+        parent_task = await tm.create_task(
+            assigned_agent_id=system_agent.id,
+            prompt=user_message,
+            goal="Orchestrate delegated tasks",
+            conversation_id=conversation_id
+        )
+        await tm.update_task_state(parent_task.id, "RUNNING")
+        
+        status_manager.set_status(system_agent.id, AgentState.WORKING, "Analyzing request and planning...")
+        yield {"type": "agent_turn_start", "agent_name": system_agent.name}
+        yield {"type": "chunk", "delta": "🔍 *System Agent is analyzing the request...*\n"}
 
         try:
             # ── Step 1: Ask System Agent to plan ──
@@ -149,15 +144,14 @@ Rules:
 - Use exact agent names. Keep steps minimal (1-4 typically).
 """
 
-            plan_json = await self._ask_system_agent(
+            plan: OrchestrationPlan | None = await self._ask_system_agent(
                 system_agent, planning_prompt, temperature
             )
-            plan = _extract_json_from_text(plan_json)
 
-            if not plan or not plan.get("needs_delegation"):
+            if not plan or not plan.needs_delegation:
                 # System Agent handles directly — run its turn
-                chain.state = "completed"
-                chain.plan_summary = plan.get("reasoning", "Handling directly") if plan else "Direct response"
+                chain.state = "COMPLETED"
+                chain.plan_summary = plan.reasoning if plan else "Direct response"
                 await self.session.commit()
 
                 yield {
@@ -169,16 +163,18 @@ Rules:
                 # Let System Agent respond to the original message
                 if self.chat_service:
                     async for event in self.chat_service._run_agent_turn(
-                        conversation_id, system_agent, temperature, is_group=True
+                        conversation_id, system_agent, temperature, is_group=True, task_id=str(parent_task.id)
                     ):
                         yield event
+                
+                await tm.update_task_state(parent_task.id, "COMPLETED")
 
                 yield {"type": "chain_complete", "chain_id": chain.id}
                 return
 
             # ── Step 2: Store and broadcast plan ──
-            chain.plan_summary = plan.get("reasoning", "")
-            steps = plan.get("steps", [])
+            chain.plan_summary = plan.reasoning
+            steps = plan.steps
             agents_involved = [system_agent.id]
 
             # ── Step 2.5: Agent Discovery & Auto-Creation ──
@@ -190,7 +186,7 @@ Rules:
             agent_name_map = {a.name.lower(): a for a in channel_agents}
 
             for step in steps:
-                step_agent_name = step.get("agent_name", "")
+                step_agent_name = step.agent_name
                 if step_agent_name.lower() in agent_name_map:
                     continue  # Agent exists in channel
 
@@ -211,11 +207,11 @@ Rules:
                     new_agent = Agent(
                         id=agent_new_id(),
                         name=step_agent_name,
-                        description=f"Auto-created for: {step.get('task', '')[:100]}",
-                        role=step.get("task", "General Specialist")[:100],
+                        description=f"Auto-created for: {step.task[:100]}",
+                        role=step.task[:100],
                         provider="gemini",
                         model="gemini/gemini-2.5-flash",
-                        system_prompt=f"You are {step_agent_name}, a specialized agent. Your task focus: {step.get('task', '')}",
+                        system_prompt=f"You are {step_agent_name}, a specialized agent. Your task focus: {step.task}",
                         is_active=True,
                         personality_tone="professional",
                         reasoning_style="analytical",
@@ -237,22 +233,22 @@ Rules:
                     }
                 else:
                     # Limits reached — find closest existing agent
-                    fallback = await find_closest_agent(
+                        fallback = await find_closest_agent(
                         self.session,
-                        required_role=step.get("task"),
+                        required_role=step.task,
                     )
                     if fallback:
-                        step["agent_name"] = fallback.name
+                        step.agent_name = fallback.name
                         agent_name_map[fallback.name.lower()] = fallback
                         logger.info(
                             "Creation limit reached. Reusing '%s' for step '%s'",
-                            fallback.name, step.get("task"),
+                            fallback.name, step.task,
                         )
 
             # Track delegation path
             delegation_path = [system_agent.id]
             for step in steps:
-                agent_name_lower = step.get("agent_name", "").lower()
+                agent_name_lower = step.agent_name.lower()
                 if agent_name_lower in agent_name_map:
                     ag = agent_name_map[agent_name_lower]
                     if ag.id not in agents_involved:
@@ -267,14 +263,14 @@ Rules:
             yield {
                 "type": "orchestration_plan",
                 "plan_summary": chain.plan_summary,
-                "steps": [{"agent": s.get("agent_name"), "task": s.get("task")} for s in steps],
+                "steps": [{"agent": s.agent_name, "task": s.task} for s in steps],
                 "chain_id": chain.id,
             }
 
             logger.info(
                 "Chain %s plan: %d steps, agents: %s",
                 chain.id, len(steps),
-                ", ".join(s.get("agent_name", "?") for s in steps),
+                ", ".join(s.agent_name for s in steps),
             )
 
             # ── Step 3: Broadcast Active Chain State ──
@@ -291,26 +287,14 @@ Rules:
                 "current_task": "Executing orchestration plan",
             }
 
-            # ── Step 3.5: Create DB Tasks via TaskManager & Enqueue ──
-            from app.services.task_manager import TaskManager
+            # Parent task already created at start of plan_and_execute
             from app.services.task_queue import TaskQueue
-
-            tm = TaskManager(self.session)
             tq = TaskQueue()
-
-            # Create the parent task to hold the orchestration state
-            parent_task = await tm.create_task(
-                assigned_agent_id=system_agent.id,
-                prompt=user_message,
-                goal="Orchestrate delegated tasks",
-                conversation_id=conversation_id
-            )
-            await tm.update_task_state(parent_task.id, "running")
-
+            
             # Create subtasks and enqueue them
             subtask_entries: list[dict] = []
             for step in steps:
-                agent_name = step.get("agent_name", "")
+                agent_name = step.agent_name
                 ag = agent_name_map.get(agent_name.lower())
                 if not ag:
                     continue
@@ -318,20 +302,20 @@ Rules:
                 subtask = await tm.create_subtask(
                     parent_task_id=parent_task.id,
                     assigned_agent_id=ag.id,
-                    prompt=step.get("task", ""),
-                    goal=step.get("task", "")
+                    prompt=step.task,
+                    goal=step.task
                 )
                 subtask_entries.append({
                     "agent": ag,
                     "task_id": subtask.id,
-                    "task": step.get("task", ""),
+                    "task": step.task,
                 })
 
                 # Enqueue for workers to pick up
                 await tq.enqueue(
                     task_id=subtask.id,
                     agent_id=ag.id,
-                    prompt=step.get("task", ""),
+                    prompt=step.task,
                     chain_id=chain.id
                 )
 
@@ -349,56 +333,38 @@ Rules:
             # ── Step 4A: Local fallback when Redis queue is unavailable ──
             if not tq.available:
                 logger.warning(
-                    "TaskQueue unavailable (Redis down). Falling back to inline delegation execution for chain %s",
+                    "TaskQueue unavailable (Redis down). Falling back to parallel inline delegation for chain %s",
                     chain.id,
                 )
-                total = len(subtask_entries)
-                completed = 0
-
-                for entry in subtask_entries:
+                
+                async def _run_inline_task(entry):
                     agent = entry["agent"]
                     task_id = entry["task_id"]
                     task_prompt = entry["task"]
-
-                    await tm.update_task_state(task_id, "running")
-                    yield {
-                        "type": "task_progress",
-                        "chain_id": chain.id,
-                        "progress": int((completed / total) * 100) if total else 0,
-                        "status_lines": [f"{agent.name} — Running"],
-                    }
-
                     try:
+                        await tm.update_task_state(task_id, "RUNNING")
                         response_text, _conv_id = await self.chat_service.delegate_to_agent(
                             target_agent_id=agent.id,
                             prompt=task_prompt,
                             delegated_by=system_agent.name,
+                            task_id=str(entry["task_id"]),
                         )
-                        await tm.update_task_state(task_id, "completed", result=response_text)
+                        await tm.update_task_state(task_id, "COMPLETED", result=response_text)
                     except Exception as sub_exc:
-                        await tm.update_task_state(task_id, "failed", error_message=str(sub_exc))
-                        logger.warning(
-                            "Inline delegated subtask failed (chain=%s, agent=%s): %s",
-                            chain.id,
-                            agent.name,
-                            sub_exc,
-                        )
+                        await tm.update_task_state(task_id, "FAILED", error_message=str(sub_exc))
+                        logger.warning(f"Inline task failed for {agent.name}: {sub_exc}")
 
-                    completed += 1
-                    yield {
-                        "type": "task_progress",
-                        "chain_id": chain.id,
-                        "progress": int((completed / total) * 100) if total else 100,
-                        "status_lines": [f"{agent.name} — Completed"],
-                    }
+                # Start all subtasks concurrently in the background
+                for entry in subtask_entries:
+                    asyncio.create_task(_run_inline_task(entry))
 
-            # ── Step 4: Active Monitoring Loop (Every 5 seconds) ──
-            import asyncio
-            all_completed = not tq.available
+            # ── Step 4: Active Monitoring Loop (Every 2 seconds) ──
+            all_completed = False # Always monitor until active_count == 0
             last_progress_state = {}
 
             while not all_completed:
-                await asyncio.sleep(5)
+                # Polling frequency for delegated tasks
+                await asyncio.sleep(2)
                 
                 # Fetch fresh status for all subtasks
                 subtasks = await tm.get_subtasks(parent_task.id)
@@ -414,11 +380,11 @@ Rules:
                         "progress": t.progress_percent,
                         "error": t.error_message
                     }
-                    if t.status in ("pending", "running", "waiting"):
+                    if t.status in ("QUEUED", "RUNNING", "WAITING_TOOL", "WAITING_CHILD"):
                         active_count += 1
-                    elif t.status == "completed":
+                    elif t.status == "COMPLETED":
                         completed_count += 1
-                    elif t.status == "failed":
+                    elif t.status == "FAILED":
                         failed_count += 1
 
                 # Yield progress updates if state changed
@@ -434,11 +400,11 @@ Rules:
                         state = current_state.get(tid)
                         if not state:
                             continue
-                        if state['status'] == 'completed':
+                        if state['status'] == 'COMPLETED':
                             progress_lines.append(f"{name} — Completed")
-                        elif state['status'] == 'failed':
+                        elif state['status'] == 'FAILED':
                             progress_lines.append(f"{name} — Failed: {state.get('error')}")
-                        elif state['status'] == 'pending':
+                        elif state['status'] == 'QUEUED':
                             progress_lines.append(f"{name} — Pending")
                         else:
                             progress_lines.append(f"{name} — Running ({state.get('progress')}%)")
@@ -468,9 +434,13 @@ Rules:
             for t in subtasks:
                 agent = await self.session.get(Agent, t.assigned_agent_id)
                 if agent:
-                    payload[f"agent_{agent.name}_response"] = t.result if t.status == "completed" else f"FAILED: {t.error_message}"
+                    if t.status == "COMPLETED":
+                        payload[f"agent_{agent.name}_response"] = t.result
+                    else:
+                        error_msg = t.error_message or "Unknown failure"
+                        payload[f"agent_{agent.name}_response"] = f"AGENT {agent.name} FAILED: {error_msg}. Please proceed with remaining data or decide if synthesis is possible."
             
-            await tm.update_task_state(parent_task.id, "completed")
+            await tm.update_task_state(parent_task.id, "COMPLETED")
 
             if plan.get("aggregation_needed") and len(steps) > 1:
                 from app.services.conversation_service import ConversationService
@@ -498,11 +468,11 @@ Rules:
 
                     if self.chat_service:
                         async for event in self.chat_service._run_agent_turn(
-                            conversation_id, system_agent, temperature, is_group=True
+                            conversation_id, system_agent, temperature, is_group=True, task_id=str(parent_task.id)
                         ):
                             yield event
 
-            chain.state = "completed"
+            chain.state = "COMPLETED"
             await self.session.commit()
 
             # Broadcast chain completion via heartbeat
@@ -520,21 +490,37 @@ Rules:
                 chain.id, chain.depth, chain.agents_involved_json,
             )
 
+        except GeneratorExit:
+            logger.info("Chain %s: generator closed (user stopped generation)", chain.id)
+            chain.state = "cancelled"
+            await self.session.commit()
+            if 'parent_task' in locals():
+                await tm.update_task_state(parent_task.id, "CANCELED")
+
         except Exception as exc:
             logger.error("Orchestration chain %s failed: %s", chain.id, exc, exc_info=True)
             chain.state = "failed"
             await self.session.commit()
             yield {"type": "chain_update", "chain_id": chain.id, "chain_state": "failed"}
             yield {"type": "chain_complete", "chain_id": chain.id}
+            if 'parent_task' in locals():
+                await tm.update_task_state(parent_task.id, "FAILED", error_message=str(exc))
+        finally:
+            status_manager.set_status(system_agent.id, AgentState.IDLE)
 
     async def _ask_system_agent(
         self, system_agent: Agent, prompt: str, temperature: float = 0.3
     ) -> str:
         """Ask the System Agent a question and return the text response (non-streaming)."""
-        provider_name, model_id = self.chat_service._parse_model_string(system_agent.model)
-        provider = self.providers.get(provider_name)
-        if not provider:
+        if not self.chat_service:
             return ""
+
+        # Use the same robust resolution logic as ChatService for consistency and fallbacks
+        _p_name, model_id, provider, _warning = await self.chat_service._resolve_provider_and_model(system_agent.model)
+
+        # Use agent's own API key if set (ephemeral provider)
+        if system_agent.api_key:
+            provider = self.providers.create_ephemeral(system_agent.provider, system_agent.api_key)
 
         messages = [
             ChatMessage(role="system", content=(
@@ -546,5 +532,30 @@ Rules:
             ChatMessage(role="user", content=prompt),
         ]
 
-        result = await provider.complete(messages, model_id, temperature=temperature)
-        return result.content if result else ""
+        try:
+            from app.services.llm_gateway import get_gateway
+            gateway = await get_gateway(self.providers)
+            
+            # Use structured output if the provider/model supports it
+            kwargs = {
+                "temperature": temperature,
+            }
+            if provider.name == "gemini":
+                kwargs["response_format"] = {"type": "json_object"}
+                kwargs["response_schema"] = OrchestrationPlan.model_json_schema()
+
+            result = await gateway.complete(provider, messages, model_id, system_agent.id, self.session, **kwargs)
+            
+            if not result or not result.content:
+                return None
+                
+            # Parse the structured response back into the Pydantic model
+            try:
+                return OrchestrationPlan.model_validate_json(result.content)
+            except Exception as pe:
+                logger.error(f"Failed to validate orchestration plan: {pe}. Content: {result.content}")
+                return None
+
+        except Exception as e:
+            logger.exception(f"Error calling system agent '{system_agent.name}' for planning: {e}")
+            return None

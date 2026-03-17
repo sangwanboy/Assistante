@@ -13,7 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.services.agent_status import AgentStatusManager
 from app.services.hitl_service import HITLManager
 from app.services.heartbeat import HeartbeatService
+from app.services.supervisor import Supervisor
 from app.services.omnichannel.manager import OmnichannelManager
+from fastapi.staticfiles import StaticFiles
 
 import app.models.document  # Ensure model is registered before init_database
 import app.models.workflow
@@ -146,6 +148,9 @@ async def _setup_omnichannel_handler(tool_registry: ToolRegistry, provider_regis
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    from app.services.secret_manager import get_secret_manager
+    get_secret_manager()  # Warm settings from vault
+    
     await init_database()
     app.state.provider_registry = ProviderRegistry()
     app.state.tool_registry = ToolRegistry()
@@ -170,6 +175,10 @@ async def lifespan(app: FastAPI):
         session_factory=async_session,
     )
     await heartbeat.start()
+
+    # Start Supervisor service
+    supervisor = await Supervisor.get_instance()
+    await supervisor.start()
 
     # Initialize Redis client (optional — falls back to in-memory if unavailable)
     from app.services.redis_client import RedisClient
@@ -254,6 +263,11 @@ async def lifespan(app: FastAPI):
     await redis_client.close()
 
     await heartbeat.stop()
+
+    # Stop Supervisor
+    supervisor = await Supervisor.get_instance()
+    await supervisor.stop()
+
     await OmnichannelManager.get_instance().stop_all()
 
 
@@ -295,6 +309,11 @@ async def websocket_workflows(websocket: WebSocket, workflow_id: str = None):
         workflow_ws_manager.disconnect(websocket, workflow_id)
 
 app.include_router(api_router, prefix="/api")
+
+# Mount generated images directory
+images_dir = Path(__file__).resolve().parents[1] / "generated_images"
+images_dir.mkdir(exist_ok=True)
+app.mount("/generated_images", StaticFiles(directory=str(images_dir)), name="generated_images")
 
 # Mount WebSocket at root (not under /api) so frontend can connect to /ws/chat/{id}
 app.websocket("/ws/chat/{conversation_id}")(websocket_chat)
@@ -356,7 +375,7 @@ async def health_check():
     try:
         async with async_session() as session:
             active_tasks = await session.scalar(
-                select(func.count(Task.id)).where(Task.status.in_(["pending", "running"]))
+                select(func.count(Task.id)).where(Task.status.in_(["QUEUED", "RUNNING", "WAITING_TOOL", "WAITING_CHILD"]))
             ) or 0
             active_chains = await session.scalar(
                 select(func.count(DelegationChain.id)).where(DelegationChain.state == "active")

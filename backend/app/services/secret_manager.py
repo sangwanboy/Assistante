@@ -41,6 +41,15 @@ class SecretManager:
             logger.warning("SecretManager using auto-generated key (set ASSITANCE_SECRET_KEY for persistence)")
 
         self._load_vault()
+        self._warm_settings()
+
+    def _warm_settings(self):
+        """Populate runtime settings from vault if they are empty (Section 22)."""
+        for provider in ["openai", "anthropic", "gemini", "brave_search"]:
+            if not getattr(settings, f"{provider}_api_key", None):
+                key = self.get_api_key(provider)
+                if key:
+                    logger.info("Warmed settings.%s_api_key from vault", provider)
 
     def _normalize_provider(self, provider: str) -> str:
         provider_l = (provider or "").strip().lower()
@@ -113,23 +122,42 @@ class SecretManager:
             logger.warning("Failed to decrypt value in vault with current key")
             return ""
 
+    def _normalize_provider(self, provider: str) -> str:
+        provider_l = (provider or "").strip().lower()
+        if provider_l in ["google", "gemini"]:
+            return "gemini"
+        if provider_l in ["openai", "gpt"]:
+            return "openai"
+        if provider_l in ["anthropic", "claude"]:
+            return "anthropic"
+        # For other keys like 'brave_search', keep them as is
+        return provider_l
+
     def get_api_key(self, provider: str) -> str | None:
-        """Get API key for a given provider.
+        """Get API key for a given provider or configuration key.
 
         Safe wrapper that agents use instead of accessing credentials directly.
         """
-        provider = self._normalize_provider(provider)
+        norm_provider = self._normalize_provider(provider)
 
+        # 1. Try hardcoded provider settings
         key_map = {
             "openai": settings.openai_api_key,
             "anthropic": settings.anthropic_api_key,
             "gemini": settings.gemini_api_key,
+            "brave_search": settings.brave_search_api_key,
         }
-        raw_key = key_map.get(provider)
+        raw_key = key_map.get(norm_provider)
         if raw_key:
             return raw_key
 
-        encrypted = self._vault_data.get(provider)
+        # 2. Try vault data (flexible for any key)
+        encrypted = self._vault_data.get(norm_provider)
+        if not encrypted:
+            # Try original name if normalized is different and not in map
+            if norm_provider != provider.lower():
+                encrypted = self._vault_data.get(provider.lower())
+
         if not encrypted:
             return None
 
@@ -137,24 +165,35 @@ class SecretManager:
         if not decrypted:
             return None
 
-        # Warm runtime settings cache for active process.
-        if provider == "openai":
+        # Warm runtime settings cache for active process if it's a known provider.
+        if norm_provider == "openai":
             settings.openai_api_key = decrypted
-        elif provider == "anthropic":
+        elif norm_provider == "anthropic":
             settings.anthropic_api_key = decrypted
-        elif provider == "gemini":
+        elif norm_provider == "gemini":
             settings.gemini_api_key = decrypted
+        elif norm_provider == "brave_search":
+            settings.brave_search_api_key = decrypted
 
         return decrypted
 
     def set_api_key(self, provider: str, value: str | None):
-        provider = self._normalize_provider(provider)
+        norm_provider = self._normalize_provider(provider)
         clean_value = (value or "").strip()
 
         if clean_value:
-            self._vault_data[provider] = self.encrypt(clean_value)
+            self._vault_data[norm_provider] = self.encrypt(clean_value)
+            # Update runtime settings too
+            if norm_provider == "openai":
+                settings.openai_api_key = clean_value
+            elif norm_provider == "anthropic":
+                settings.anthropic_api_key = clean_value
+            elif norm_provider == "gemini":
+                settings.gemini_api_key = clean_value
+            elif norm_provider == "brave_search":
+                settings.brave_search_api_key = clean_value
         else:
-            self._vault_data.pop(provider, None)
+            self._vault_data.pop(norm_provider, None)
 
         self._save_vault()
 
