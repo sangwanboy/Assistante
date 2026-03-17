@@ -99,4 +99,12 @@ class ConversationService:
             .order_by(Message.created_at)
         )
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        messages = list(result.scalars().all())
+        
+        # Passive Cleanup: Filter out ghost messages (empty assistant messages with no tool calls)
+        # to ensure the UI never sees them, even if they exist in the DB.
+        filtered = [
+            m for m in messages 
+            if not (m.role == "assistant" and (not m.content or not str(m.content).strip()) and not m.tool_calls_json)
+        ]
+        return filtered

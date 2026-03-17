@@ -40,6 +40,7 @@ class MasterHeartbeat:
         "resource": 30,
         "communication": 5,
         "delegation": 10,
+        "maintenance": 1800,  # 30 minutes
     }
 
     # Safety limits
@@ -197,6 +198,14 @@ class MasterHeartbeat:
             except Exception as exc:
                 logger.error("[MasterHeartbeat] Delegation monitor error: %s", exc)
                 metrics["monitors"]["delegation"] = {"error": str(exc)}
+
+        if self._should_run("maintenance", now):
+            try:
+                result = await self._monitor_maintenance()
+                metrics["monitors"]["maintenance"] = result
+            except Exception as exc:
+                logger.error("[MasterHeartbeat] Maintenance monitor error: %s", exc)
+                metrics["monitors"]["maintenance"] = {"error": str(exc)}
 
         # Execution watchdog (every tick)
         try:
@@ -368,6 +377,34 @@ class MasterHeartbeat:
                         await session.commit()
 
             return {"active": active, "stalled": stalled}
+
+    async def _monitor_maintenance(self) -> dict:
+        """Perform periodic system maintenance (cleanup, etc.)."""
+        if not self._session_factory:
+            return {"status": "skipped", "reason": "no session factory"}
+
+        from sqlalchemy import delete, or_
+        from app.models.conversation import Message
+
+        async with self._session_factory() as session:
+            # Cleanup Ghost Messages: Assistant messages with no content and no tool calls
+            stmt = delete(Message).where(
+                Message.role == "assistant",
+                or_(Message.content == None, Message.content == "", Message.content == " "),
+                or_(Message.tool_calls_json == None, Message.tool_calls_json == "")
+            )
+            result = await session.execute(stmt)
+            deleted_count = result.rowcount
+            await session.commit()
+
+            if deleted_count > 0:
+                logger.info("[MasterHeartbeat] Maintenance: Cleaned up %d ghost messages", deleted_count)
+
+            return {
+                "status": "success",
+                "ghost_messages_cleaned": deleted_count,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
 
     async def _execution_watchdog(self) -> dict | None:
         """DEPRECATED: Now handled by the Supervisor service."""

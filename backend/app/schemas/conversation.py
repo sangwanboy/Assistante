@@ -1,10 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 
 
 class ConversationCreate(BaseModel):
     title: str = "New Conversation"
-    model: str = "gemini/gemini-2.5-flash"
+    model: str = "gemini/gemini-3.1-flash-lite"
     system_prompt: str | None = None
     is_group: bool = False
     agent_id: str | None = None
@@ -51,3 +51,12 @@ class ConversationOut(BaseModel):
 
 class ConversationDetailOut(ConversationOut):
     messages: list[MessageOut] = []
+
+    @field_validator("messages", mode="after")
+    @classmethod
+    def filter_ghost_messages(cls, v: list[MessageOut]) -> list[MessageOut]:
+        """Filter out assistant messages with no content and no tool calls."""
+        return [
+            m for m in v
+            if not (m.role == "assistant" and (not m.content or not str(m.content).strip()) and not m.tool_calls_json)
+        ]

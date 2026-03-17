@@ -7,7 +7,7 @@ class Settings(BaseSettings):
 
     # Server
     host: str = "127.0.0.1"
-    port: int = 8322
+    port: int = 8321
 
     # Database — PostgreSQL by default, SQLite fallback for dev
     database_url: str = "postgresql+asyncpg://assitance:assitance@localhost:5432/assitance"

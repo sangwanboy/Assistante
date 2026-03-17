@@ -147,7 +147,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   createConversation: async (model?: string, is_group?: boolean, agent_id?: string, channel_id?: string) => {
     try {
       console.log('[ChatStore] createConversation called with:', { model, is_group, agent_id, channel_id });
-      const conv = await api.createConversation({ model: model || 'gemini/gemini-2.5-flash', is_group, agent_id, channel_id } as Record<string, unknown>);
+      const conv = await api.createConversation({ model: model || 'gemini/gemini-3.1-flash-lite', is_group, agent_id, channel_id } as Record<string, unknown>);
       console.log('[ChatStore] createConversation result:', conv.id);
       set((state) => ({
         conversations: [conv, ...state.conversations],

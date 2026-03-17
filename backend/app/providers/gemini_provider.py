@@ -16,6 +16,7 @@ class GeminiProvider(BaseProvider):
     def __init__(self, api_key: str):
         self._api_key = api_key
         self.client = genai.Client(api_key=api_key)
+        logger.info(f"GeminiProvider loaded from: {__file__}")
 
     @property
     def name(self) -> str:
@@ -129,13 +130,20 @@ class GeminiProvider(BaseProvider):
         logger.info(f"Gemini contents built: {[f'{c.role}:{len(c.parts)}' for c in contents]}")
         return contents, system_instruction
     def _map_model_id(self, model_id: str) -> str:
+        # Map user-friendly "2.5+" IDs to stable 3.1 endpoints to avoid 404s on decommissioned 2.x/1.x
         mapping = {
-            "gemini-2.0-flash": "gemini-2.5-flash",
-            "gemini-1.5-flash": "gemini-1.5-flash",
-            "gemini-1.5-pro": "gemini-1.5-pro",
-            "gemini-3.1-flash-lite": "gemini-2.5-flash-lite-preview-06-17",
+            "gemini-2.5-flash": "gemini-3.1-flash-preview",
+            "gemini-2.5-flash-lite": "gemini-3.1-flash-lite-preview",
+            "gemini-2.5-pro": "gemini-3.1-pro-preview",
+            "gemini-3-flash-preview": "gemini-3.1-flash-preview",
+            "gemini-3-pro-preview": "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-preview": "gemini-3.1-flash-preview",
+            "gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-lite": "gemini-3.1-flash-lite-preview",
         }
-        return mapping.get(model_id, model_id)
+        mapped = mapping.get(model_id, "gemini-3.1-flash-lite-preview")
+        logger.info(f"Mapping Gemini model '{model_id}' -> '{mapped}'")
+        return mapped
 
     async def complete(
         self,
@@ -312,11 +320,11 @@ class GeminiProvider(BaseProvider):
         rpd = settings.gemini_rpd
         return [
             ModelInfo(id="gemini-2.5-flash", name="Gemini 2.5 Flash", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-2.5-flash-lite-preview-06-17", name="Gemini Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-2.5-pro", name="Gemini 2.5 Pro", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3-flash-preview", name="Gemini 3 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
+            ModelInfo(id="gemini-3-pro-preview", name="Gemini 3 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-3.1-flash-lite", name="Gemini 3.1 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-3.1-flash-preview", name="Gemini 3.1 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-3.1-pro-preview", name="Gemini 3.1 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-1.5-flash", name="Gemini 1.5 Flash", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-1.5-pro", name="Gemini 1.5 Pro", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
         ]
