@@ -59,6 +59,9 @@ export const api = {
   deleteConversation: (id: string) =>
     request<{ status: string }>(`/conversations/${id}`, { method: 'DELETE' }),
 
+  deleteMessage: (conversationId: string, messageId: string | number) =>
+    request<{ status: string }>(`/conversations/${conversationId}/messages/${messageId}`, { method: 'DELETE' }),
+
   // Chat (non-streaming)
   chat: (data: { conversation_id?: string; message: string; model?: string }) =>
     request<{ conversation_id: string; message: string }>('/chat', {
@@ -234,8 +237,50 @@ export const api = {
   // Tasks & Delegation Chains
   getActiveTasks: () => request<import('../types').TaskInfo[]>('/tasks/active'),
   getTask: (id: string) => request<import('../types').TaskInfo>(`/tasks/${id}`),
+  getActiveTaskStates: () => request<import('../types').TaskStateSnapshot[]>('/tasks/state/active'),
   getActiveChains: () => request<import('../types').ChainInfo[]>('/chains/active'),
   getChain: (id: string) => request<import('../types').ChainInfo>(`/chains/${id}`),
+
+  // Run Viewer
+  getRunViewer: (runId: string) => request<import('../types').RunViewerResponse>(`/runs/${runId}`),
+
+  // Web Workspaces
+  listWebWorkspaces: () => request<import('../types').WebWorkspace[]>('/web-workspaces'),
+  getWebWorkspace: (workspaceId: string) => request<import('../types').WebWorkspace>(`/web-workspaces/${workspaceId}`),
+  createWebWorkspace: (project_type: 'static' | 'react') =>
+    request<import('../types').WebWorkspace>('/web-workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ project_type }),
+    }),
+  writeWebWorkspaceFile: (workspaceId: string, file_path: string, content: string) =>
+    request<{ status: string; workspace_id: string; file_path: string; absolute_path: string }>(`/web-workspaces/${workspaceId}/files`, {
+      method: 'POST',
+      body: JSON.stringify({ file_path, content }),
+    }),
+  readWebWorkspaceFile: (workspaceId: string, filePath: string) =>
+    request<{ workspace_id: string; file_path: string; content: string }>(`/web-workspaces/${workspaceId}/file?path=${encodeURIComponent(filePath)}`),
+  deleteWebWorkspaceFile: (workspaceId: string, filePath: string) =>
+    request<{ status: string; workspace_id: string; file_path: string }>(`/web-workspaces/${workspaceId}/file?path=${encodeURIComponent(filePath)}`, {
+      method: 'DELETE',
+    }),
+  designWebWorkspace: (workspaceId: string, spec: string) =>
+    request<Record<string, unknown>>(`/web-workspaces/${workspaceId}/design`, {
+      method: 'POST',
+      body: JSON.stringify({ spec }),
+    }),
+  codegenWebWorkspace: (workspaceId: string, blueprint_json: string) =>
+    request<{ status: string; workspace_id: string; files: string[] }>(`/web-workspaces/${workspaceId}/codegen`, {
+      method: 'POST',
+      body: JSON.stringify({ blueprint_json }),
+    }),
+  startWebWorkspacePreview: (workspaceId: string) =>
+    request<import('../types').WebWorkspace>(`/web-workspaces/${workspaceId}/preview/start`, {
+      method: 'POST',
+    }),
+  stopWebWorkspacePreview: (workspaceId: string) =>
+    request<import('../types').WebWorkspace>(`/web-workspaces/${workspaceId}/preview/stop`, {
+      method: 'POST',
+    }),
 
   // System
   getSystemContainers: () => request<{ available: boolean; total: number; active: number; idle: number; error?: string }>('/system/containers'),

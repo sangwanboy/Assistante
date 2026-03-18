@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.conversation import Conversation, Message
+from app.models.context_memory import MessageArchive
 
 
 class ConversationService:
@@ -90,7 +91,46 @@ class ConversationService:
         self.session.add(msg)
         await self.session.commit()
         await self.session.refresh(msg)
+
+        # Keep all raw messages in durable archive for future retrieval.
+        archive_row = MessageArchive(
+            message_id=msg.id,
+            thread_id=conversation_id,
+            sender=agent_name or role,
+            role=role,
+            content=content,
+            archived=False,
+        )
+        self.session.add(archive_row)
+        await self.session.commit()
         return msg
+
+    async def search_archive(self, conversation_id: str, query: str, limit: int = 50) -> list[MessageArchive]:
+        stmt = (
+            select(MessageArchive)
+            .where(
+                MessageArchive.thread_id == conversation_id,
+                MessageArchive.content.ilike(f"%{query}%"),
+            )
+            .order_by(desc(MessageArchive.timestamp))
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def delete_message(self, conversation_id: str, message_id: int) -> bool:
+        stmt = select(Message).where(
+            Message.id == message_id,
+            Message.conversation_id == conversation_id
+        )
+        result = await self.session.execute(stmt)
+        msg = result.scalar_one_or_none()
+        if not msg:
+            return False
+        
+        await self.session.delete(msg)
+        await self.session.commit()
+        return True
 
     async def get_messages(self, conversation_id: str) -> list[Message]:
         stmt = (

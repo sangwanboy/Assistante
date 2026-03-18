@@ -26,6 +26,11 @@ class ToolRegistry:
                 "name": t.name,
                 "description": t.description,
                 "parameters": t.parameters_schema(),
+                "contract_version": getattr(t, "contract_version", "1.0"),
+                "category": getattr(t, "category", "general"),
+                "risk_level": getattr(t, "risk_level", "medium"),
+                "allowed_modes": getattr(t, "allowed_modes", ["manual", "autonomous"]),
+                "requires_approval": getattr(t, "requires_approval", False),
                 "is_builtin": t.name in self._builtin_names,
             }
             for t in self._tools.values()
@@ -38,6 +43,13 @@ class ToolRegistry:
                 "name": t.name,
                 "description": t.description,
                 "parameters": t.parameters_schema(),
+                "x_contract": {
+                    "version": getattr(t, "contract_version", "1.0"),
+                    "category": getattr(t, "category", "general"),
+                    "risk_level": getattr(t, "risk_level", "medium"),
+                    "allowed_modes": getattr(t, "allowed_modes", ["manual", "autonomous"]),
+                    "requires_approval": getattr(t, "requires_approval", False),
+                },
             }
             for t in self._tools.values()
         ]
@@ -74,6 +86,17 @@ class ToolRegistry:
         from app.tools.image_gen import ImageGenerationTool
         from app.tools.video_gen import VideoGenerationTool
         from app.tools.system_logs_tool import SystemLogsTool
+        from app.tools.web_workspace_tools import (
+            WebWorkspaceCreateTool,
+            WebWorkspaceWriteFileTool,
+            WebWorkspaceReadFileTool,
+            WebWorkspaceListFilesTool,
+            WebWorkspaceDeleteFileTool,
+            WebPageDesignerTool,
+            WebPageCodegenTool,
+            WebPreviewLauncherTool,
+            WebPreviewStopTool,
+        )
 
         for tool in [
             WebSearchTool(), FileManagerTool(), CodeExecutorTool(), CommandExecutorTool(),
@@ -107,6 +130,15 @@ class ToolRegistry:
             ImageGenerationTool(),
             VideoGenerationTool(),
             SystemLogsTool(),
+            WebWorkspaceCreateTool(),
+            WebWorkspaceWriteFileTool(),
+            WebWorkspaceReadFileTool(),
+            WebWorkspaceListFilesTool(),
+            WebWorkspaceDeleteFileTool(),
+            WebPageDesignerTool(),
+            WebPageCodegenTool(),
+            WebPreviewLauncherTool(),
+            WebPreviewStopTool(),
         ]:
             self.register(tool)
             self._builtin_names.add(tool.name)

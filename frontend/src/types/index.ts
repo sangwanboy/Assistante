@@ -54,6 +54,7 @@ export interface ToolInfo {
 export interface StreamEvent {
   type: 'chunk' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'agent_turn_start' | 'agent_turn_end'
   | 'chain_start' | 'chain_update' | 'chain_complete' | 'orchestration_plan' | 'task_progress'
+  | 'rehydrated_context'
   | 'autonomous_start' | 'autonomous_step_start' | 'autonomous_step_end'
   | 'autonomous_complete' | 'autonomous_timeout' | 'autonomous_budget_exceeded' | 'autonomous_error' | 'message_add';
   delta?: string;
@@ -65,6 +66,7 @@ export interface StreamEvent {
   conversation_id?: string;
   agent_name?: string;
   error?: string;
+  context?: string;
   message?: Message;
   usage?: {
     total_tokens: number;
@@ -101,6 +103,19 @@ export interface AppSettings {
   default_model: string;
   default_temperature: number;
   default_system_prompt: string;
+  providers: ProviderSettings[];
+}
+
+export interface ProviderSettings {
+  id: string;
+  name: string;
+  credential_kind: 'api_key' | 'base_url';
+  credential_field: string;
+  connected: boolean;
+  models: Array<{
+    id: string;
+    name: string;
+  }>;
 }
 
 export interface Agent {
@@ -236,6 +251,16 @@ export interface TaskInfo {
   completed_at: string | null;
 }
 
+export interface TaskStateSnapshot {
+  task_id: string;
+  thread_id: string | null;
+  status: string;
+  progress: number;
+  assigned_agents: string[];
+  results_summary: string | null;
+  updated_at: string | null;
+}
+
 export interface ChainInfo {
   id: string;
   conversation_id: string | null;
@@ -247,6 +272,63 @@ export interface ChainInfo {
   plan_summary: string | null;
   total_tokens_used: number;
   max_token_budget: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrchestrationRunNode {
+  id: string;
+  node_key: string;
+  type: string;
+  agent_id: string | null;
+  state: string;
+  prompt_excerpt: string | null;
+  inputs: unknown;
+  outputs: unknown;
+  tool_calls: unknown;
+  token_usage: number;
+  estimated_cost: number;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface OrchestrationRunEdge {
+  id: string;
+  source: string;
+  target: string;
+  dependency_type: string;
+}
+
+export interface RunViewerResponse {
+  run: {
+    id: string;
+    conversation_id: string | null;
+    root_agent_id: string | null;
+    strategy: string;
+    state: string;
+    user_request: string | null;
+    plan: unknown;
+    autonomy_report: unknown;
+    token_usage_total: number;
+    estimated_cost_total: number;
+    created_at: string;
+    completed_at: string | null;
+  };
+  graph: {
+    nodes: OrchestrationRunNode[];
+    edges: OrchestrationRunEdge[];
+  };
+}
+
+export interface WebWorkspace {
+  id: string;
+  owner_agent_id: string | null;
+  project_type: string;
+  status: string;
+  entry_url: string | null;
+  preview_container_id?: string | null;
+  files?: string[];
   created_at: string;
   updated_at: string;
 }

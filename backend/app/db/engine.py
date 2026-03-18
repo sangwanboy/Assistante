@@ -43,6 +43,7 @@ async def init_database():
     import app.models  # noqa: F401
     import app.models.model_config  # noqa: F401
     import app.models.agent_memory  # noqa: F401
+    import app.models.context_memory  # noqa: F401
     import app.models.announcement  # noqa: F401
 
     async with engine.begin() as conn:

@@ -4,7 +4,7 @@ from datetime import datetime
 
 class ConversationCreate(BaseModel):
     title: str = "New Conversation"
-    model: str = "gemini/gemini-3.1-flash-lite"
+    model: str = "gemini/gemini-3.1-flash-lite-preview"
     system_prompt: str | None = None
     is_group: bool = False
     agent_id: str | None = None

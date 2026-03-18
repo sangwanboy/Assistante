@@ -5,6 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useAgentStore } from '../../stores/agentStore';
 import { useChatStore } from '../../stores/chatStore';
 import { useAgentStatusStore } from '../../stores/agentStatusStore';
+import { useUIStore } from '../../stores/uiStore';
 import type { Agent } from '../../types';
 import { api } from '../../services/api';
 
@@ -24,8 +25,10 @@ export function AgentsView() {
   const { agents, loadAgents, createAgent, updateAgent, deleteAgent, isLoading } = useAgentStore();
   const { models } = useChatStore();
   const { statuses } = useAgentStatusStore();
+  const addToast = useUIStore((s) => s.addToast);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [showPanel, setShowPanel] = useState(false);
+  const [providerModelOptions, setProviderModelOptions] = useState<Array<{ provider: string; id: string; name: string }>>([]);
 
   const [formData, setFormData] = useState({
     name: '', description: '', provider: '', model: '', system_prompt: '', is_active: true,
@@ -44,16 +47,19 @@ export function AgentsView() {
 
   const isAllowedAgentModel = (modelId: string, provider: string) => {
     if (provider !== 'gemini') return true;
-    return !/gemini\/(gemini-(1\.5|2\.0))|^gemini-(1\.5|2\.0)/.test(modelId);
+    if (/gemini\/(gemini-(1\.5|2\.0))|^gemini-(1\.5|2\.0)/.test(modelId)) return false;
+    if (modelId.endsWith('/gemini-3.1-flash-preview') || modelId.endsWith('/gemini-3.1-flash-lite')) return false;
+    return true;
   };
 
-  const availableProviders = Array.from(
-    new Set(models.filter(m => isAllowedAgentModel(m.id, m.provider)).map(m => m.provider))
-  );
+  const fallbackModels = models.filter(m => isAllowedAgentModel(m.id, m.provider));
+  const availableProviders = providerModelOptions.length > 0
+    ? Array.from(new Set(providerModelOptions.map(m => m.provider)))
+    : Array.from(new Set(fallbackModels.map(m => m.provider)));
 
-  const availableAgentModels = models.filter(
-    m => m.provider === formData.provider && isAllowedAgentModel(m.id, m.provider)
-  );
+  const availableAgentModels = providerModelOptions.length > 0
+    ? providerModelOptions.filter(m => m.provider === formData.provider)
+    : fallbackModels.filter(m => m.provider === formData.provider).map(m => ({ provider: m.provider, id: m.id, name: m.name }));
 
   const TONE_OPTIONS = ['professional', 'friendly', 'sarcastic', 'empathetic', 'witty', 'serious', 'playful'];
   const STYLE_OPTIONS = ['formal', 'casual', 'technical', 'storytelling', 'concise', 'verbose'];
@@ -64,6 +70,17 @@ export function AgentsView() {
     loadAgents();
     api.getTools().then(tools => setAvailableTools(tools.map(t => ({ name: t.name, description: t.description })))).catch(() => { });
     api.getSkills().then(skills => setAvailableSkills(skills.filter(s => s.is_active).map(s => ({ id: s.id, name: s.name, description: s.description || '' })))).catch(() => { });
+    api.getSettings().then((s) => {
+      const opts: Array<{ provider: string; id: string; name: string }> = [];
+      for (const p of s.providers || []) {
+        for (const model of p.models || []) {
+          if (isAllowedAgentModel(model.id, p.id)) {
+            opts.push({ provider: p.id, id: model.id, name: model.name });
+          }
+        }
+      }
+      setProviderModelOptions(opts);
+    }).catch(() => { });
   }, [loadAgents]);
 
   const emptyForm = {
@@ -97,16 +114,37 @@ export function AgentsView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingAgent) { await updateAgent(editingAgent.id, formData); } else { await createAgent(formData); }
-    setShowPanel(false);
+    try {
+      if (editingAgent) {
+        await updateAgent(editingAgent.id, formData);
+        addToast('Agent updated successfully', 'success');
+      } else {
+        await createAgent(formData);
+        addToast('Agent created successfully', 'success');
+      }
+      setShowPanel(false);
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    }
   };
 
   const handleModelChange = (modelId: string) => {
     const model = models.find(m => m.id === modelId);
-    if (model) setFormData({ ...formData, model: model.id, provider: model.provider });
+    const providerFromId = modelId.includes('/') ? modelId.split('/', 1)[0] : formData.provider;
+    setFormData({
+      ...formData,
+      model: modelId,
+      provider: model?.provider || providerFromId || formData.provider,
+    });
   };
 
-  const handleToggle = async (agent: Agent) => { await updateAgent(agent.id, { is_active: !agent.is_active }); };
+  const handleToggle = async (agent: Agent) => {
+    try {
+      await updateAgent(agent.id, { is_active: !agent.is_active });
+    } catch (e: unknown) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  };
 
   const handleAutoFill = async () => {
     if (!formData.name) return;
@@ -273,7 +311,14 @@ export function AgentsView() {
                             <Edit2 className="w-4 h-4" />
                           </motion.button>
                           <motion.button
-                            onClick={() => { if (confirm('Delete this agent?')) deleteAgent(agent.id); }}
+                            onClick={async () => {
+                              if (!confirm('Delete this agent?')) return;
+                              try {
+                                await deleteAgent(agent.id);
+                              } catch (e: unknown) {
+                                addToast(e instanceof Error ? e.message : String(e), 'error');
+                              }
+                            }}
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
                             className="p-2 hover:bg-red-500/10 rounded-lg text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
@@ -480,6 +525,9 @@ export function AgentsView() {
                               {availableAgentModels.map(m => (
                                 <option key={m.id} value={m.id}>{m.name}</option>
                               ))}
+                              {formData.model && !availableAgentModels.some(m => m.id === formData.model) && (
+                                <option value={formData.model}>{formData.model}</option>
+                              )}
                             </select>
                             {formData.provider === 'gemini' && (
                               <p className="text-[11px] text-gray-500 mt-2">

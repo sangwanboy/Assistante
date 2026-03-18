@@ -159,13 +159,41 @@ class AgentMessengerTool(BaseTool):
         if not self._session_factory:
             import uuid
             return {"id": str(uuid.uuid4()), "name": name}
+        import uuid
+        from app.models.agent import Agent
         from app.models.agent_message import AgentGroupDiscussion
+        from app.models.channel import Channel
+        from app.models.channel_agent import ChannelAgent
+        from sqlalchemy import select
+
         async with self._session_factory() as session:
+            # Keep behavior consistent with messaging API: always include system agent.
+            system_result = await session.execute(select(Agent).where(Agent.is_system))
+            system_agent = system_result.scalar_one_or_none()
+            participant_ids = list(agent_ids or [])
+            if system_agent and system_agent.id not in participant_ids:
+                participant_ids.append(system_agent.id)
+
+            group_id = str(uuid.uuid4())
             grp = AgentGroupDiscussion(
+                id=group_id,
                 name=name,
-                agent_ids_json=json.dumps(agent_ids),
+                agent_ids_json=json.dumps(participant_ids),
             )
             session.add(grp)
+
+            # Mirror group to chat channels so it appears in Chat > Channels.
+            channel = Channel(
+                id=group_id,
+                name=name,
+                description="",
+                is_announcement=False,
+            )
+            session.add(channel)
+
+            for agent_id in participant_ids:
+                session.add(ChannelAgent(channel_id=group_id, agent_id=agent_id))
+
             await session.commit()
             await session.refresh(grp)
             return {"id": grp.id, "name": grp.name}

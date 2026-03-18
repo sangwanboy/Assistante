@@ -14,7 +14,7 @@ async def update_janny_to_31():
         if janny:
             name_safe = janny.name.encode('ascii', 'ignore').decode('ascii')
             print(f"Found Janny: {name_safe}, Current Model: {janny.model}")
-            janny.model = "gemini/gemini-3.1-flash-lite"
+            janny.model = "gemini/gemini-3.1-flash-lite-preview"
             await session.commit()
             print(f"Updated Janny model to: {janny.model}")
         else:

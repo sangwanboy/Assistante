@@ -9,16 +9,18 @@ import { WorkflowsView } from './components/workflows/WorkflowsView';
 import { ToolsSkillsView } from './components/tools/ToolsSkillsView';
 import { IntegrationsView } from './components/integrations/IntegrationsView';
 import { HeartbeatView } from './components/heartbeat/HeartbeatView';
+import { RuntimeView } from './components/runtime/RuntimeView';
 import { useChatStore } from './stores/chatStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { useAgentStatusStore } from './stores/agentStatusStore';
 import { useAgentControlStore } from './stores/agentControlStore';
+import { useTaskStateStore } from './stores/taskStateStore';
 import { GlobalToastContainer } from './components/common/GlobalToastContainer';
 
 export default function App() {
   const [activeView, setActiveView] = useState(() => {
     const path = window.location.pathname.replace('/', '');
-    const validViews = ['home', 'chat', 'knowledge', 'workflows', 'agents', 'tools', 'integrations', 'heartbeat'];
+    const validViews = ['home', 'chat', 'knowledge', 'workflows', 'agents', 'tools', 'integrations', 'heartbeat', 'runtime'];
     return validViews.includes(path) ? path : 'home';
   });
   const [statusMessage, setStatusMessage] = useState('Ready');
@@ -37,7 +39,7 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.replace('/', '');
-      const validViews = ['home', 'chat', 'knowledge', 'workflows', 'agents', 'tools', 'integrations', 'heartbeat'];
+      const validViews = ['home', 'chat', 'knowledge', 'workflows', 'agents', 'tools', 'integrations', 'heartbeat', 'runtime'];
       setActiveView(validViews.includes(path) ? path : 'home');
     };
     window.addEventListener('popstate', handlePopState);
@@ -49,10 +51,12 @@ export default function App() {
     loadModels();
     useAgentStatusStore.getState().connect();
     useAgentControlStore.getState().connect();
+    useTaskStateStore.getState().startPolling();
 
     return () => {
       useAgentStatusStore.getState().disconnect();
       useAgentControlStore.getState().disconnect();
+      useTaskStateStore.getState().stopPolling();
     };
   }, [loadConversations, loadModels]);
 
@@ -85,6 +89,7 @@ export default function App() {
           {activeView === 'tools' && <ToolsSkillsView />}
           {activeView === 'integrations' && <IntegrationsView />}
           {activeView === 'heartbeat' && <HeartbeatView />}
+          {activeView === 'runtime' && <RuntimeView />}
         </div>
 
         {/* Status bar */}

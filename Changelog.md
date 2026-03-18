@@ -218,3 +218,5 @@ All five sum to exactly 1.0 (100% of `context_window_tokens`).
   - `CONTEXT_MEMORY.txt` — Phase 1-2 completion details + Phase 3 12-point specification with insertion points
   - `README.md` — Enhanced Latest Updates with prune-only sync behavior clarification
   - `App Documentation` — Comprehensive Phase 1-2 feature overview + Phase 3 architecture blueprint
+-   U p d a t e d   G e m i n i   3 . 1   F l a s h   L i t e   m o d e l   I D   t o   s t a n d a r d   p r e v i e w   s u f f i x   t o   f i x   b r o k e n   f u n c t i o n a l i t y .  
+ 

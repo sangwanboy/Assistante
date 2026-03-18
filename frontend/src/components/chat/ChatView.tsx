@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useAgentStore } from '../../stores/agentStore';
 import { useChannelStore } from '../../stores/channelStore';
 import { useAgentStatusStore } from '../../stores/agentStatusStore';
+import { useTaskStateStore } from '../../stores/taskStateStore';
 import type { Channel, Agent } from '../../types';
 import {
   Bot, Search, Users, MessageSquare, Plus, X,
@@ -36,6 +37,7 @@ export function ChatView() {
   const error = useChatStore(s => s.error);
   
   const sendMessage = useChatStore(s => s.sendMessage);
+  const deleteUserMessage = useChatStore(s => s.deleteUserMessage);
   const startOrLoadAgentChat = useChatStore(s => s.startOrLoadAgentChat);
   const startOrLoadChannelChat = useChatStore(s => s.startOrLoadChannelChat);
   const loadConversations = useChatStore(s => s.loadConversations);
@@ -48,6 +50,7 @@ export function ChatView() {
   const currentChainTask = useChatStore(s => s.currentChainTask);
   const activeChainState = useChatStore(s => s.activeChainState);
   const activeChainAgents = useChatStore(s => s.activeChainAgents);
+  const rehydratedContext = useChatStore(s => s.rehydratedContext);
 
   const agents = useAgentStore(s => s.agents);
   const loadAgents = useAgentStore(s => s.loadAgents);
@@ -60,6 +63,8 @@ export function ChatView() {
   
   const selectedModel = useSettingsStore(s => s.selectedModel);
   const statuses = useAgentStatusStore(s => s.statuses);
+  const taskByThread = useTaskStateStore(s => s.byThread);
+  const threadRuntimeState = useTaskStateStore(s => s.threadState(activeConversationId));
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -84,6 +89,14 @@ export function ChatView() {
     loadChannels();
   }, [loadConversations, loadAgents, loadChannels]);
 
+  useEffect(() => {
+    const handle = setInterval(() => {
+      void loadChannels();
+    }, 10000);
+
+    return () => clearInterval(handle);
+  }, [loadChannels]);
+
   // ── Scroll to bottom ──────────────────────────────────────────────────────
   useEffect(() => {
     // During active streaming, smooth scroll causes extreme lag (layout thrashing)
@@ -93,8 +106,17 @@ export function ChatView() {
 
   // ── Load channel agents when active channel changes ───────────────────────
   const activeConv = conversations.find(c => c.id === activeConversationId);
+  const activeTaskState = activeConversationId ? taskByThread[activeConversationId] : null;
   const activeChannel = activeConv?.channel_id ? channels.find(c => c.id === activeConv.channel_id) : null;
   const isCustomChannel = activeChannel && !activeChannel.is_announcement;
+  const activeConversationAgentName = activeConv?.agent_id
+    ? (agents.find(a => a.id === activeConv.agent_id)?.name || null)
+    : null;
+  const recentAssistantAgentName = [...messages]
+    .reverse()
+    .find((m) => m.role === 'assistant' && !!m.agent_name)?.agent_name || null;
+  const effectiveStreamingAgentName =
+    streamingAgentName || activeConversationAgentName || recentAssistantAgentName;
 
   useEffect(() => {
     if (activeChannel) {
@@ -442,6 +464,30 @@ export function ChatView() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto py-8">
               <div className="w-full max-w-5xl mx-auto px-6 lg:px-12 space-y-8">
+                {activeTaskState && (
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+                    <div className="flex items-center justify-between text-xs text-cyan-300">
+                      <span>Task {activeTaskState.task_id.slice(0, 8)} • {activeTaskState.status}</span>
+                      <span>{activeTaskState.progress}%</span>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-[#1a1f2e] overflow-hidden">
+                      <div
+                        className="h-1.5 bg-cyan-400 transition-all duration-300"
+                        style={{ width: `${Math.max(0, Math.min(100, activeTaskState.progress || 0))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {rehydratedContext && (
+                  <details className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-amber-300">
+                      Rehydrated Context
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-amber-100/90">
+                      {rehydratedContext}
+                    </pre>
+                  </details>
+                )}
                 {messages.length === 0 && !isStreaming && (
                   <div className="flex flex-col items-center justify-center py-32 text-white/20">
                     <div className="w-24 h-24 rounded-3xl bg-white/5 border border-white/5 flex items-center justify-center mb-6 animate-pulse">
@@ -460,13 +506,13 @@ export function ChatView() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                     >
-                      <MessageBubble message={msg} />
+                      <MessageBubble message={msg} onDeleteUserMessage={deleteUserMessage} />
                     </motion.div>
                   ))}
                 </AnimatePresence>
                 
                 {isStreaming && (
-                  <StreamingMessage content={streamingContent} toolCalls={streamingToolCalls} agentName={streamingAgentName} />
+                  <StreamingMessage content={streamingContent} toolCalls={streamingToolCalls} agentName={effectiveStreamingAgentName} />
                 )}
                 
                 <InlineHITLApproval />
@@ -480,7 +526,7 @@ export function ChatView() {
                   onSend={(content) => sendMessage(content, selectedModel)}
                   onStop={stopGeneration}
                   isStreaming={isStreaming}
-                  disabled={isThreadBusy}
+                  disabled={isThreadBusy || threadRuntimeState === 'working' || threadRuntimeState === 'waiting'}
                   conversationId={activeConversationId || undefined}
                   agents={activeConv?.is_group || activeConv?.channel_id
                     ? channelMentionAgents.length > 0

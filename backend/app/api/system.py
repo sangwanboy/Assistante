@@ -8,6 +8,8 @@ from app.services.llm_gateway import get_gateway
 from app.models.model_registry import ModelCapability
 from app.models.agent import Agent
 from app.models.agent_memory import SemanticMemory
+from app.models.context_memory import SummaryJob
+from app.services.memory_retrieval_service import MemoryRetrievalService
 
 router = APIRouter(prefix="/system", tags=["System"])
 
@@ -62,11 +64,19 @@ async def get_system_metrics(session: AsyncSession = Depends(get_session)):
     ) or 0
     compaction_rate_per_hour = round(compaction_24h / 24, 2)
 
+    summary_jobs = {
+        "queued": await session.scalar(select(func.count(SummaryJob.id)).where(SummaryJob.state == "queued")) or 0,
+        "running": await session.scalar(select(func.count(SummaryJob.id)).where(SummaryJob.state == "running")) or 0,
+        "completed": await session.scalar(select(func.count(SummaryJob.id)).where(SummaryJob.state == "completed")) or 0,
+        "failed": await session.scalar(select(func.count(SummaryJob.id)).where(SummaryJob.state == "failed")) or 0,
+    }
+
     # Pruning event counters (in-process, resets on restart)
     from app.services.pruning_events import get_counters
     pruning_counters = get_counters()
 
     rate_limit_blocks = await gateway.rate_limiter.get_block_count()
+    retrieval_metrics = MemoryRetrievalService.metrics()
 
     return {
         "active_agents": active_agents,
@@ -91,6 +101,8 @@ async def get_system_metrics(session: AsyncSession = Depends(get_session)):
             "memories_created_24h": compaction_24h,
             "rate_per_hour": compaction_rate_per_hour,
         },
+        "memory_retrieval": retrieval_metrics,
+        "summary_jobs": summary_jobs,
         # Pruning observability
         "pruning_events": {
             "soft": pruning_counters.get("soft", 0),

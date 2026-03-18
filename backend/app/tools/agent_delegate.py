@@ -128,10 +128,10 @@ class AgentDelegationTool(BaseTool):
                 return (
                     f"### ✅ Delegation Success\n"
                     f"**Target Agent:** {target_agent.name}\n"
-                    f"**Task Description:** {task[:100]}{'...' if len(task) > 100 else ''}\n"
+                    f"**Task Description:** {task}\n"
                     f"**Agent Response:**\n\n{response_text}\n\n"
                     f"---\n"
-                    f"*Work history for this task is stored in [{target_agent.name}'s conversation](file:///chat/{conv_id}).*"
+                    f"*Work history for this task is stored in [{target_agent.name}'s conversation](/chat/{conv_id}).*"
                 )
 
         except Exception as e:

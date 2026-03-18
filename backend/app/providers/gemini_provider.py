@@ -130,18 +130,21 @@ class GeminiProvider(BaseProvider):
         logger.info(f"Gemini contents built: {[f'{c.role}:{len(c.parts)}' for c in contents]}")
         return contents, system_instruction
     def _map_model_id(self, model_id: str) -> str:
-        # Map user-friendly "2.5+" IDs to stable 3.1 endpoints to avoid 404s on decommissioned 2.x/1.x
+        # Keep stable IDs unchanged and downgrade deprecated preview IDs to 2.5.
+        # This prevents runtime 404s from old preview endpoints.
+        normalized = (model_id or "").strip()
         mapping = {
-            "gemini-2.5-flash": "gemini-3.1-flash-preview",
-            "gemini-2.5-flash-lite": "gemini-3.1-flash-lite-preview",
-            "gemini-2.5-pro": "gemini-3.1-pro-preview",
-            "gemini-3-flash-preview": "gemini-3.1-flash-preview",
-            "gemini-3-pro-preview": "gemini-3.1-pro-preview",
-            "gemini-3.1-flash-preview": "gemini-3.1-flash-preview",
-            "gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
-            "gemini-3.1-flash-lite": "gemini-3.1-flash-lite-preview",
+            "gemini-2.5-flash": "gemini-2.5-flash",
+            "gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
+            "gemini-2.5-pro": "gemini-2.5-pro",
+            "gemini-3-flash-preview": "gemini-2.5-flash",
+            "gemini-3-pro-preview": "gemini-2.5-pro",
+            "gemini-3.1-flash-preview": "gemini-2.5-flash",
+            "gemini-3.1-pro-preview": "gemini-2.5-pro",
+            "gemini-3.1-flash-lite": "gemini-2.5-flash-lite",
+            "gemini-3.1-flash-lite-preview": "gemini-2.5-flash-lite",
         }
-        mapped = mapping.get(model_id, "gemini-3.1-flash-lite-preview")
+        mapped = mapping.get(normalized, "gemini-2.5-flash")
         logger.info(f"Mapping Gemini model '{model_id}' -> '{mapped}'")
         return mapped
 
@@ -322,9 +325,4 @@ class GeminiProvider(BaseProvider):
             ModelInfo(id="gemini-2.5-flash", name="Gemini 2.5 Flash", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
             ModelInfo(id="gemini-2.5-pro", name="Gemini 2.5 Pro", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3-flash-preview", name="Gemini 3 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3-pro-preview", name="Gemini 3 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3.1-flash-lite", name="Gemini 3.1 Flash Lite", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3.1-flash-preview", name="Gemini 3.1 Flash Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
-            ModelInfo(id="gemini-3.1-pro-preview", name="Gemini 3.1 Pro Preview", provider="gemini", context_window=cw, tpm=tpm, rpm=rpm, rpd=rpd),
         ]

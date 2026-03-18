@@ -3,12 +3,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from typing import List, Optional
 from pydantic import BaseModel
+import logging
 
 from app.db.engine import get_session
 from app.models.agent import Agent
+from app.models.conversation import Conversation
 from app.schemas.agent import AgentCreate, AgentUpdate, AgentOut
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+DEPRECATED_GEMINI_MODELS = {
+    "gemini-3.1-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+}
+
+
+def _validate_agent_model(provider: str | None, model: str | None) -> None:
+    if not provider or not model:
+        return
+
+    p = provider.strip().lower()
+    m = model.strip()
+    model_id = m.split("/", 1)[1] if "/" in m else m
+
+    if p == "gemini" and model_id in DEPRECATED_GEMINI_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Model '{model_id}' is deprecated and blocked. "
+                "Use an available Gemini model such as gemini/gemini-2.5-flash, gemini/gemini-2.5-flash-lite, gemini/gemini-2.5-pro, or verified preview IDs."
+            ),
+        )
 
 
 class GeneratePersonalityRequest(BaseModel):
@@ -137,7 +164,9 @@ async def create_agent(
             detail=reason,
         )
 
-    agent = Agent(**agent_in.model_dump())
+    payload = agent_in.model_dump()
+    _validate_agent_model(payload.get("provider"), payload.get("model"))
+    agent = Agent(**payload)
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
@@ -166,9 +195,37 @@ async def update_agent(agent_id: str, agent_in: AgentUpdate, db: AsyncSession = 
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    old_model = agent.model
+    old_provider = agent.provider
     update_data = agent_in.model_dump(exclude_unset=True)
+    effective_provider = update_data.get("provider", agent.provider)
+    effective_model = update_data.get("model", agent.model)
+    _validate_agent_model(effective_provider, effective_model)
+
     for key, value in update_data.items():
         setattr(agent, key, value)
+
+    # Keep agent-linked conversations aligned with agent runtime model.
+    # This prevents stale "active context model" and websocket payload drift.
+    model_changed = "model" in update_data or "provider" in update_data
+    synced_conversations = 0
+    if model_changed:
+        stmt = select(Conversation).where(Conversation.agent_id == agent_id)
+        rows = await db.execute(stmt)
+        convs = rows.scalars().all()
+        for conv in convs:
+            conv.model = agent.model
+            synced_conversations += 1
+
+        logger.info(
+            "Agent %s model update: %s/%s -> %s/%s (synced_conversations=%s)",
+            agent_id,
+            old_provider,
+            old_model,
+            agent.provider,
+            agent.model,
+            synced_conversations,
+        )
 
     await db.commit()
     await db.refresh(agent)

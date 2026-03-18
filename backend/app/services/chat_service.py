@@ -9,6 +9,7 @@ import asyncio
 from app.models.agent import Agent
 from app.models.channel import Channel
 from app.models.channel_agent import ChannelAgent
+from app.models.task import Task
 from app.providers.base import ChatMessage
 from app.providers.registry import ProviderRegistry
 from app.tools.registry import ToolRegistry
@@ -22,6 +23,8 @@ from app.services.memory_compactor import MemoryCompactor
 from app.services.context_assembler import ContextAssembler
 from app.providers.base import TokenUsage
 from app.services.llm_gateway import get_gateway
+from app.services.reasoning_loop import ReasoningLoopSelector, ReasoningPolicy, ReasoningStrategy
+from app.services.run_tracer import RunTracer
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -274,6 +277,46 @@ class ChatService:
 
         return prompt
 
+    async def _compose_runtime_agent_prompt(
+        self,
+        agent: Agent,
+        *,
+        fallback_warning: str | None = None,
+        is_group: bool = False,
+    ) -> str:
+        """Compose the live agent prompt from current brain files + DB state."""
+        prompt = self._build_agent_prompt(agent)
+
+        if fallback_warning:
+            prompt = (prompt or "") + f"\n\n# Runtime Notice\n{fallback_warning}"
+
+        if is_group:
+            multi_agent_instruction = (
+                f"\n\nIMPORTANT: You are in a multi-agent chat room. Your name is {agent.name}. "
+                "Respond ONLY as yourself. Do NOT simulate conversations. "
+                "Do NOT prefix your response with your name like 'Name: '. Just output your response directly."
+            )
+            if not agent.is_system:
+                multi_agent_instruction += (
+                    "\nYou may mention another agent using @Name only when collaboration is necessary. "
+                    "Keep cross-agent mentions focused and avoid repetitive back-and-forth loops."
+                )
+            prompt = (prompt or "") + multi_agent_instruction
+
+        skill_instructions = await self._get_skill_instructions(agent)
+        if skill_instructions:
+            prompt = (prompt or "") + "\n\n# Available Skills\n" + skill_instructions
+
+        return prompt
+
+    def _upsert_system_message(self, messages: list[ChatMessage], prompt: str) -> list[ChatMessage]:
+        """Ensure the first message is the latest system prompt."""
+        if messages and messages[0].role == "system":
+            messages[0].content = prompt
+            return messages
+
+        return [ChatMessage(role="system", content=prompt), *messages]
+
     def _filter_tools_for_agent(self, agent: Agent, is_group_context: bool = False) -> list[dict] | None:
         """Return only the tools enabled for this agent.
 
@@ -296,9 +339,10 @@ class ChatService:
             except (json.JSONDecodeError, TypeError):
                 filtered = all_tools
 
-        # In group context, block delegation/messaging tools for non-system agents
+        # In group context, block explicit delegation for non-system agents.
+        # Keep messenger enabled so agents can coordinate when needed.
         if is_group_context and not agent.is_system:
-            blocked = {"AgentDelegationTool", "agent_messenger", "AgentMessengerTool"}
+            blocked = {"AgentDelegationTool"}
             filtered = [t for t in filtered if t["name"] not in blocked]
 
         return filtered
@@ -345,6 +389,34 @@ class ChatService:
             "available features",
         ]
         return any(t in lowered for t in triggers)
+
+    def _is_model_identity_query(self, text: str) -> bool:
+        lowered = (text or "").strip().lower()
+        if not lowered:
+            return False
+        triggers = [
+            "which model",
+            "what model",
+            "what are you running",
+            "what model are you running",
+            "which provider",
+            "model and provider",
+            "current model",
+            "running on",
+        ]
+        return any(t in lowered for t in triggers)
+
+    def _build_model_identity_response(self, agent: Agent | None, model_string: str | None) -> str:
+        if agent:
+            return (
+                f"I am currently running on the '{agent.model}' model provided by '{agent.provider}'."
+            )
+        if model_string:
+            provider_name, model_id = self._parse_model_string(model_string)
+            return (
+                f"I am currently running on the '{provider_name}/{model_id}' model provided by '{provider_name}'."
+            )
+        return "I cannot determine the current model from this context."
 
     def _is_unhelpful_refusal(self, text: str) -> bool:
         lowered = (text or "").strip().lower()
@@ -415,7 +487,10 @@ class ChatService:
         hitl_manager = HITLManager.get_instance()
 
         for tc in tool_calls:
-            tc_id = tc.get("id", "")
+            tc_id = str(tc.get("id") or "").strip()
+            if not tc_id:
+                logger.warning("Skipping tool call without id: %s", tc)
+                continue
             func = tc.get("function", {})
             tool_name = func.get("name", "")
             args_str = func.get("arguments", "{}")
@@ -472,9 +547,12 @@ class ChatService:
                 logger.info(f"Executing tool '{tool_name}' for agent_id='{agent_id}', task_id='{task_id}'. Final keys: {list(exec_kwargs.keys())}")
 
                 # ── Execution with Timeout ──
+                # Delegation tools run full agentic loops; give them more time
+                _delegation_tools = {"AgentDelegationTool", "agent_messenger"}
+                _timeout = 600.0 if tool_name in _delegation_tools else 180.0
                 result_raw = await asyncio.wait_for(
                     tool.execute(**exec_kwargs),
-                    timeout=180.0
+                    timeout=_timeout
                 )
                 result_str = str(result_raw)
                 
@@ -526,7 +604,74 @@ class ChatService:
                 tool_call_id=msg.tool_call_id,
             ))
 
-        return messages
+        return self._sanitize_tool_message_sequence(messages)
+
+    def _sanitize_tool_message_sequence(self, messages: list[ChatMessage]) -> list[ChatMessage]:
+        """Remove orphan tool messages that have no matching assistant tool_call.
+
+        LiteLLM/OpenAI tool protocol requires each tool response message to map to
+        a prior assistant tool call by tool_call_id. If pruning/history drift drops
+        the assistant tool call but leaves the tool response, provider calls fail.
+        """
+        sanitized: list[ChatMessage] = []
+        pending_tool_calls: set[str] = set()
+
+        def _extract_tool_call_id(tc: object) -> str:
+            if isinstance(tc, dict):
+                return str(tc.get("id") or "").strip()
+            tc_id = getattr(tc, "id", "")
+            return str(tc_id or "").strip()
+
+        for msg in messages:
+            if msg.role == "assistant":
+                pending_tool_calls = set()
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tc_id = _extract_tool_call_id(tc)
+                        if tc_id:
+                            pending_tool_calls.add(tc_id)
+                sanitized.append(msg)
+                continue
+
+            if msg.role == "tool":
+                tc_id = (msg.tool_call_id or "").strip()
+                if tc_id and tc_id in pending_tool_calls:
+                    pending_tool_calls.discard(tc_id)
+                    sanitized.append(msg)
+                else:
+                    logger.warning(
+                        "Dropping orphan tool message (tool_call_id=%s, preview=%s)",
+                        tc_id or "<missing>",
+                        (msg.content or "")[:140],
+                    )
+                continue
+
+            # Any non-tool message closes the current tool-result window.
+            if pending_tool_calls:
+                pending_tool_calls = set()
+
+            sanitized.append(msg)
+
+        return sanitized
+
+    def _filter_valid_tool_calls(self, tool_calls: list[dict] | None) -> list[dict]:
+        """Keep only tool calls that have the required protocol fields."""
+        if not tool_calls:
+            return []
+
+        valid: list[dict] = []
+        for tc in tool_calls:
+            if not isinstance(tc, dict):
+                continue
+            tc_id = str(tc.get("id") or "").strip()
+            func = tc.get("function")
+            if not tc_id or not isinstance(func, dict):
+                continue
+            name = str(func.get("name") or "").strip()
+            if not name:
+                continue
+            valid.append(tc)
+        return valid
 
     def _calculate_cost(self, provider_name: str, model_id: str, usage: TokenUsage) -> float:
         """Calculate estimated cost based on token usage."""
@@ -613,9 +758,20 @@ class ChatService:
                     agent_name=agent.name,
                 )
                 return delegated_reply
+
+        # Deterministic model identity response to prevent conversational drift.
+        if self._is_model_identity_query(user_message):
+            model_identity_reply = self._build_model_identity_response(agent, effective_model)
+            await self.conv_service.add_message(
+                conversation_id,
+                "assistant",
+                model_identity_reply,
+                agent_name=agent.name if agent else "Assistant",
+            )
+            return model_identity_reply
         
         if agent:
-            prompt = self._build_agent_prompt(agent)
+            prompt = await self._compose_runtime_agent_prompt(agent)
             tool_schemas = self._filter_tools_for_agent(agent)
             agent_name = agent.name
             # Use agent's own API key if set
@@ -652,21 +808,45 @@ class ChatService:
             # If agent_id provided but agent not loaded
             agent = await self.session.get(Agent, agent_id)
 
-        max_iterations = 50
-        max_tool_calls = 50
-        max_tokens_per_task = 1000000
+        task_obj = await self.session.get(Task, task_id) if task_id else None
+        limits = ReasoningPolicy.limits_from_task(task_obj)
+        strategy = ReasoningLoopSelector.choose(agent, user_message)
+
+        max_iterations = limits.max_steps
+        max_tool_calls = limits.max_tool_calls
+        max_tokens_per_task = limits.max_tokens
         
         tool_calls_total = 0
         tokens_used_total = 0
         
         status_manager = await AgentStatusManager.get_instance()
         governor = ToolGovernor(max_consecutive=3, reflection_interval=3)
+        tracer = RunTracer(self.session)
+        run = await tracer.start_run(
+            conversation_id=conversation_id,
+            root_agent_id=agent_id,
+            strategy=strategy.value,
+            user_request=user_message,
+            plan={"strategy": strategy.value},
+        )
+        await tracer.get_or_create_root_node(run.id, prompt_excerpt=user_message, agent_id=agent_id)
         
         status_manager.set_status(agent_id, AgentState.WORKING, "Generating response...")
 
         try:
             gateway = await get_gateway(self.providers)
+
+            # Single-shot disables tool loops while still preserving provider/tool interfaces.
+            if strategy == ReasoningStrategy.SINGLE_SHOT:
+                tool_schemas = None
+
             for step in range(max_iterations):
+                if agent:
+                    prompt = await self._compose_runtime_agent_prompt(agent)
+                    messages = self._upsert_system_message(messages, prompt)
+                    if strategy != ReasoningStrategy.SINGLE_SHOT:
+                        tool_schemas = self._filter_tools_for_agent(agent)
+
                 # Three-threshold context pruning: soft warning → active prune → emergency truncate.
                 # Performed inside the loop to account for tool call results.
                 messages = await self.pruner.prune_context_if_needed(
@@ -680,13 +860,15 @@ class ChatService:
                     prune_sync_note=self._build_pruned_context_sync_note() if agent else None,
                     agent_name=agent.name if agent else None,
                 )
+                messages = self._sanitize_tool_message_sequence(messages)
 
                 result = await gateway.complete(provider, messages, model_id, agent_id, self.session, tools=tool_schemas, temperature=temperature)
 
                 if hasattr(result, "usage") and result.usage:
                     tokens_used_total += getattr(result.usage, 'total_tokens', 0)
+                    cost = self._calculate_cost(provider.name, model_id, result.usage)
+                    await tracer.add_tokens_and_cost(run.id, getattr(result.usage, 'total_tokens', 0), cost)
                     if getattr(agent, "id", None):
-                        cost = self._calculate_cost(provider.name, model_id, result.usage)
                         if cost > 0:
                             agent.total_cost = getattr(agent, 'total_cost', 0) + cost
                             await self.session.commit()
@@ -696,17 +878,21 @@ class ChatService:
                 if tokens_used_total >= max_tokens_per_task:
                     messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum token budget reached. You must immediately summarize your work, provide the best final answer you can, and STOP using tools."))
 
-                if result.tool_calls:
+                valid_tool_calls = self._filter_valid_tool_calls(result.tool_calls)
+                if result.tool_calls and not valid_tool_calls:
+                    logger.warning("Dropping malformed tool call batch in chat()")
+                if valid_tool_calls:
+                    await tracer.log_tool_calls(run.id, valid_tool_calls)
                     # Save assistant message with tool calls
                     await self.conv_service.add_message(
                         conversation_id, "assistant", result.content,
                         agent_name=agent_name,
-                        tool_calls_json=json.dumps(result.tool_calls),
+                        tool_calls_json=json.dumps(valid_tool_calls),
                     )
-                    messages.append(result)
+                    messages.append(ChatMessage(role="assistant", content=result.content, tool_calls=valid_tool_calls))
 
                     # Execute tools
-                    for tc in result.tool_calls:
+                    for tc in valid_tool_calls:
                         tool_calls_total += 1
                         func = tc.get("function", {})
                         tool_name = func.get("name", "")
@@ -715,7 +901,7 @@ class ChatService:
                     if tool_calls_total >= max_tool_calls:
                         messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum tool calls reached. You must immediately provide your final answer without any further tools."))
                     
-                    tool_results = await self._execute_tool_calls(result.tool_calls, conversation_id=conversation_id, agent_id=agent_id, task_id=task_id)
+                    tool_results = await self._execute_tool_calls(valid_tool_calls, conversation_id=conversation_id, agent_id=agent_id, task_id=task_id)
                     status_manager.set_status(agent_id, AgentState.WORKING, "Evaluating tool results...")
                     
                     for tr in tool_results:
@@ -725,7 +911,7 @@ class ChatService:
                         )
                         messages.append(tr)
 
-                    for tc in result.tool_calls:
+                    for tc in valid_tool_calls:
                         func = tc.get("function", {})
                         t_name = func.get("name", "")
                         t_args = func.get("arguments", "{}")
@@ -745,11 +931,31 @@ class ChatService:
                     await self.conv_service.add_message(
                         conversation_id, "assistant", response_text, agent_name=agent_name
                     )
+                    await tracer.set_run_state(
+                        run.id,
+                        "COMPLETED",
+                        final_output=response_text,
+                        autonomy_report={
+                            "strategy": strategy.value,
+                            "tool_calls_total": tool_calls_total,
+                            "tokens_used_total": tokens_used_total,
+                            "provider": provider.name,
+                            "model": model_id,
+                        },
+                    )
                     return response_text
 
-            return "Max tool iterations reached."
+            exhausted = "Max tool iterations reached."
+            await tracer.set_run_state(
+                run.id,
+                "FAILED",
+                final_output=exhausted,
+                autonomy_report={"strategy": strategy.value, "reason": "max_iterations"},
+            )
+            return exhausted
         except Exception as e:
             logger.exception(f"Exception in ChatService.chat (agent_id={agent_id}, conversation_id={conversation_id}): {e}")
+            await tracer.set_run_state(run.id, "FAILED", error=str(e), autonomy_report={"strategy": strategy.value})
             raise e
         finally:
             status_manager.set_status(agent_id, AgentState.IDLE)
@@ -813,6 +1019,13 @@ class ChatService:
                         pass
                 else:
                     yield {"type": "agent_turn_end", "agent_name": agent.name}
+                    try:
+                        yield {
+                            "type": "done",
+                            "conversation_id": conversation_id,
+                        }
+                    except GeneratorExit:
+                        pass
                 return
 
             contribution_reply = await self._maybe_handle_delegation_contribution_query(
@@ -844,6 +1057,13 @@ class ChatService:
                         pass
                 else:
                     yield {"type": "agent_turn_end", "agent_name": agent.name}
+                    try:
+                        yield {
+                            "type": "done",
+                            "conversation_id": conversation_id,
+                        }
+                    except GeneratorExit:
+                        pass
                 return
 
         # Deterministic delegation path for explicit orchestrator requests.
@@ -878,10 +1098,50 @@ class ChatService:
                         pass
                 else:
                     yield {"type": "agent_turn_end", "agent_name": agent.name}
+                    try:
+                        yield {
+                            "type": "done",
+                            "conversation_id": conversation_id,
+                        }
+                    except GeneratorExit:
+                        pass
                 return
+
+        # Deterministic model identity response to prevent stale model claims.
+        if self._is_model_identity_query(user_message):
+            model_identity_reply = self._build_model_identity_response(agent, effective_model)
+            msg = await self.conv_service.add_message(
+                conversation_id,
+                "assistant",
+                model_identity_reply,
+                agent_name=agent.name if agent else "Assistant",
+            )
+            if agent:
+                yield {"type": "agent_turn_start", "agent_name": agent.name}
+            yield {"type": "chunk", "delta": model_identity_reply}
+            if msg:
+                if agent:
+                    yield {
+                        "type": "agent_turn_end",
+                        "agent_name": agent.name,
+                        "message_id": msg.id,
+                    }
+                yield {
+                    "type": "done",
+                    "message_id": msg.id,
+                    "conversation_id": conversation_id,
+                }
+            else:
+                if agent:
+                    yield {"type": "agent_turn_end", "agent_name": agent.name}
+                yield {
+                    "type": "done",
+                    "conversation_id": conversation_id,
+                }
+            return
         
         if agent:
-            prompt = self._build_agent_prompt(agent)
+            prompt = await self._compose_runtime_agent_prompt(agent)
             tool_schemas = self._filter_tools_for_agent(agent)
             agent_name = agent.name
             # Use agent's own API key if set
@@ -892,10 +1152,6 @@ class ChatService:
             tool_schemas = self.tools.as_provider_format() if self.tools else None
             agent_name = "Assistant"
             
-        # Inject active skill instructions
-        skill_instructions = await self._get_skill_instructions(agent)
-        if skill_instructions:
-            prompt = (prompt or "") + "\n\n# Available Skills\n" + skill_instructions
         messages = self._db_messages_to_chat(db_messages, prompt)
         if fallback_warning:
             messages.append(ChatMessage(role="system", content=fallback_warning))
@@ -947,6 +1203,11 @@ class ChatService:
 
         try:
             for step in range(max_iterations):
+                if agent:
+                    prompt = await self._compose_runtime_agent_prompt(agent)
+                    messages = self._upsert_system_message(messages, prompt)
+                    tool_schemas = self._filter_tools_for_agent(agent)
+
                 # Three-threshold context pruning: soft warning → active prune → emergency truncate.
                 # Performed inside the loop to account for tool call results.
                 messages = await self.pruner.prune_context_if_needed(
@@ -960,6 +1221,7 @@ class ChatService:
                     prune_sync_note=self._build_pruned_context_sync_note() if agent else None,
                     agent_name=agent.name if agent else None,
                 )
+                messages = self._sanitize_tool_message_sequence(messages)
 
                 full_response = ""
                 final_tool_calls = None
@@ -1000,19 +1262,23 @@ class ChatService:
                     if tokens_used_total >= max_tokens_per_task:
                         messages.append(ChatMessage(role="system", content="HARD LIMIT: Maximum token budget reached. You must immediately summarize your work, provide the best final answer you can, and STOP using tools."))
 
-                    if final_tool_calls:
+                    valid_tool_calls = self._filter_valid_tool_calls(final_tool_calls)
+                    if final_tool_calls and not valid_tool_calls:
+                        logger.warning("Dropping malformed streamed tool call batch in stream_chat()")
+
+                    if valid_tool_calls:
                         # Save assistant message with tool calls
                         msg_record = await self.conv_service.add_message(
                             conversation_id, "assistant", full_response,
                             agent_name=agent_name,
-                            tool_calls_json=json.dumps(final_tool_calls),
+                            tool_calls_json=json.dumps(valid_tool_calls),
                         )
                         messages.append(ChatMessage(
-                            role="assistant", content=full_response, tool_calls=final_tool_calls,
+                            role="assistant", content=full_response, tool_calls=valid_tool_calls,
                         ))
 
                         # Execute tools and stream results
-                        for tc in final_tool_calls:
+                        for tc in valid_tool_calls:
                             tool_calls_total += 1
                             func = tc.get("function", {})
                             tool_name = func.get("name", "")
@@ -1030,7 +1296,7 @@ class ChatService:
                             yield {"type": "chunk", "delta": "\n[System]: Hard limit reached. Summarizing and wrapping up.\n", "agent_name": "Governor"}
 
                         tool_results = await self._execute_tool_calls(
-                            final_tool_calls, 
+                            valid_tool_calls, 
                             conversation_id=conversation_id, 
                             agent_id=agent_id,
                             task_id=task_id
@@ -1079,7 +1345,7 @@ class ChatService:
                                 "usage": usage_info,
                             }
 
-                        for tc in final_tool_calls:
+                        for tc in valid_tool_calls:
                             func = tc.get("function", {})
                             t_name = func.get("name", "")
                             t_args = func.get("arguments", "{}")
@@ -1117,6 +1383,13 @@ class ChatService:
                                 "type": "agent_turn_end",
                                 "agent_name": agent_name,
                             }
+                            try:
+                                yield {
+                                    "type": "done",
+                                    "conversation_id": conversation_id,
+                                }
+                            except GeneratorExit:
+                                pass
                         return
                 except GeneratorExit:
                     # Re-raise to ensure the generator closes properly
@@ -1153,7 +1426,12 @@ class ChatService:
         2. If no @mentions + autonomous mode → System Agent orchestrates (auto-delegation)
         3. If no @mentions + manual mode → System Agent responds directly
         """
-        from app.services.mention_parser import parse_mentions, resolve_mentions
+        from app.services.mention_parser import (
+            MentionResult,
+            ResolvedMention,
+            parse_mentions,
+            resolve_mentions,
+        )
 
         # Ensure conversation exists and is marked as group
         conv = await self.conv_service.get(conversation_id)
@@ -1176,15 +1454,35 @@ class ChatService:
             return
 
         orchestration_mode = getattr(channel, "orchestration_mode", "autonomous") or "autonomous"
+        original_user_message = user_message
 
         # Parse @mentions
-        mentions = parse_mentions(user_message)
-        mention_result = await resolve_mentions(self.session, mentions, conv.channel_id)
+        mentions = parse_mentions(original_user_message)
+        normalized = original_user_message.strip()
+        is_all_broadcast = normalized.lower().startswith("@all:")
+        is_announcement_broadcast = channel.is_announcement and not mentions
+
+        if is_all_broadcast or is_announcement_broadcast:
+            channel_agents = await self._get_channel_agents(conv.channel_id)
+            mention_result = MentionResult(
+                raw_mentions=[],
+                resolved=[
+                    ResolvedMention(
+                        agent_id=a.id,
+                        agent_name=a.name,
+                        original_text="all",
+                    )
+                    for a in channel_agents
+                ],
+                unresolved=[],
+            )
+        else:
+            mention_result = await resolve_mentions(self.session, mentions, conv.channel_id)
 
         # Save user message with mention metadata
         mentioned_ids = [r.agent_id for r in mention_result.resolved]
         await self.conv_service.add_message(
-            conversation_id, "user", user_message,
+            conversation_id, "user", original_user_message,
             mentioned_agents_json=json.dumps(mentioned_ids) if mentioned_ids else None,
         )
 
@@ -1195,7 +1493,7 @@ class ChatService:
         workflows_res = await self.session.execute(workflows_stmt)
         for wf in workflows_res.scalars().all():
             engine = WorkflowEngine()
-            asyncio.create_task(engine.execute_workflow(wf.id, {"trigger": "channel_message", "message": user_message, "mentions": mentioned_ids}))
+            asyncio.create_task(engine.execute_workflow(wf.id, {"trigger": "channel_message", "message": original_user_message, "mentions": mentioned_ids}))
 
         # Warn about unresolved mentions
         if mention_result.unresolved:
@@ -1208,9 +1506,14 @@ class ChatService:
 
         if mention_result.resolved:
             # ── EXPLICIT ROUTING: Only mentioned agents respond ──
-            # Storm prevention: cap max simultaneous responding agents
-            responding = mention_result.resolved[:MAX_SIMULTANEOUS_RESPONDING_AGENTS]
-            if len(mention_result.resolved) > MAX_SIMULTANEOUS_RESPONDING_AGENTS:
+            # Storm prevention: cap fan-out for regular channels.
+            # Announcements and explicit @all broadcasts should fan out to all targets.
+            apply_storm_cap = not (channel.is_announcement or is_all_broadcast)
+            responding = mention_result.resolved
+            if apply_storm_cap:
+                responding = mention_result.resolved[:MAX_SIMULTANEOUS_RESPONDING_AGENTS]
+
+            if apply_storm_cap and len(mention_result.resolved) > MAX_SIMULTANEOUS_RESPONDING_AGENTS:
                 skipped = [r.agent_name for r in mention_result.resolved[MAX_SIMULTANEOUS_RESPONDING_AGENTS:]]
                 yield {
                     "type": "system_notice",
@@ -1291,26 +1594,11 @@ class ChatService:
         agent_msgs = []
 
         # 1. System Prompt
-        agent_prompt = self._build_agent_prompt(agent)
-        if fallback_warning:
-            agent_prompt = (agent_prompt or "") + f"\n\n# Runtime Notice\n{fallback_warning}"
-        if is_group:
-            multi_agent_instruction = (
-                f"\n\nIMPORTANT: You are in a multi-agent chat room. Your name is {agent.name}. "
-                "Respond ONLY as yourself. Do NOT simulate conversations. "
-                "Do NOT prefix your response with your name like 'Name: '. Just output your response directly."
-            )
-            if not agent.is_system:
-                multi_agent_instruction += (
-                    "\nYou MUST NOT mention or tag other agents using @. "
-                    "You CANNOT delegate work to other agents. Only complete your own assigned task."
-                )
-            agent_prompt = (agent_prompt or "") + multi_agent_instruction
-
-        # Inject active skill instructions
-        skill_instructions = await self._get_skill_instructions(agent)
-        if skill_instructions:
-            agent_prompt = (agent_prompt or "") + "\n\n# Available Skills\n" + skill_instructions
+        agent_prompt = await self._compose_runtime_agent_prompt(
+            agent,
+            fallback_warning=fallback_warning,
+            is_group=is_group,
+        )
         agent_msgs.append(ChatMessage(role="system", content=agent_prompt))
 
         # 2. Reconstruct history for this agent's viewpoint
@@ -1376,6 +1664,14 @@ class ChatService:
         try:
             # Agentic tool loop
             for step in range(max_tool_iters):
+                agent_prompt = await self._compose_runtime_agent_prompt(
+                    agent,
+                    fallback_warning=fallback_warning,
+                    is_group=is_group,
+                )
+                agent_msgs = self._upsert_system_message(agent_msgs, agent_prompt)
+                agent_tools = self._filter_tools_for_agent(agent, is_group_context=is_group)
+
                 # Three-threshold context pruning: soft warning → active prune → emergency truncate.
                 # Performed inside the loop to account for tool call results.
                 agent_msgs = await self.pruner.prune_context_if_needed(
@@ -1389,6 +1685,7 @@ class ChatService:
                     prune_sync_note=self._build_pruned_context_sync_note(),
                     agent_name=agent.name,
                 )
+                agent_msgs = self._sanitize_tool_message_sequence(agent_msgs)
 
                 full_response = ""
                 final_tool_calls = None
@@ -1421,17 +1718,21 @@ class ChatService:
                                 "total_cost": agent.total_cost,
                             })
 
-                    if final_tool_calls:
+                    valid_tool_calls = self._filter_valid_tool_calls(final_tool_calls)
+                    if final_tool_calls and not valid_tool_calls:
+                        logger.warning("Dropping malformed streamed tool call batch in _run_agent_turn()")
+
+                    if valid_tool_calls:
                         msg_record = await self.conv_service.add_message(
                             conversation_id, "assistant", full_response,
                             agent_name=agent.name,
-                            tool_calls_json=json.dumps(final_tool_calls),
+                            tool_calls_json=json.dumps(valid_tool_calls),
                         )
                         agent_msgs.append(ChatMessage(
-                            role="assistant", content=full_response, tool_calls=final_tool_calls,
+                            role="assistant", content=full_response, tool_calls=valid_tool_calls,
                         ))
 
-                        for tc in final_tool_calls:
+                        for tc in valid_tool_calls:
                             func = tc.get("function", {})
                             tool_name = func.get("name", "")
                             args_raw = func.get("arguments", "{}")
@@ -1443,7 +1744,7 @@ class ChatService:
                             }
 
                         tool_results = await self._execute_tool_calls(
-                            final_tool_calls, 
+                            valid_tool_calls, 
                             conversation_id=conversation_id, 
                             agent_id=agent_id,
                             task_id=task_id
@@ -1482,7 +1783,7 @@ class ChatService:
                             "usage": usage_info,
                         }
 
-                        for tc in final_tool_calls:
+                        for tc in valid_tool_calls:
                             func = tc.get("function", {})
                             t_name = func.get("name", "")
                             t_args = func.get("arguments", "{}")
@@ -1508,7 +1809,7 @@ class ChatService:
                             if len(history_responses) > 3:
                                 history_responses.pop(0)
 
-                        if not content_clean and not final_tool_calls:
+                        if not content_clean and not valid_tool_calls:
                             logger.warning("Agent %s returned empty response in turn. Forces termination.", agent.name)
                             yield {"type": "notification", "message": f"[{agent.name} provided no content. Breaking loop.]"}
                             break

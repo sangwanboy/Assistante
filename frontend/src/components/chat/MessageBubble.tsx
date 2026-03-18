@@ -1,5 +1,5 @@
 import { useState, memo } from 'react';
-import { User, Bot, Wrench, Volume2, Loader2 } from 'lucide-react';
+import { User, Bot, Wrench, Volume2, Loader2, Trash2 } from 'lucide-react';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { audioApi } from '../../services/audio';
@@ -22,9 +22,10 @@ function highlightMentions(text: string): React.ReactNode[] {
 
 interface Props {
   message: Message;
+  onDeleteUserMessage?: (message: Message) => void;
 }
 
-export const MessageBubble = memo(function MessageBubble({ message }: Props) {
+export const MessageBubble = memo(function MessageBubble({ message, onDeleteUserMessage }: Props) {
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const allToolsCollapsed = useUIStore(state => state.allToolsCollapsed);
 
@@ -106,6 +107,16 @@ export const MessageBubble = memo(function MessageBubble({ message }: Props) {
           <div className="text-[10px] text-gray-600 mt-1 text-right font-medium">
              {timeDisplay && <span className="mr-1.5 text-gray-600/60">{timeDisplay}</span>}
              You
+          </div>
+          <div className="mt-1 text-right">
+            <button
+              onClick={() => onDeleteUserMessage?.(message)}
+              className="inline-flex items-center gap-1 rounded-md border border-red-500/30 px-2 py-0.5 text-[10px] font-medium text-red-300 hover:bg-red-500/10"
+              title="Delete this message"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </button>
           </div>
         </div>
         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">

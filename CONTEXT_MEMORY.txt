@@ -2265,6 +2265,64 @@ Phase 12: Full UI overhaul - DONE (6-phase redesign matching mockups)
 
   Verified: npx tsc --noEmit → 0 errors.
 
+[2026-03-18] Group/Announcement Communication + Runtime Recovery:
+  Backend group-channel fixes (app/services/chat_service.py):
+    - Enabled explicit @all broadcast support in stream_group_chat.
+    - Announcement channels now fan out to channel agents when no explicit mention is present.
+    - Storm cap now bypasses for announcement/@all fan-out (regular channels still capped).
+    - Non-system group prompt guidance changed from "do not mention agents" to
+      controlled collaboration guidance.
+    - Non-system group tool filtering no longer blocks agent_messenger;
+      only explicit delegation tool remains blocked.
+
+  Runtime blockers fixed during restart:
+    - Restored missing backend module: app/models/context_memory.py.
+    - Restored missing backend services:
+      * app/services/history_summarization_service.py
+      * app/services/task_state_store.py
+      * app/services/memory_retrieval_service.py
+    - Aligned restored ORM models to existing SQLite schema to resolve
+      /api/tasks/state/active 500 (task_state_store had task_id PK, not id).
+
+  Frontend runtime fix:
+    - Restored missing store file: frontend/src/stores/taskStateStore.ts
+      (polling /api/tasks/state/active, byThread map, threadState helper).
+
+  Service status after fixes:
+    - Backend: /api/agents, /api/channels, /api/tasks/state/active, /api/system/metrics = 200.
+    - Messaging legacy group endpoints validated: GET groups/messages and POST group message = 200.
+    - Frontend: reachable on localhost:5173 (Vite listening on ::1).
+    - WhatsApp service: healthy on port 3001.
+
+[2026-03-18] Janny Group -> Chat Channel Sync Enforcement:
+  User requirement:
+    - No separate Group section in UI.
+    - Every group Janny creates must appear in Chat -> Channels.
+
+  Root cause:
+    - Two creation paths existed for groups:
+      1) API route (/api/messaging/groups) and
+      2) AgentMessengerTool direct DB write path.
+    - Initial fix covered API path only, so tool-created groups were not mirrored.
+
+  Final fix applied:
+    - backend/app/api/agent_messaging.py:
+      * group creation now also creates a Channel with same UUID.
+      * group participants are synced into channel_agents.
+      * group deletion also removes mirrored Channel.
+    - backend/app/tools/agent_messenger.py:
+      * create_group now mirrors to Channel + channel_agents.
+      * ensures system agent inclusion consistent with API behavior.
+    - backend/app/api/channels.py:
+      * added lazy backfill so legacy AgentGroupDiscussion rows are materialized into Channels on channel list fetch.
+    - frontend/src/components/chat/ChatView.tsx:
+      * periodic channel refresh added so new channels appear without manual hard reload.
+
+  Validation:
+    - After backend restart with patched code, creating messaging group produced mirrored channel immediately.
+    - Temporary verification groups were deleted after test.
+    - Current expected behavior: all new Janny-created groups are visible in Chat Channels.
+
 ================================================================================
                                  END
 ================================================================================

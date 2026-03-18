@@ -78,7 +78,9 @@ class AgentMessagingService:
             "to_agent_id": to_agent_id,
             "group_id": None,
             "content": content,
+            "role": "agent",
             "created_at": ts,
+            "is_read": False,
         }
 
         # Persist to DB if session provided
@@ -111,7 +113,9 @@ class AgentMessagingService:
             "to_agent_id": None,
             "group_id": group_id,
             "content": content,
+            "role": "agent",
             "created_at": ts,
+            "is_read": False,
         }
 
         if session is not None:
@@ -157,8 +161,9 @@ class AgentMessagingService:
                 "to_agent_id": m.to_agent_id,
                 "group_id": m.group_id,
                 "content": m.content,
+                "role": getattr(m, 'role', None) or "agent",
                 "created_at": m.created_at.isoformat() if m.created_at else None,
-                "is_read": m.is_read,
+                "is_read": getattr(m, 'is_read', False),
             }
             for m in reversed(msgs)
         ]

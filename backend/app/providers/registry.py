@@ -9,24 +9,34 @@ class ProviderRegistry:
 
         self._providers: dict[str, BaseProvider] = {}
 
-        openai_key = settings.openai_api_key
-        if openai_key:
-            from app.providers.openai_provider import OpenAIProvider
-            self._providers["openai"] = OpenAIProvider(openai_key)
-            logger.info("OpenAI provider initialized.")
+        if settings.use_litellm:
+            from app.providers.litellm_provider import LiteLLMProvider
 
-        anthropic_key = settings.anthropic_api_key
-        if anthropic_key:
-            from app.providers.anthropic_provider import AnthropicProvider
-            self._providers["anthropic"] = AnthropicProvider(anthropic_key)
-            logger.info("Anthropic provider initialized.")
+            # Route major cloud providers through LiteLLM for unified token accounting.
+            self._providers["openai"] = LiteLLMProvider("openai", settings.openai_api_key)
+            self._providers["anthropic"] = LiteLLMProvider("anthropic", settings.anthropic_api_key)
+            self._providers["gemini"] = LiteLLMProvider("gemini", settings.gemini_api_key)
 
-        gemini_key = settings.gemini_api_key
-        logger.info(f"Gemini API key loaded from settings: {'present' if gemini_key else 'MISSING'}")
-        if gemini_key:
-            from app.providers.gemini_provider import GeminiProvider
-            self._providers["gemini"] = GeminiProvider(gemini_key)
-            logger.info("Gemini provider initialized.")
+            logger.info("LiteLLM routing enabled for openai/anthropic/gemini providers.")
+        else:
+            openai_key = settings.openai_api_key
+            if openai_key:
+                from app.providers.openai_provider import OpenAIProvider
+                self._providers["openai"] = OpenAIProvider(openai_key)
+                logger.info("OpenAI provider initialized.")
+
+            anthropic_key = settings.anthropic_api_key
+            if anthropic_key:
+                from app.providers.anthropic_provider import AnthropicProvider
+                self._providers["anthropic"] = AnthropicProvider(anthropic_key)
+                logger.info("Anthropic provider initialized.")
+
+            gemini_key = settings.gemini_api_key
+            logger.info(f"Gemini API key loaded from settings: {'present' if gemini_key else 'MISSING'}")
+            if gemini_key:
+                from app.providers.gemini_provider import GeminiProvider
+                self._providers["gemini"] = GeminiProvider(gemini_key)
+                logger.info("Gemini provider initialized.")
 
         from app.providers.ollama_provider import OllamaProvider
         self._providers["ollama"] = OllamaProvider(settings.ollama_base_url)
@@ -58,6 +68,10 @@ class ProviderRegistry:
 
     def create_ephemeral(self, provider_name: str, api_key: str) -> BaseProvider:
         """Create a one-off provider instance with a custom API key."""
+        if settings.use_litellm and provider_name in {"openai", "anthropic", "gemini"}:
+            from app.providers.litellm_provider import LiteLLMProvider
+            return LiteLLMProvider(provider_name, api_key)
+
         if provider_name == "openai":
             from app.providers.openai_provider import OpenAIProvider
             return OpenAIProvider(api_key)

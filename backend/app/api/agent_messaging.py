@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.engine import get_session, async_session
 from app.models.agent_message import AgentGroupDiscussion
 from app.models.agent import Agent
+from app.models.channel import Channel
+from app.models.channel_agent import ChannelAgent
 from app.schemas.agent_message import (
     AgentMessageCreate, AgentMessageOut,
     GroupDiscussionCreate, GroupDiscussionOut,
@@ -57,12 +60,28 @@ async def create_group(
     if system_agent and system_agent.id not in participant_ids:
         participant_ids.append(system_agent.id)
 
+    group_id = str(uuid.uuid4())
     grp = AgentGroupDiscussion(
+        id=group_id,
         name=body.name,
         description=body.description,
         agent_ids_json=json.dumps(participant_ids),
     )
     session.add(grp)
+
+    # Mirror group discussions into chat channels so they appear in Chat UI.
+    # Use the same UUID for both entities for deterministic linking.
+    channel = Channel(
+        id=group_id,
+        name=body.name,
+        description=body.description,
+        is_announcement=False,
+    )
+    session.add(channel)
+
+    for agent_id in participant_ids:
+        session.add(ChannelAgent(channel_id=group_id, agent_id=agent_id))
+
     await session.commit()
     await session.refresh(grp)
     return grp
@@ -76,6 +95,12 @@ async def delete_group(group_id: str, session: AsyncSession = Depends(get_sessio
     grp = result.scalar_one_or_none()
     if not grp:
         raise HTTPException(status_code=404, detail="Group not found")
+
+    # Keep mirrored chat channel in sync with group lifecycle.
+    channel = await session.get(Channel, group_id)
+    if channel:
+        await session.delete(channel)
+
     await session.delete(grp)
     await session.commit()
     return {"ok": True}

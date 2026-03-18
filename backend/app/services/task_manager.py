@@ -7,6 +7,10 @@ from sqlalchemy import select
 
 from app.models.task import Task
 from app.config import settings
+from app.services.task_state_store import TaskStateStore
+from app.services.history_summarization_service import HistorySummarizationService
+from app.db.engine import async_session
+from app.providers.registry import ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +110,34 @@ class TaskManager:
             event_type = f"task_{status.lower()}"
             
         await self.session.commit()
+
+        # Centralized task state snapshot used by prompt rehydration + frontend.
+        state_store = TaskStateStore(self.session)
+        await state_store.upsert(
+            task_id=t.id,
+            thread_id=t.conversation_id,
+            status=t.status.lower(),
+            progress=t.progress or 0,
+            assigned_agents=[t.assigned_agent_id] if t.assigned_agent_id else [],
+            results_summary=(t.result or t.error_message or "")[:1200] if status in ("COMPLETED", "FAILED", "TIMED_OUT", "CANCELED", "DLQ") else None,
+        )
+
+        # Queue async summarization for completed terminal states without blocking user response.
+        if t.conversation_id and status in ("COMPLETED", "FAILED", "TIMED_OUT", "CANCELED", "DLQ"):
+            try:
+                service = await HistorySummarizationService.get_instance(
+                    session_factory=async_session,
+                    providers=ProviderRegistry(),
+                )
+                await service.enqueue(
+                    thread_id=t.conversation_id,
+                    trigger="task_completion",
+                    task_id=t.id,
+                    agent_id=t.assigned_agent_id,
+                )
+            except Exception as exc:
+                logger.warning("Failed to enqueue summary for task %s: %s", t.id, exc)
+
         await self._publish_event(event_type, t)
         
         return t
@@ -126,5 +158,15 @@ class TaskManager:
             await self._publish_event("task_started", t)
             
         await self.session.commit()
+
+        state_store = TaskStateStore(self.session)
+        await state_store.upsert(
+            task_id=t.id,
+            thread_id=t.conversation_id,
+            status=t.status.lower(),
+            progress=t.progress,
+            assigned_agents=[t.assigned_agent_id] if t.assigned_agent_id else [],
+        )
+
         await self._publish_event("task_progress", t)
         return t

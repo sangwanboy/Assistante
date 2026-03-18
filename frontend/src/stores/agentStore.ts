@@ -35,6 +35,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             set((state) => ({ agents: [...state.agents, newAgent] }));
         } catch (e: unknown) {
             set({ error: e instanceof Error ? e.message : String(e) });
+            throw e;
         }
     },
 
@@ -46,6 +47,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             }));
         } catch (e: unknown) {
             set({ error: e instanceof Error ? e.message : String(e) });
+            throw e;
         }
     },
 
@@ -63,6 +65,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             }));
         } catch (e: unknown) {
             set({ error: e instanceof Error ? e.message : String(e) });
+            throw e;
         }
     },
 }));

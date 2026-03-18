@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     gemini_api_key: str | None = None
     brave_search_api_key: str | None = None
+
+    # LiteLLM unified provider layer
+    use_litellm: bool = True
     
     # Gemini Customizable Rate Limits
     gemini_context_window: int = 1048576

@@ -14,6 +14,7 @@ import {
   Workflow,
   Activity,
   Zap,
+  Radar,
   Settings as SettingsIcon
 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { id: 'workflows', label: 'Workflows', icon: Workflow },
   { id: 'integrations', label: 'Integrations', icon: Globe },
   { id: 'heartbeat', label: 'Heartbeat', icon: Activity },
+  { id: 'runtime', label: 'Runtime', icon: Radar },
 ];
 
 export function AnimatedSidebar({ activeView, onViewChange }: AnimatedSidebarProps) {

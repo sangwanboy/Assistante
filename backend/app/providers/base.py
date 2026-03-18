@@ -26,6 +26,14 @@ class TokenUsage:
 
 
 @dataclass
+class ProviderTelemetry:
+    latency_ms: int = 0
+    estimated_cost: float = 0.0
+    error_type: str | None = None
+    rate_limit_signal: str | None = None
+
+
+@dataclass
 class ChatMessage:
     role: str          # "system", "user", "assistant", "tool"
     content: str = ""
@@ -33,6 +41,7 @@ class ChatMessage:
     tool_call_id: str | None = None
     images: list[str] | None = None  # List of base64-encoded image strings
     usage: TokenUsage | None = None
+    telemetry: ProviderTelemetry | None = None
 
 
 @dataclass
@@ -42,6 +51,7 @@ class StreamChunk:
     tool_calls: list[dict] | None = None
     usage: TokenUsage | None = None
     error: str | None = None
+    telemetry: ProviderTelemetry | None = None
 
 
 class BaseProvider(ABC):

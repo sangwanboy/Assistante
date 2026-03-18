@@ -28,6 +28,7 @@ from app.tools.registry import ToolRegistry
 from app.services.agent_status import AgentStatusManager, AgentState
 from app.services.capability_registry import CapabilityRegistry
 from app.schemas.orchestration import OrchestrationPlan
+from app.services.run_tracer import RunTracer
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,15 @@ class OrchestrationEngine:
         self.session.add(chain)
         await self.session.commit()
         await self.session.refresh(chain)
+
+        tracer = RunTracer(self.session)
+        run = await tracer.start_run(
+            conversation_id=conversation_id,
+            root_agent_id=system_agent.id,
+            strategy="supervisor_workers",
+            user_request=user_message,
+            plan={"mode": "delegation_chain"},
+        )
 
         yield {"type": "chain_start", "chain_id": chain.id, "lifecycle_stage": "plan"}
 
@@ -177,6 +187,33 @@ Rules:
             steps = plan.steps
             agents_involved = [system_agent.id]
 
+            # Persist DAG nodes and dependencies for replay.
+            for idx, step in enumerate(steps, start=1):
+                node_key = f"step_{idx}"
+                from app.models.orchestration_run import OrchestrationTaskNode
+                node = OrchestrationTaskNode(
+                    run_id=run.id,
+                    node_key=node_key,
+                    type="subtask",
+                    state="PENDING",
+                    prompt_excerpt=step.task[:1000],
+                    inputs_json=json.dumps({"group_id": step.group_id, "depends_on_groups": step.depends_on_groups}),
+                )
+                self.session.add(node)
+
+            await self.session.commit()
+
+            # Group dependency mapping: each group depends on other groups.
+            group_to_node_keys: dict[int, list[str]] = {}
+            for idx, step in enumerate(steps, start=1):
+                group_to_node_keys.setdefault(step.group_id, []).append(f"step_{idx}")
+
+            for idx, step in enumerate(steps, start=1):
+                target = f"step_{idx}"
+                for dep_group in step.depends_on_groups:
+                    for source in group_to_node_keys.get(dep_group, []):
+                        await tracer.add_edge(run.id, source, target)
+
             # ── Step 2.5: Agent Discovery & Auto-Creation ──
             # Resolve each step's agent. If not found, auto-create or reuse closest.
             from sqlalchemy import func as sa_func
@@ -233,7 +270,7 @@ Rules:
                     }
                 else:
                     # Limits reached — find closest existing agent
-                        fallback = await find_closest_agent(
+                    fallback = await find_closest_agent(
                         self.session,
                         required_role=step.task,
                     )
@@ -442,7 +479,7 @@ Rules:
             
             await tm.update_task_state(parent_task.id, "COMPLETED")
 
-            if plan.get("aggregation_needed") and len(steps) > 1:
+            if plan.aggregation_needed and len(steps) > 1:
                 from app.services.conversation_service import ConversationService
                 conv_svc = ConversationService(self.session)
 
@@ -510,7 +547,7 @@ Rules:
 
     async def _ask_system_agent(
         self, system_agent: Agent, prompt: str, temperature: float = 0.3
-    ) -> str:
+    ) -> OrchestrationPlan | None:
         """Ask the System Agent a question and return the text response (non-streaming)."""
         if not self.chat_service:
             return ""

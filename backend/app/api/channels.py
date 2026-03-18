@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import json
 
 from app.db.engine import get_session
 from app.models.channel import Channel
 from app.models.channel_agent import ChannelAgent
 from app.models.agent import Agent
+from app.models.agent_message import AgentGroupDiscussion
 from app.schemas.channel import ChannelCreate, ChannelUpdate, ChannelOut, ChannelAgentAdd
 from app.schemas.agent import AgentOut
 
@@ -13,6 +15,40 @@ router = APIRouter()
 
 @router.get("", response_model=list[ChannelOut])
 async def get_channels(session: AsyncSession = Depends(get_session)):
+    # Lazy backfill: ensure legacy messaging groups are visible as chat channels.
+    groups_result = await session.execute(select(AgentGroupDiscussion))
+    groups = groups_result.scalars().all()
+    dirty = False
+
+    for grp in groups:
+        existing_channel = await session.get(Channel, grp.id)
+        if not existing_channel:
+            session.add(Channel(
+                id=grp.id,
+                name=grp.name,
+                description=grp.description,
+                is_announcement=False,
+            ))
+            dirty = True
+
+        try:
+            participant_ids = json.loads(grp.agent_ids_json or "[]")
+        except Exception:
+            participant_ids = []
+
+        for agent_id in participant_ids:
+            link_stmt = select(ChannelAgent).where(
+                ChannelAgent.channel_id == grp.id,
+                ChannelAgent.agent_id == agent_id,
+            )
+            existing_link = await session.scalar(link_stmt)
+            if not existing_link:
+                session.add(ChannelAgent(channel_id=grp.id, agent_id=agent_id))
+                dirty = True
+
+    if dirty:
+        await session.commit()
+
     result = await session.execute(select(Channel).order_by(Channel.created_at))
     return list(result.scalars().all())
 

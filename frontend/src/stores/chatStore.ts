@@ -71,6 +71,7 @@ interface ChatState {
   orchestrationPlan: { summary: string; steps?: Array<{ agent: string; task: string }> } | null;
   currentChainAgent: string | null;
   currentChainTask: string | null;
+  rehydratedContext: string | null;
 
   // Throttling State (Internal)
   _pendingContent: string;
@@ -118,6 +119,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   orchestrationPlan: null,
   currentChainAgent: null,
   currentChainTask: null,
+  rehydratedContext: null,
   wsClient: null,
   _pendingContent: '',
   _throttleTimeout: null,
@@ -311,6 +313,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
               isStreaming: true,
               busyThreads: state.activeConversationId ? { ...state.busyThreads, [state.activeConversationId]: true } : state.busyThreads
             }));
+            break;
+
+          case 'rehydrated_context':
+            set({ rehydratedContext: event.context || null });
             break;
 
             case 'agent_turn_end':
@@ -539,6 +545,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       streamingToolCalls: [],
       streamingAgentName: inferStreamingAgentName(state),
+      rehydratedContext: null,
       error: null,
       busyThreads: activeConversationId ? { ...state.busyThreads, [activeConversationId]: true } : state.busyThreads
     }));

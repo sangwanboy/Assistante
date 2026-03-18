@@ -83,7 +83,6 @@ class LLMGateway:
         rpm = caps.get("rpm", 100)
         tpm = caps.get("tpm", 1000000)
         rpd = caps.get("rpd", 10000)
-        rpd = caps.get("rpd", 10000)
         
         canonical_id = caps.get("canonical_id", model)
         

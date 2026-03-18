@@ -19,6 +19,8 @@ from app.api.agent_messaging import router as agent_messaging_router
 from app.api.tasks import router as tasks_router
 from app.api.chains import router as chains_router
 from app.api.system import router as system_router
+from app.api.run_viewer import router as run_viewer_router
+from app.api.web_workspaces import router as web_workspaces_router
 
 api_router = APIRouter()
 
@@ -40,4 +42,6 @@ api_router.include_router(marketplace_router, prefix="/marketplace", tags=["Mark
 api_router.include_router(agent_messaging_router, prefix="/messaging", tags=["Agent Messaging"])
 api_router.include_router(tasks_router, prefix="/tasks", tags=["Tasks"])
 api_router.include_router(chains_router, prefix="/chains", tags=["Delegation Chains"])
+api_router.include_router(run_viewer_router, tags=["Run Viewer"])
+api_router.include_router(web_workspaces_router, tags=["Web Workspaces"])
 api_router.include_router(system_router)
