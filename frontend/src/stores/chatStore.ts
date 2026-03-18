@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { Conversation, Message, StreamEvent, ModelInfo } from '../types';
 import { api } from '../services/api';
 import { WebSocketClient } from '../services/websocket';
+import { useUIStore } from './uiStore';
+import { useAgentStore } from './agentStore';
 
 function normalizeStreamError(error?: string): string {
   const msg = error || 'Unknown error';
@@ -18,6 +20,31 @@ function normalizeStreamError(error?: string): string {
 
   const compact = msg.replace(/\s+/g, ' ').trim();
   return compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
+}
+
+function inferStreamingAgentName(state: {
+  activeConversationId: string | null;
+  conversations: Conversation[];
+  messages: Message[];
+  streamingAgentName: string | null;
+}): string | null {
+  const current = (state.streamingAgentName || '').trim();
+  if (current) return current;
+
+  const conv = state.conversations.find((c) => c.id === state.activeConversationId);
+  if (!conv?.agent_id) return null;
+
+  const agent = useAgentStore.getState().agents.find((a) => a.id === conv.agent_id);
+  if (agent?.name?.trim()) return agent.name.trim();
+
+  for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+    const m = state.messages[i];
+    if (m.role === 'assistant' && m.agent_name && m.agent_name.trim()) {
+      return m.agent_name.trim();
+    }
+  }
+
+  return null;
 }
 
 interface ChatState {
@@ -66,6 +93,7 @@ interface ChatState {
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   sendMessage: (content: string, model: string) => void;
+  deleteUserMessage: (message: Message) => Promise<void>;
   stopGeneration: () => void;
   connectWebSocket: (conversationId: string) => void;
   clearError: () => void;
@@ -233,6 +261,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   connectWebSocket: (conversationId: string) => {
     console.log('[ChatStore] connectWebSocket called for:', conversationId);
     const existing = get().wsClient;
+    if (existing && existing.conversationId === conversationId && existing.isActive) {
+      return;
+    }
     if (existing) {
       existing.disconnect();
     }
@@ -245,7 +276,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
             // Better to always throttle during active streaming to be safe.
             set((state) => {
               state._pendingContent += (event.delta || '');
-              if (event.agent_name) state.streamingAgentName = event.agent_name;
+              if (event.agent_name) {
+                state.streamingAgentName = event.agent_name;
+              } else if (!state.streamingAgentName) {
+                state.streamingAgentName = inferStreamingAgentName(state);
+              }
 
               if (!state._throttleTimeout) {
                 state._throttleTimeout = setTimeout(() => {
@@ -268,7 +303,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           case 'agent_turn_start':
             if (get()._throttleTimeout) clearTimeout(get()._throttleTimeout!);
             set((state) => ({
-              streamingAgentName: event.agent_name || null,
+              streamingAgentName: event.agent_name || inferStreamingAgentName(state),
               streamingContent: '',
               streamingToolCalls: [],
               _pendingContent: '',
@@ -282,12 +317,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
             set((state) => {
               if (state._throttleTimeout) clearTimeout(state._throttleTimeout);
               const finalContent = state.streamingContent + state._pendingContent;
+              const resolvedAgentName = state.streamingAgentName || inferStreamingAgentName(state);
 
               const agentMsg: Message = {
                 id: event.message_id,
                 role: 'assistant',
                 content: finalContent,
-                agent_name: state.streamingAgentName,
+                agent_name: resolvedAgentName,
                 created_at: new Date().toISOString(),
               };
 
@@ -455,7 +491,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       },
       onOpen: () => set({ isConnected: true }),
-      onClose: () => set({ isConnected: false }),
+      onClose: () => set((state) => {
+        if (state.isStreaming) {
+          useUIStore.getState().addToast('Connection interrupted. Streaming was stopped.', 'info');
+        }
+        if (state._throttleTimeout) {
+          clearTimeout(state._throttleTimeout);
+        }
+        const newBusy = { ...state.busyThreads };
+        if (state.activeConversationId) {
+          newBusy[state.activeConversationId] = false;
+        }
+        return {
+          isConnected: false,
+          isStreaming: false,
+          streamingContent: '',
+          _pendingContent: '',
+          _throttleTimeout: null,
+          streamingToolCalls: [],
+          streamingAgentName: null,
+          busyThreads: newBusy,
+        };
+      }),
     });
 
     client.connect(conversationId);
@@ -466,7 +523,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { wsClient, activeConversationId } = get();
     console.log('[ChatStore] sendMessage called. wsClient:', !!wsClient, 'activeConversationId:', activeConversationId, 'wsConnected:', wsClient?.isConnected);
     if (!wsClient || !activeConversationId) {
-      console.warn('[ChatStore] sendMessage ABORTED — wsClient or activeConversationId is null');
+      console.warn('ABORTED'); set({ error: 'Cannot send message: check if chat is connected.' });
       return;
     }
 
@@ -481,14 +538,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: true,
       streamingContent: '',
       streamingToolCalls: [],
-      streamingAgentName: null,
+      streamingAgentName: inferStreamingAgentName(state),
       error: null,
       busyThreads: activeConversationId ? { ...state.busyThreads, [activeConversationId]: true } : state.busyThreads
     }));
 
     const conv = get().conversations.find((c: Conversation) => c.id === activeConversationId);
+    const effectiveModel = conv?.model || model;
 
-    wsClient.send(content, model, undefined, undefined, conv?.is_group);
+    wsClient.send(content, effectiveModel, undefined, undefined, conv?.is_group);
+  },
+
+  deleteUserMessage: async (message: Message) => {
+    const { activeConversationId } = get();
+    set((state) => {
+      if (message.role !== 'user') {
+        return state;
+      }
+
+      const id = message.id != null ? String(message.id) : null;
+      let idx = -1;
+
+      if (id) {
+        idx = state.messages.findIndex((m) => m.id != null && String(m.id) === id);
+      } else {
+        idx = state.messages.findIndex(
+          (m) =>
+            m.role === 'user' &&
+            m.content === message.content &&
+            (m.created_at || '') === (message.created_at || '')
+        );
+      }
+
+      if (idx < 0) {
+        return state;
+      }
+
+      const next = [...state.messages];
+      next.splice(idx, 1);
+      return { messages: next };
+    });
+
+    // Call API if message has an ID and we have an active conversation
+    if (message.id != null && activeConversationId) {
+      try {
+        await api.deleteMessage(activeConversationId, message.id);
+      } catch (err) {
+        console.error('Failed to delete message on backend:', err);
+      }
+    }
   },
 
   stopGeneration: () => {

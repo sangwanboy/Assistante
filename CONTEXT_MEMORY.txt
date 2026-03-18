@@ -8,6 +8,38 @@ Purpose: Persistent memory for Claude across sessions. Read this file at the
 ================================================================================
                          TASK COMPLETION SUMMARY
 ================================================================================
+### Phase 28: System Diagnostics, LLM Gateway Fixes, and Frontend Stabilization (2026-03-18)
+- **Frontend Silent Message Bug**: Resolved severe chatStore UX issue where active threads dropped messages without alerting the user by injecting explicit UI error toasts when \wsClient\ validation fails.
+- **LLM Gateway Stream Restoration**: Fixed syntax issues (\TypeError: 'async for' requires an object with __aiter__ method\) inside \llm_gateway.py\ which aggressively severed WebSockets post-ingestion before streaming generation results.
+- **UI Proxied Image Render**: Corrected ReactMarkdown configuration within \MarkdownRenderer.tsx\, adjusting \<img>\ styling max-heights, bounds, margins, and responsive layouts to fix gigantic raw aspect ratio issues on proxied \imagen-4.0\ payloads.
+
+
+### Phase 27: Final Configuration Patches and Total UX Verification (2026-03-17)
+- **Workspace Session Context Fix**: Modified WorkspaceWriteTool, WorkspaceReadTool and others to gracefully fall back to conversation_id as a sandbox folder if _task_id is missing in direct chat contexts. This eliminates the No active task workspace error.
+- **Imagen 4 Label Formatting**: Corrected Generated Image (Google Imagen 3) display strings to output Google Imagen 4 dynamically across all tool response formatters.
+- **All Platform Check**: QA tested and validated active systems: full LiteLLM streaming, File I/O workspace manipulation, Agent delegation hopping, System tool DB injections, Date/Time anti-hallucination guards, WebSocket reliability, and imagen-4.0-generate-001 rendered output. Production ready.
+
+### Phase 26: QA Diagnostic Resolution & Orchestrator Hardening (2026-03-17)
+- **QA Diagnostic Feedback**: Addressed edge-case failures identified by the autonomous UI testing agent (Comet) after structural streaming/queuing fixes.
+- **Lithium Chunking Fix**: Corrected streaming generator issues where LiteLLM `finish_reason=stop` events prematurely truncated tool-call chunks.
+- **Orchestrator Naming Sync**: Fixed internal tool registry mismatches (CamelCase vs snake_case) that prevented the system orchestrator (Janny) from executing tools.
+- **Tool & API Updates**: Upgraded the deprecated Google Image Generation endpoint (`imagen-3` / `v1beta`) to `imagen-4.0-generate-001` via the updated Google GenAI SDK.
+- **Agent Constraints & Capabilities**: Executed a direct SQLite database injection to equip Janny with `workspace_write`, `workspace_read`, and `get_datetime` tools. Added critical system prompt rules to prevent hallucinating system state instead of using tooling, and injected Sentinel's Agent ID.
+- **System Stability**: Performed a clean reboot of the Uvicorn backend on port `8321` to hot-load the `image_gen.py` and DB updates. The API is healthy (`StatusCode: 200`) and currently awaiting results from the "Chaos Level 3" stress test.
+
+### Phase 25: Comprehensive Architecture Documentation & Final Commit (2026-03-17)
+- **Technical Mapping**: Created a suite of localized architectural guides: `architecture_overview.md`, `detailed_technical_report.md`, and `platform_encyclopedia.md`. These provide file-level breakdowns of orchestration logic, memory subsystems, and frontend state.
+- **Final Push**: Consolidated and pushed all 13 modified files to `merging-branch`, ensuring the remote repository reflects the latest stable runtime fixes.
+
+### Phase 24: Agent Status Stability & Orchestration Self-Healing (2026-03-17)
+- **Orchestration Resilience**: Fixed stuck "WORKING" statuses by implementing explicit `GeneratorExit` handlers in `ChatService` and `OrchestrationEngine`. This ensures that when a stream is closed (e.g., user cancellation), the agent is correctly reset to `IDLE` in the database.
+- **Log Hygiene**: Added detailed debug logging to the `_map_model_id` path to trace model resolution flows in production.
+- **Database Cleanup**: Executed `check_agents_db.py` to migrate all agents to valid Gemini 2.5+ models, eliminating residual 404s from the database layer.
+
+### Phase 23: Gemini Model 404 Resolution & Default Cleanup (2026-03-17)
+- **Model Resolution Fix**: Resolved persistent `404 NOT_FOUND` errors for `gemini-3.1-flash-lite` by updating the `GeminiProvider` mapping logic to direct requests to the newest stable production endpoints (`3.1-flash-preview` and `3.1-flash-lite-preview`).
+- **Standardization**: Removed all references to decommissioned Gemini models (1.5 series and 2.0-flash) from the provider listing and internal summarization fallbacks.
+- **Verification**: Confirmed successful 2.5/3.1 completion and streaming paths via `curl` and frontend interaction.
 
 ### Phase 22: Final Sync, Secret Audit, and Push Preparation (2026-03-17)
 - **Scope**: Consolidated all in-flight backend/frontend updates into one final delivery cycle.
@@ -456,8 +488,11 @@ HOW TO RUN:
 - app/tools/knowledge_base_tool.py -> KnowledgeBaseTool: searches ChromaDB vector store for RAG
 - app/tools/tool_creator.py -> ToolCreatorTool: built-in tool that lets agents create/update/list/delete custom tools
 - app/tools/skill_creator.py -> SkillCreatorTool: built-in tool that lets agents create/update/list/delete/import skills
-- app/tools/heartbeat_tool.py -> ScheduleTool: lets agents manage recurring heartbeat tasks (create/list/delete)
 - app/tools/brave_search.py -> BraveSearchTool: integrated search using Brave API
+- scripts/check_agents_db.py -> Utility to migrate all registered agents to valid Gemini 2.5+ models.
+- scripts/list_gemini_models.py -> Diagnostic script verifying valid model IDs via the Google GenAI SDK.
+- scripts/cleanup_all_messages.py -> Emergency script for purging ghost messages and resetting orphaned turn states.
+- scripts/refine_models.py -> Batch processing script for internal agent model refinement.
 
 [2026-02-28] ToolRegistry Live Registration & Agent Chat Integration:
   - Fixed ToolCreatorTool to register/unregister DynamicTool instances in the live ToolRegistry
@@ -962,6 +997,9 @@ HOW TO RUN:
 - [2026-03-11] Storm Prevention: MAX_SIMULTANEOUS_RESPONDING_AGENTS=3 enforced via asyncio.Semaphore in group chat. Conversation depth capped at 6 turns.
 - [2026-03-11] Self-Healing Strategies: reassign_task (move to different capable agent), reroute_workflow (skip stuck nodes), throttle_agent (time-limited concurrency reduction).
 - [2026-03-11] Security Hardening: Docker containers run read-only with cap_drop=ALL, tmpfs /tmp, pids_limit=256. Command executor blocks dangerous patterns. Workflow engine validates tool permissions.
+- [2026-03-17] Gemini Model Mapping Resilience: Implemented robust `_map_model_id` logic to resolve legacy IDs (e.g., `gemini-2.0-flash`) to stable production endpoints (`v1beta` vs `v1`).
+- [2026-03-17] Stream Stability & Agent Status: Integrated `GeneratorExit` handlers in `ChatService` and `OrchestrationEngine` to ensure agent status is reset to `IDLE` in the database when streaming sessions are cancelled mid-loop.
+- [2026-03-17] Platform Documentation Suite: Added `architecture_overview.md`, `detailed_technical_report.md`, and `platform_encyclopedia.md` as primary context artifacts for system deep-dives.
 
 [2026-03-03] Session 6 — Fixed Agent Tool Use Failures (4 bugs):
 
@@ -2836,3 +2874,9 @@ Implementing these will take CrossClaw from a great multi-model router to a high
       * GlobalToastContainer integration
       * WorkflowRunsPanel history viewing
     - Application is verified to be fully responsive and production-ready for fundamental conversational and administrative capabilities.
+-   F i x e d   G e m i n i   3 . 1   F l a s h   L i t e .   L i t e L L M   p r o v i d e r   m a p p i n g   r e q u i r e s   ' - p r e v i e w '   s u f f i x .   G l o b a l l y   r e p l a c e d   ' g e m i n i - 3 . 1 - f l a s h - l i t e '   w i t h   ' g e m i n i - 3 . 1 - f l a s h - l i t e - p r e v i e w '   i n   D B   s c h e m a s ,   p y t h o n   f i l e s ,   a n d   d e f a u l t   m o d e l s   t o   r e s t o r e   c a p a b i l i t y . 
+ 
+ 
+
+--- BUG FIX: Janny Tools Mismatch ---
+Fixed Janny missing specific tools. There was a mismatch where Janny's DB enabled_tools listed tools with camelCase names (e.g. AgentMessengerTool, SessionStatusTool) but the registry exported them as snake_case (gent_messenger, get_session_status). This silently filtered these tools out of Janny's tools payload. DB was patched to match the actual code names.
