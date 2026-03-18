@@ -49,7 +49,7 @@ class WorkspaceWriteTool(BaseTool):
         }
 
     async def execute(self, file_path: str, content: str, **kwargs) -> str:
-        task_id = kwargs.get("_task_id")
+        task_id = kwargs.get("_task_id") or kwargs.get("conversation_id")
         if not task_id:
             return "Error: No active task workspace. This tool is only available during autonomous task execution."
         try:
@@ -94,7 +94,7 @@ class WorkspaceReadTool(BaseTool):
         }
 
     async def execute(self, file_path: str, **kwargs) -> str:
-        task_id = kwargs.get("_task_id")
+        task_id = kwargs.get("_task_id") or kwargs.get("conversation_id")
         if not task_id:
             return "Error: No active task workspace."
         try:
@@ -132,7 +132,7 @@ class WorkspaceListTool(BaseTool):
         }
 
     async def execute(self, **kwargs) -> str:
-        task_id = kwargs.get("_task_id")
+        task_id = kwargs.get("_task_id") or kwargs.get("conversation_id")
         if not task_id:
             return "Error: No active task workspace."
         files = _workspace_mgr.list_files(task_id)
@@ -174,7 +174,7 @@ class WorkspaceRunShellTool(BaseTool):
         }
 
     async def execute(self, command: str, **kwargs) -> str:
-        task_id = kwargs.get("_task_id")
+        task_id = kwargs.get("_task_id") or kwargs.get("conversation_id")
         if not task_id:
             return "Error: No active task workspace."
         ws_path = _workspace_mgr.get_path(task_id)

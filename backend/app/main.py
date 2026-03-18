@@ -311,9 +311,9 @@ async def websocket_workflows(websocket: WebSocket, workflow_id: str = None):
 app.include_router(api_router, prefix="/api")
 
 # Mount generated images directory
-images_dir = Path(__file__).resolve().parents[1] / "generated_images"
-images_dir.mkdir(exist_ok=True)
-app.mount("/generated_images", StaticFiles(directory=str(images_dir)), name="generated_images")
+images_dir = Path(__file__).resolve().parents[1] / "data" / "generated_images"
+images_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/api/images", StaticFiles(directory=str(images_dir)), name="generated_images")
 
 # Mount WebSocket at root (not under /api) so frontend can connect to /ws/chat/{id}
 app.websocket("/ws/chat/{conversation_id}")(websocket_chat)

@@ -38,7 +38,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
             get().disconnect();
         }
 
-        const wsUrl = `ws://127.0.0.1:8322/api-ws/workflows${workflowId ? `?workflow_id=${workflowId}` : ''}`;
+        const wsUrl = `ws://127.0.0.1:8321/api-ws/workflows${workflowId ? `?workflow_id=${workflowId}` : ''}`;
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {

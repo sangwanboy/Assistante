@@ -10,6 +10,7 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 3001;
+const BACKEND_BASE_URL = process.env.BACKEND_BASE_URL || 'http://127.0.0.1:8321';
 
 // Store active clients by profile name
 const clients = new Map();
@@ -65,7 +66,7 @@ app.post('/api/whatsapp/connect', async (req, res) => {
         console.log(`[${profile}] Received: ${msg.body}`);
         const iid = profileToIntegration.get(profile);
         if (iid) {
-            const webhookUrl = `http://localhost:8322/api/integrations/${iid}/webhook/whatsapp_web`;
+            const webhookUrl = `${BACKEND_BASE_URL}/api/integrations/${iid}/webhook/whatsapp_web`;
             try {
                 await axios.post(webhookUrl, {
                     profile: profile,

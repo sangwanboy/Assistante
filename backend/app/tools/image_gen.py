@@ -37,8 +37,8 @@ class ImageGenerationTool(BaseTool):
                 },
                 "provider": {
                     "type": "string",
-                    "enum": ["openai", "google"],
-                    "description": "The AI provider to use. Defaults to 'google'.",
+                    "enum": ["google", "openai"],
+                    "description": "The AI provider to use. Google is highly recommended. Defaults to 'google'.",
                     "default": "google",
                 },
                 "aspect_ratio": {
@@ -92,9 +92,9 @@ class ImageGenerationTool(BaseTool):
         try:
             # Use the google-genai SDK
             client = genai.Client(api_key=api_key)
-            
+
             response = client.models.generate_images(
-                model='imagen-3',
+                model='imagen-4.0-generate-001',
                 prompt=prompt,
                 config=types.GenerateImagesConfig(
                     number_of_images=1,
@@ -102,9 +102,9 @@ class ImageGenerationTool(BaseTool):
                     output_mime_type="image/jpeg",
                 )
             )
-            
+
             if not response.generated_images:
-                return "Error: Google Imagen 3 failed to generate an image (no results)."
+                return "Error: Google Imagen 4 failed to generate an image (no results)."
             
             img = response.generated_images[0]
             if hasattr(img, 'image') and img.image.image_bytes:
@@ -119,11 +119,11 @@ class ImageGenerationTool(BaseTool):
                 with open(save_path, "wb") as f:
                     f.write(img.image.image_bytes)
                 
-                # Use local URL (8322 is our active port)
-                image_url = f"http://127.0.0.1:8322/api/images/{filename}"
-                return f"Generated Image (Google Imagen 3):\n\n![Generated Image]({image_url})"
+                # Use local URL (8321 is our active port)
+                image_url = f"/api/images/{filename}"
+                return f"Generated Image (Google Imagen 4):\n\n![Generated Image]({image_url})"
             
-            return f"Generated Image (Google Imagen 3): Generated successfully, but bytes were not provided by the SDK."
+            return f"Generated Image (Google Imagen 4): Generated successfully, but bytes were not provided by the SDK."
             
         except Exception as e:
             logger.error(f"Google Image Generation failed: {e}")

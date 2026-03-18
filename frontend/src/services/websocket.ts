@@ -71,11 +71,9 @@ export class WebSocketClient {
     // On Windows, localhost may resolve to ::1 while backend is bound on 127.0.0.1 only.
     const host = hostname === 'localhost' || hostname === '::1' ? '127.0.0.1' : hostname;
     const wsUrl = `${protocol}//${host}:8321/ws/chat/${conversationId}`;
-    console.log('[WS Chat] Connecting to:', wsUrl, `(attempt ${this.reconnectAttempts + 1}/${this.maxReconnects})`);
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('[WS Chat] Connected');
       this.reconnectAttempts = 0;
       this.onOpen();
 
@@ -101,8 +99,7 @@ export class WebSocketClient {
       }
     };
 
-    this.ws.onclose = (ev) => {
-      console.log('[WS Chat] Closed. code:', ev.code, 'reason:', ev.reason);
+    this.ws.onclose = (_ev) => {
       if (this.heartbeatTimer) {
         clearInterval(this.heartbeatTimer);
         this.heartbeatTimer = null;
@@ -114,7 +111,6 @@ export class WebSocketClient {
       if (!this._manualDisconnect && this.currentConversationId && this.reconnectAttempts < this.maxReconnects) {
         const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000); // 1s, 2s, 4s … capped at 30s
         this.reconnectAttempts++;
-        console.log(`[WS Chat] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnects})`);
         this.reconnectTimer = setTimeout(() => this._doConnect(), delay);
       }
     };
@@ -184,5 +180,13 @@ export class WebSocketClient {
 
   get isConnected() {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  get isActive() {
+    return this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING;
+  }
+
+  get conversationId() {
+    return this.currentConversationId;
   }
 }

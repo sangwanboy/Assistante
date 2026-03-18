@@ -47,7 +47,6 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
     connect: () => {
         // Don't connect if we already have an open/connecting socket
         if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-            console.log('[AgentStatus WS] Already connected/connecting, skipping');
             return;
         }
 
@@ -57,25 +56,20 @@ export const useAgentStatusStore = create<AgentStatusStore>((set, get) => ({
         // Connect directly to backend port to bypass unstable Vite WS proxy
         const backendPort = '8321';
         const wsUrl = `${protocol}//${host}:${backendPort}/api-ws/agents/status`;
-        console.debug('[AgentStatus WS] Connecting to:', wsUrl);
 
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-            console.log('[AgentStatus WS] Connected!');
             set({ isConnected: true });
             clearTimeout(reconnectTimeout);
         };
 
         ws.onmessage = (event) => {
-            console.debug('[AgentStatus WS] Message received');
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'initial_status') {
-                    console.debug('[AgentStatus WS] Initial statuses loaded');
                     set({ statuses: data.statuses });
                 } else if (data.type === 'agent_status_update') {
-                    console.debug('[AgentStatus WS] Status update:', data.agent_id, data.status?.state);
                     set((state) => ({
                         statuses: {
                             ...state.statuses,

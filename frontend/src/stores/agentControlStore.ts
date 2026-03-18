@@ -35,28 +35,25 @@ export const useAgentControlStore = create<AgentControlStore>((set, get) => ({
         set({ _intentionalClose: false });
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
-        const backendPort = '8322';
+        const backendPort = '8321';
         const wsUrl = `${protocol}//${host}:${backendPort}/api-ws/agents/control`;
 
         const newWs = new WebSocket(wsUrl);
         set({ _ws: newWs });
 
         newWs.onopen = () => {
-            console.log('[AgentControl WS] Connected!');
             set({ isConnected: true });
             const currentTimeout = get()._reconnectTimeout;
             if (currentTimeout) clearTimeout(currentTimeout);
         };
 
         newWs.onmessage = (event) => {
-            console.log('[AgentControl WS] Message received', event.data);
             const sourceSocket = event.target as WebSocket;
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'APPROVAL_REQUIRED') {
                     const { alwaysAllowedTools } = get();
                     if (alwaysAllowedTools.includes(data.tool)) {
-                        console.log(`[AgentControl WS] Auto-approving tool: ${data.tool}`);
                         // Send approval directly on the socket that received the message
                         if (sourceSocket.readyState === WebSocket.OPEN) {
                             sourceSocket.send(JSON.stringify({ action: 'APPROVE', task_id: data.task_id }));
@@ -82,7 +79,6 @@ export const useAgentControlStore = create<AgentControlStore>((set, get) => ({
 
         newWs.onclose = (event) => {
             const intentional = get()._intentionalClose;
-            console.log(`[AgentControl WS] Closed (code=${event.code}, reason=${event.reason}, intentional=${intentional})`);
             set({ isConnected: false, _ws: null });
             
             if (!intentional) {
@@ -90,7 +86,6 @@ export const useAgentControlStore = create<AgentControlStore>((set, get) => ({
                 if (currentTimeout) clearTimeout(currentTimeout);
                 
                 const timeoutId = setTimeout(() => {
-                    console.log('[AgentControl WS] Auto-reconnecting...');
                     get().connect();
                 }, 2000);
                 set({ _reconnectTimeout: timeoutId });
