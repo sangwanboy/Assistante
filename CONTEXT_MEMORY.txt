@@ -8,6 +8,10 @@ Purpose: Persistent memory for Claude across sessions. Read this file at the
 ================================================================================
                          TASK COMPLETION SUMMARY
 ================================================================================
+### Phase 29: System Crash Recovery & Extreme Load Testing Strategy (2026-03-18)
+- **Extreme Load "Master Prompt"**: Developed "Project Archimedes", a rigorous master orchestration prompt designed to push cognitive load, cross-tool chaining capabilities, system state management, and async generator streams to their breaking points. 
+- **System Revival**: Diagnosed application crash state caused by extreme stress testing, verified dead processes across allocated ports (8321, 5173), and successfully re-initialized the primary Backend (FastAPI/uvicorn) and Frontend (Vite) servers.
+
 ### Phase 28: System Diagnostics, LLM Gateway Fixes, and Frontend Stabilization (2026-03-18)
 - **Frontend Silent Message Bug**: Resolved severe chatStore UX issue where active threads dropped messages without alerting the user by injecting explicit UI error toasts when \wsClient\ validation fails.
 - **LLM Gateway Stream Restoration**: Fixed syntax issues (\TypeError: 'async for' requires an object with __aiter__ method\) inside \llm_gateway.py\ which aggressively severed WebSockets post-ingestion before streaming generation results.
