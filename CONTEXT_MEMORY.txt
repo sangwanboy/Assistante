@@ -2884,3 +2884,12 @@ Implementing these will take CrossClaw from a great multi-model router to a high
 
 --- BUG FIX: Janny Tools Mismatch ---
 Fixed Janny missing specific tools. There was a mismatch where Janny's DB enabled_tools listed tools with camelCase names (e.g. AgentMessengerTool, SessionStatusTool) but the registry exported them as snake_case (gent_messenger, get_session_status). This silently filtered these tools out of Janny's tools payload. DB was patched to match the actual code names.
+
+--- Phase 29: Stress Testing & Orchestrator Concurrency Fixes ---
+  Summary: Patched architectural limitations for multi-agent delegation concurrency and resolved hallucination behavior.
+
+  Testing & Fixes:
+    - Fixed Janny hallucination under high parallel loads (e.g. 5-agent deployments). Janny would bypass wait times and 'mock' results. Pushed a direct DB update to Janny's system prompt enforcing a 'CRITICAL CONCURRENCY RULE' to strictly await responses.
+    - Refactored 'chat_service.py' tool execution: Upgraded the synchronous '_execute_tool_calls' loop to use 'asyncio.gather(*tasks)', properly resolving True Async concurrency. 
+    - Fixed UI text truncation bug in 'agent_delegate.py': The orchestrator would previously crop task responses to 100 characters in the chat payload. Removed this visual threshold entirely so full markdown results render cleanly in the UI.
+    - Validated Active Models: Gemini 3.1 Flash Preview ID registry is accurately confirmed as 'gemini/gemini-2.0-flash-lite-preview-02-05' in backend.
